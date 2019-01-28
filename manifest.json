@@ -1,11 +1,11 @@
 {
     "id": "BAUM2_EXPORT",
     "name": "baum2 export plugin",
-    "description": "Baum2用中間ファイルを出力します",
+    "description": "Baum2中間ファイルを出力します",
     "version": "0.8.0",
     "host": {
         "app": "XD",
-        "minVersion": "13.0.0"
+        "minVersion": "14.0.0"
     },
     "uiEntryPoints": [{
         "type": "menu",
