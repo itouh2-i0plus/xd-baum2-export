@@ -1,0 +1,18 @@
+{
+    "id": "BAUM2_EXPORT",
+    "name": "baum2 export plugin",
+    "description": "Baum2中間ファイルを出力します",
+    "version": "0.8.0",
+    "host": {
+        "app": "XD",
+        "minVersion": "14.0.0"
+    },
+    "uiEntryPoints": [{
+        "type": "menu",
+        "label": "baum2 export",
+        "commandId": "baum2ExportCommand",
+        "shortcut": {
+            "win": "Ctrl+Shift+p"
+        }
+    }]
+}
