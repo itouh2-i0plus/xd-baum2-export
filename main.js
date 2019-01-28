@@ -283,7 +283,7 @@ async function funcArtboard(renditions, folder, artboard) {
                 break;
             case "Ellipse":
             case "Rectangle":
-                nodeStack.forEach(node=>{
+                nodeStack.forEach(node => {
 
                 });
                 await extractedDrawing(layoutJson, node, artboard, subFolder, renditions);
@@ -324,8 +324,8 @@ async function funcArtboard(renditions, folder, artboard) {
 
 // メインファンクション
 async function mainHandlerFunction(selection, root) {
-    const folder = await fs.getTemporaryFolder();
-    //const folder = await fs.getFolder();
+    //const folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
+    const folder = await fs.getFolder(); // 出力フォルダの選択
 
     let artboards = [];
 
