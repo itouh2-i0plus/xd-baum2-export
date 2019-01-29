@@ -9,6 +9,9 @@ Unity Prefab化
 プラグイン開発GitHub
 https://github.com/itouh2-i0plus/xd-baum2-export/
 
+解説記事(Qiita)
+https://qiita.com/itouh2-i0plus/items/6a948aa40acada879ce7
+
 ## 更新履歴
 
 |日付|内容|更新者|
@@ -72,7 +75,7 @@ Unity用プラグインのインストールが必要です
     * Baum2の方針､レイヤーの作成の方法､自動9Slice等､こちらの内容が当プラグインの基礎になります
     * この記事から､[Baum2の最新版](https://github.com/kyubuns/Baum2)は進化しています
         * Listのスクロール方向の指定 (XXXList@Scroll=Vertical)
-        * Toggle､StretchといったUIコンポーネント
+        * Toggleコンポーネント対応
 * [【AdobeXD】Baum2形式で書き出してUnityで画面を再現する方法](https://www.cg-method.com/entry/adobexd-plugins-baum2-unity/)
     * わかりやすいインストールの方法をご紹介してくださっています
 
