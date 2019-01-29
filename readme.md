@@ -12,12 +12,13 @@ https://github.com/itouh2-i0plus/xd-baum2-export/
 解説記事(Qiita)
 https://qiita.com/itouh2-i0plus/items/6a948aa40acada879ce7
 
-## 更新履歴
+## プラグイン更新履歴
 
 |日付|内容|更新者|
-|-|-|-|
-|2019/01/28|初稿|itouh2-i0plus|
-|2019/01/28|出力ファイル名に空白を許可|itouh2-i0plus|
+|---|---|---|
+|2019/01/28|初稿|@itouh2-i0plus|
+|2019/01/29|出力ファイル名に空白を許可|@itouh2-i0plus|
+|2019/01/29|リピートグリッド仮対応 パスの出力追加|@itouh2-i0plus|
 
 
 ## インストール
@@ -47,7 +48,21 @@ Unity用プラグインのインストールが必要です
     * 出力フォルダをAssets/Baum2/Importにしておくとドラッグ&ドロップ不要
 9. Assets/Baum2/Sample/PrefabsにPrefabが出力され､Assets/Baum2/Sample/Spritesに画像が出力されます
 
+## 困った時
+
+* Unity上で文字が出ない
+    * Fontファイルが無いのではないでしょうか
+    * Assets/Baum2/Sample/Fontsフォルダにフォントファイル(TTFまたはOTFファイル)をいれてください
+* Unityにもってきたとき､ボタンにならない
+    * レイヤー構造を確認してください [Baum2](https://github.com/kyubuns/Baum2)に準拠しています
+    * このページ冒頭のスクリーンショットも参考になるかと思います
+* レイヤーの階層を意識して､XDを触ったことがない
+    * Windowsの場合はCtrl+Yでレイヤーウィンドウがでます それを見ながらの作業がやりやすいと思います
+* ショートカットキーを登録したい 変更したい
+    * manifest.jsonのshortcutを編集してください
+
 ## 改良したいところ
+
 - [ ] 出力画像ファイル名をBaum2と同じにしたい
 - [ ] 出力スケールの変更
     * 現状4倍固定
@@ -59,18 +74,9 @@ Unity用プラグインのインストールが必要です
 - [ ] リンクが設定してあるオブジェクトはボタンにしたい
 - [ ] Textはラスタライズして､Unityに渡してもいいかもしれない
 
-## うまくいかない場合
-
-* Unity上で文字が出ない
-    * Fontファイルが無いのではないでしょうか
-    * Assets/Baum2/Sample/Fontsフォルダにフォントファイル(TTFまたはOTFファイル)をいれてください
-* Unityにもってきたとき､ボタンにならない
-    * レイヤー構造を確認してください [Baum2](https://github.com/kyubuns/Baum2)に準拠しています
-    * このページ冒頭のスクリーンショットも参考になるかと思います
-* レイヤーの階層を意識して､XDを触ったことがない
-    * Windowsの場合はCtrl+Yでレイヤーウィンドウがでます それを見ながらの作業がやりやすいと思います
 
 ## 参考
+
 * [[Unity] psdからUIを作るライブラリ"Baum2"公開しました - Qiita](https://qiita.com/kyubuns/items/b4c0c92e60754a8dc544)
     * Baum2の方針､レイヤーの作成の方法､自動9Slice等､こちらの内容が当プラグインの基礎になります
     * この記事から､[Baum2の最新版](https://github.com/kyubuns/Baum2)は進化しています
@@ -81,4 +87,4 @@ Unity用プラグインのインストールが必要です
 
 ## 謝辞
 
-[Baum2](https://github.com/kyubuns/Baum2)あってこそです　 @kyubuns さん ありがとうございます
+[Baum2](https://github.com/kyubuns/Baum2)あってこそです　 [@kyubuns](https://qiita.com/kyubuns) さん ありがとうございます
