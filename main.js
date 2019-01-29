@@ -171,7 +171,7 @@ function extractedText(json, node, artboard) {
 
 let counter = 1;
 async function extractedDrawing(json, node, artboard, subFolder, renditions) {
-    const fileName = convertToFileName(node.name + counter);
+    const fileName = convertToFileName(`${node.name}(${counter})`);
     counter++;
     const {
         x,
@@ -195,6 +195,7 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
         overwrite: true
     });
     // 画像出力登録
+    console.log(node.guid);
     renditions.push({
         node: node,
         outputFile: file,
@@ -267,13 +268,13 @@ async function funcArtboard(renditions, folder, artboard) {
             case "Artboard":
                 break;
             case "Group":
+            case "RepeatGrid":
                 extractedGroup(layoutJson, node);
                 break;
             case "Ellipse":
             case "Rectangle":
-                nodeStack.forEach(node => {
-
-                });
+            case "Path":
+                nodeStack.forEach(node => {});
                 await extractedDrawing(layoutJson, node, artboard, subFolder, renditions);
                 break;
             case "Text":
@@ -312,9 +313,6 @@ async function funcArtboard(renditions, folder, artboard) {
 
 // メインファンクション
 async function mainHandlerFunction(selection, root) {
-    //const folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
-    const folder = await fs.getFolder(); // 出力フォルダの選択
-
     let artboards = [];
 
     // 選択されているものがない場合 全てが変換対象
@@ -328,6 +326,9 @@ async function mainHandlerFunction(selection, root) {
         console.log("変換対象がありません");
         return;
     }
+
+    //const folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
+    const folder = await fs.getFolder(); // 出力フォルダの選択
 
     // ラスタライズする要素を入れる
     let renditions = [];
