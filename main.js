@@ -21,18 +21,6 @@ function convertToLabel(name) {
 
 
 /**
- * グループネーム末尾に型名がふくまれているかチェックする
- * 例: checkGroupType("FooButton","Button) == true
- * @param {*} groupName 
- * @param {*} typeName 
- */
-function checkGroupType(groupName, typeName) {
-    let index = groupName.indexOf(typeName);
-    return index == groupName.length - typeName.length;
-}
-
-
-/**
  * Alphaを除きRGBで6桁16進の色の値を取得する
  * @param {*} color 
  */
@@ -112,7 +100,7 @@ function extractedGroup(json, node) {
 
     let pivot = null;
 
-    if (checkGroupType(name, "Button")) {
+    if (name.endsWith("Button")) {
         Object.assign(json, {
             type: "Button",
             name: name
@@ -122,21 +110,21 @@ function extractedGroup(json, node) {
                 pivot: pivot
             });
         }
-    } else if (checkGroupType(name, "Slider")) {
+    } else if (name.endsWith("Slider")) {
         Object.assign(json, {
             type: "Slider",
             name: name
         });
-    } else if (checkGroupType(name, "Scrollbar")) {
+    } else if (name.endsWith("Scrollbar")) {
         Object.assign(json, {
             type: "Scrollbar",
             name: name
         });
-    } else if (checkGroupType(name, "List")) {
+    } else if (name.endsWith("List")) {
         Object.assign(json, {
             type: "List",
             name: name,
-            scroll: "vertical"
+            scroll: "vertical" // TODO:オプションを取得するようにする
         });
     } else {
         // 通常のグループ
@@ -183,7 +171,7 @@ function extractedText(json, node, artboard) {
 
 let counter = 1;
 async function extractedDrawing(json, node, artboard, subFolder, renditions) {
-    const label = convertToLabel(node.name) + counter;
+    const fileName = convertToFileName(node.name + counter);
     counter++;
     const {
         x,
@@ -195,7 +183,7 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
     Object.assign(json, {
         type: "Image",
         name: node.name,
-        image: label,
+        image: fileName,
         x: x,
         y: y,
         w: w,
@@ -203,7 +191,7 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
         opacity: 100
     });
     // 出力画像ファイル
-    const file = await subFolder.createFile(label + ".png", {
+    const file = await subFolder.createFile(fileName + ".png", {
         overwrite: true
     });
     // 画像出力登録
@@ -220,7 +208,7 @@ async function funcArtboard(renditions, folder, artboard) {
     let subFolderName = artboard.name;
 
     // フォルダ名に使えない文字を'_'に変換
-    subFolderName = convertToLabel(subFolderName);
+    subFolderName = convertToFileName(subFolderName);
 
     // アートボード毎にフォルダを作成する
     // TODO:他にやりかたはないだろうか
@@ -292,7 +280,7 @@ async function funcArtboard(renditions, folder, artboard) {
                 extractedText(layoutJson, node, artboard);
                 break;
             default:
-                console.log("error-type:" + constructorName);
+                console.log("***error type:" + constructorName);
                 break;
         }
 
