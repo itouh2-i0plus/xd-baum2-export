@@ -8,6 +8,8 @@ const {
 
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
+
+// 全体にかけるスケール
 const scale = 4;
 
 function convertToFileName(name) {
@@ -47,6 +49,7 @@ function getGlobalBounds(node) {
         h
     };
 }
+
 
 function getArtboardBounds(artboard) {
     const x = artboard.translation.x * scale;
@@ -88,7 +91,11 @@ function getBounds(node, artboard) {
     };
 }
 
-
+/**
+ * Groupの処理 戻り値は処理したType
+ * @param {*} json 
+ * @param {*} node 
+ */
 function extractedGroup(json, node) {
     let name = node.name;
     // Groupの名前からタイプの判定をする
@@ -263,45 +270,54 @@ async function funcArtboard(renditions, folder, artboard) {
             return sp;
         })(depth);
         console.log(indent + "'" + node.name + "':" + constructorName);
+
+        // 子Node処理関数
+        let forEachChildren = async () => {
+            const numChildren = node.children.length;
+            if (numChildren > 0) {
+                layoutJson.elements = [];
+                // 後ろから順番に処理をする
+                // 描画順に関わるので､非同期処理にしない
+                for (let i = numChildren - 1; i >= 0; i--) {
+                    let childElement = {};
+                    nodeStack.push(node.children.at(i));
+                    await nodeWalker(nodeStack, childElement, depth + 1);
+                    nodeStack.pop();
+                    // なにも入っていない場合はelementsに追加しない
+                    if (Object.keys(childElement).length > 0) {
+                        layoutJson.elements.push(childElement);
+                    }
+                }
+            }
+        }
+
         // nodeの型で処理の分岐
         switch (constructorName) {
             case "Artboard":
+                await forEachChildren();
                 break;
             case "Group":
             case "RepeatGrid":
                 extractedGroup(layoutJson, node);
+                await forEachChildren();
                 break;
             case "Ellipse":
             case "Rectangle":
             case "Path":
                 nodeStack.forEach(node => {});
                 await extractedDrawing(layoutJson, node, artboard, subFolder, renditions);
+                await forEachChildren();
                 break;
             case "Text":
                 extractedText(layoutJson, node, artboard);
+                await forEachChildren();
                 break;
             default:
                 console.log("***error type:" + constructorName);
+                await forEachChildren();
                 break;
         }
 
-        // 子Nodeがあれば処理をする
-        const numChildren = node.children.length;
-        if (numChildren > 0) {
-            layoutJson.elements = [];
-            // 後ろから順番に処理をする
-            // 描画順に関わるので､非同期処理にしない
-            for (let i = numChildren - 1; i >= 0; i--) {
-                let childElement = {};
-                nodeStack.push(node.children.at(i));
-                await nodeWalker(nodeStack, childElement, depth + 1);
-                nodeStack.pop();
-                // なにも入っていない場合はelementsに追加しない
-                if (Object.keys(childElement).length > 0) {
-                    layoutJson.elements.push(childElement);
-                }
-            }
-        }
     };
 
     await nodeWalker([artboard], layoutJson.root, 0);
