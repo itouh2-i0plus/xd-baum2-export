@@ -9,15 +9,28 @@ const {
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
 
+// 実験的オプションを有効にするかどうか
+const experimentalOptionsEnable = true;
+
 // 全体にかけるスケール
 const scale = 4;
 
 
+/**
+ * ファイル名につかえる文字列に変換する
+ * @param {string} name 
+ * @return {string}
+ */
 function convertToFileName(name) {
     return name.replace(/[\\/:*?"<>|#]/g, "_");
 }
 
 
+/**
+ * ラベル名につかえる文字列に変換する
+ * @param {string} name 
+ * @return {string}
+ */
 function convertToLabel(name) {
     return name.replace(/[\\/:*?"<>|# ]/g, "_");
 }
@@ -41,7 +54,7 @@ function printAllProperties(obj) {
 
 /**
  * Alphaを除きRGBで6桁16進の色の値を取得する
- * @param {*} color 
+ * @param {number} color 
  */
 function getRGB(color) {
     const c = ("000000" + color.toString(16)).substr(-6);
@@ -51,7 +64,7 @@ function getRGB(color) {
 
 /**
  * グローバル座標とサイズを取得する
- * @param {*} node 
+ * @param {scenegraph} node 
  */
 function getGlobalBounds(node) {
     let bounds = node.globalDrawBounds;
@@ -68,6 +81,10 @@ function getGlobalBounds(node) {
 }
 
 
+/**
+ * アートボードの座標とサイズを取得する
+ * @param {artboard} artboard 
+ */
 function getArtboardBounds(artboard) {
     const x = artboard.translation.x * scale;
     const y = artboard.translation.y * scale;
@@ -85,8 +102,8 @@ function getArtboardBounds(artboard) {
 /**
  * Artboard内での座標とサイズを取得する
  * x､yはCenterMiddleでの座標になる
- * @param {*} node 
- * @param {*} artboard 
+ * @param {scenegraph} node 
+ * @param {artboard} artboard 
  */
 function getBounds(node, artboard) {
     let {
@@ -109,22 +126,64 @@ function getBounds(node, artboard) {
     };
 }
 
+
+/**
+ * string配列から指定のオプションがあるか検索し
+ * ある場合は分解して戻す　ない場合はnull
+ * 例
+ * let r = getOption(["Pivot=LeftTop","pivot"]); 
+ * // r:["Pivot","LeftTop"]
+ * @param {string} optionName 
+ * @param {string[]} options 
+ */
+function getOption(optionName, options) {
+    if (options == null || !(options instanceof Array)) {
+        return null;
+    }
+    const optionNameLowerCase = optionName.toLowerCase();
+    let param = null;
+    options.find(arg => {
+        let f = arg.split("=");
+        if (f == null) {
+            f = [arg];
+        }
+        if (f[0].toLowerCase() == optionNameLowerCase) { // 大文字小文字関係なしに比較
+            param = f;
+            return true;
+        }
+        return false;
+    });
+    return param;
+}
+
+
+/**
+ * オプションRasterizeチェック
+ * 有効ならTrue
+ * @param {string[]} options 
+ * @return {boolean}
+ */
+function checkOptionRasterize(options) {
+    if (!experimentalOptionsEnable) return false;
+    const r = getOption("rasterize", options);
+    if (r == null || r.length == 0) return false;
+    if (r.length == 1) return true; // デフォルト True
+    const val = r[1].toLowerCase();
+    if (val == "false" || val == "0" || val == "null") return false;
+    return true;
+}
+
+
 /**
  * Groupの処理 戻り値は処理したType
  * 注意:ここで､子供の処理もしてしまう
  * @param {*} json 
- * @param {*} node 
+ * @param {scenegraph} node 
  * @param {*} funcForEachChild 
+ * @param {string} name 
+ * @param {string[]} options 
  */
-async function extractedGroup(json, node, funcForEachChild) {
-    let name = node.name;
-    // Groupの名前からタイプの判定をする
-    // https://github.com/kyubuns/Baum2
-    const args = name.split("@");
-    if (args != null && args.length > 0) {
-        name = args[0];
-    }
-
+async function extractedGroup(json, node, funcForEachChild, name, options) {
     let pivot = null;
 
     if (name.endsWith("Button")) {
@@ -191,13 +250,30 @@ async function extractedGroup(json, node, funcForEachChild) {
             pivot: pivot
         });
     }
+    if (checkOptionRasterize(options)) {
+
+    }
     await funcForEachChild();
     return type;
 }
 
 
-function extractedText(json, node, artboard) {
+/**
+ * テキストレイヤーの処理
+ * @param {*} json 
+ * @param {scenegraph} node 
+ * @param {artboard} artboard 
+ * @param {*} subfolder 
+ * @param {[]} renditions 
+ * @param {string} name 
+ * @param {string[]} options 
+ */
+async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
     const label = convertToLabel(node.name);
+    if (checkOptionRasterize(options)) {
+        await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
+        return;
+    }
     const {
         x,
         y,
@@ -208,7 +284,7 @@ function extractedText(json, node, artboard) {
     // Textレイヤーもラスタライズしてしまうオプションがあっても良いと思う
     Object.assign(json, {
         type: "Text",
-        name: node.name,
+        name: name,
         text: node.text,
         textType: "point",
         font: node.fontFamily,
@@ -224,9 +300,20 @@ function extractedText(json, node, artboard) {
     });
 }
 
+
 let counter = 1;
-async function extractedDrawing(json, node, artboard, subFolder, renditions) {
-    const fileName = convertToFileName(`${node.name}(${counter})`);
+/**
+ * パスレイヤー(楕円や長方形等)の処理
+ * @param {*} json 
+ * @param {scenegraph} node 
+ * @param {artboard} artboard 
+ * @param {*} subFolder 
+ * @param {*} renditions 
+ * @param {string} name 
+ * @param {string[]} options 
+ */
+async function extractedDrawing(json, node, artboard, subFolder, renditions, name, options) {
+    const fileName = convertToFileName(`${name}(${counter})`);
     counter++;
     const {
         x,
@@ -237,7 +324,7 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
     //
     Object.assign(json, {
         type: "Image",
-        name: node.name,
+        name: name,
         image: fileName,
         x: x,
         y: y,
@@ -250,7 +337,6 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
         overwrite: true
     });
     // 画像出力登録
-    console.log(node.guid);
     renditions.push({
         node: node,
         outputFile: file,
@@ -259,8 +345,13 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions) {
     });
 }
 
-
-async function funcArtboard(renditions, folder, artboard) {
+/**
+ * アートボードの処理
+ * @param {*} renditions 
+ * @param {*} folder 
+ * @param {artboard} artboard 
+ */
+async function extractedArtboard(renditions, folder, artboard) {
     let subFolderName = artboard.name;
 
     // フォルダ名に使えない文字を'_'に変換
@@ -319,6 +410,30 @@ async function funcArtboard(renditions, folder, artboard) {
         })(depth);
         console.log(indent + "'" + node.name + "':" + constructorName);
 
+        // レイヤー名から名前とオプションの分割
+        let name = node.name;
+        let options = name.split("@");
+        if (options != null && options.length > 0) {
+            name = options[0];
+            options.shift();
+        }
+
+        // 名前の最初1文字目での処理分別
+        if (name.length > 0) {
+            switch (name[0]) {
+                case '#':
+                    // コメント レイヤー
+                    return;
+                case '*':
+                    // そのレイヤーをラスタライズする
+                    options.push("Rasterize=true");
+                    name = name.substring(1);
+                    break;
+                default:
+                    break;
+            }
+        }
+
         // 子Node処理関数
         let forEachChild = async () => {
             const numChildren = node.children.length;
@@ -348,18 +463,18 @@ async function funcArtboard(renditions, folder, artboard) {
             case "RepeatGrid":
             case "SymbolInstance":
                 {
-                    let type = await extractedGroup(layoutJson, node, forEachChild);
+                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
                 }
                 break;
             case "Ellipse":
             case "Rectangle":
             case "Path":
                 nodeStack.forEach(node => {});
-                await extractedDrawing(layoutJson, node, artboard, subFolder, renditions);
+                await extractedDrawing(layoutJson, node, artboard, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             case "Text":
-                extractedText(layoutJson, node, artboard);
+                await extractedText(layoutJson, node, artboard, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             default:
@@ -403,10 +518,11 @@ async function mainHandlerFunction(selection, root) {
     // 画像を一度にラスタライズ･保存する処理と比較し､ここは非同期にするまでもないと考えます
     // TODO: Promise.allをつかいたい
     for (let index = 0; index < artboards.length; index++) {
-        await funcArtboard(renditions, folder, artboards[index]);
+        await extractedArtboard(renditions, folder, artboards[index]);
     }
 
     if (renditions.length == 0) {
+        // 画像出力の必要がなければ終了
         return;
     }
 
