@@ -19,7 +19,7 @@ https://qiita.com/itouh2-i0plus/items/6a948aa40acada879ce7
 |2019/01/28|初稿|@itouh2-i0plus|
 |2019/01/29|出力ファイル名に空白を許可|@itouh2-i0plus|
 |2019/01/29|リピートグリッド仮対応 パスの出力追加|@itouh2-i0plus|
-
+|2019/02/03|シンボル仮対応|@itouh2-i0plus|
 
 ## インストール
 
