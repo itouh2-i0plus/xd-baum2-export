@@ -12,6 +12,7 @@ const fs = require("uxp").storage.localFileSystem;
 // 全体にかけるスケール
 const scale = 4;
 
+
 function convertToFileName(name) {
     return name.replace(/[\\/:*?"<>|#]/g, "_");
 }
@@ -19,6 +20,22 @@ function convertToFileName(name) {
 
 function convertToLabel(name) {
     return name.replace(/[\\/:*?"<>|# ]/g, "_");
+}
+
+
+/**
+ * オブジェクトのもつ全てのプロパティを表示する
+ * レスポンシブデザイン用プロパティが無いか調べるときに使用
+ * @param {*} obj 
+ */
+function printAllProperties(obj) {
+    var propNames = [];
+    var o = obj;
+    while (o) {
+        propNames = propNames.concat(Object.getOwnPropertyNames(o));
+        o = Object.getPrototypeOf(o);
+    }
+    console.log(propNames);
 }
 
 
@@ -64,6 +81,7 @@ function getArtboardBounds(artboard) {
     };
 }
 
+
 /**
  * Artboard内での座標とサイズを取得する
  * x､yはCenterMiddleでの座標になる
@@ -93,14 +111,16 @@ function getBounds(node, artboard) {
 
 /**
  * Groupの処理 戻り値は処理したType
+ * 注意:ここで､子供の処理もしてしまう
  * @param {*} json 
  * @param {*} node 
+ * @param {*} funcForEachChild 
  */
-function extractedGroup(json, node) {
+async function extractedGroup(json, node, funcForEachChild) {
     let name = node.name;
     // Groupの名前からタイプの判定をする
     // https://github.com/kyubuns/Baum2
-    let args = name.split("@");
+    const args = name.split("@");
     if (args != null && args.length > 0) {
         name = args[0];
     }
@@ -108,8 +128,9 @@ function extractedGroup(json, node) {
     let pivot = null;
 
     if (name.endsWith("Button")) {
+        const type = "Button";
         Object.assign(json, {
-            type: "Button",
+            type: type,
             name: name
         });
         if (pivot) {
@@ -117,34 +138,61 @@ function extractedGroup(json, node) {
                 pivot: pivot
             });
         }
-    } else if (name.endsWith("Slider")) {
+        await funcForEachChild();
+        return type;
+    }
+
+    if (name.endsWith("Slider")) {
+        const type = "Slider";
         Object.assign(json, {
-            type: "Slider",
+            type: type,
             name: name
         });
-    } else if (name.endsWith("Scrollbar")) {
+        await funcForEachChild();
+        return type;
+    }
+
+    if (name.endsWith("Scrollbar")) {
+        const type = "Scrollbar";
         Object.assign(json, {
-            type: "Scrollbar",
+            type: type,
             name: name
         });
-    } else if (name.endsWith("List")) {
+        await funcForEachChild();
+        return type;
+    }
+
+    if (name.endsWith("List")) {
+        const type = "List";
         Object.assign(json, {
-            type: "List",
+            type: type,
             name: name,
             scroll: "vertical" // TODO:オプションを取得するようにする
         });
-    } else {
-        // 通常のグループ
-        Object.assign(json, {
-            type: "Group",
-            name: name,
+        await funcForEachChild();
+        let areaElement = json.elements.find(element => {
+            return element.name == "Area";
         });
-        if (pivot) {
-            Object.assign(json, {
-                pivot: pivot
-            });
+        if (areaElement != null) {
+            console.log("*** found Area ***");
         }
+        printAllProperties(node);
+        return type;
     }
+
+    // 通常のグループ
+    const type = "Group";
+    Object.assign(json, {
+        type: type,
+        name: name,
+    });
+    if (pivot) {
+        Object.assign(json, {
+            pivot: pivot
+        });
+    }
+    await funcForEachChild();
+    return type;
 }
 
 
@@ -272,7 +320,7 @@ async function funcArtboard(renditions, folder, artboard) {
         console.log(indent + "'" + node.name + "':" + constructorName);
 
         // 子Node処理関数
-        let forEachChildren = async () => {
+        let forEachChild = async () => {
             const numChildren = node.children.length;
             if (numChildren > 0) {
                 layoutJson.elements = [];
@@ -294,27 +342,29 @@ async function funcArtboard(renditions, folder, artboard) {
         // nodeの型で処理の分岐
         switch (constructorName) {
             case "Artboard":
-                await forEachChildren();
+                await forEachChild();
                 break;
             case "Group":
             case "RepeatGrid":
-                extractedGroup(layoutJson, node);
-                await forEachChildren();
+            case "SymbolInstance":
+                {
+                    let type = await extractedGroup(layoutJson, node, forEachChild);
+                }
                 break;
             case "Ellipse":
             case "Rectangle":
             case "Path":
                 nodeStack.forEach(node => {});
                 await extractedDrawing(layoutJson, node, artboard, subFolder, renditions);
-                await forEachChildren();
+                await forEachChild();
                 break;
             case "Text":
                 extractedText(layoutJson, node, artboard);
-                await forEachChildren();
+                await forEachChild();
                 break;
             default:
                 console.log("***error type:" + constructorName);
-                await forEachChildren();
+                await forEachChild();
                 break;
         }
 
