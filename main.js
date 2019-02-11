@@ -66,7 +66,7 @@ function getRGB(color) {
  * グローバル座標とサイズを取得する
  * @param {scenegraph} node 
  */
-function getGlobalBounds(node) {
+function getGlobalDrawBounds(node) {
     let bounds = node.globalDrawBounds;
     const x = bounds.x * scale;
     const y = bounds.y * scale;
@@ -105,13 +105,13 @@ function getArtboardBounds(artboard) {
  * @param {scenegraph} node 
  * @param {artboard} artboard 
  */
-function getBounds(node, artboard) {
+function getDrawBoundsInArtboard(node, artboard) {
     let {
         x,
         y,
         w,
         h
-    } = getGlobalBounds(node);
+    } = getGlobalDrawBounds(node);
     const {
         x: ab_x,
         y: ab_y,
@@ -174,6 +174,51 @@ function checkOptionRasterize(options) {
 }
 
 
+function assignPivotAndStretch(json, node) {
+    let pivot = getPivotAndStretch(node);
+    if (pivot != null) {
+        Object.assign(json, pivot);
+    }
+}
+
+
+let counter = 1;
+
+async function assignImage(json, node, artboard, subFolder, renditions, name) {
+    const fileName = convertToFileName(`${name}(${counter})`);
+    // 出力画像ファイル
+    const file = await subFolder.createFile(fileName + ".png", {
+        overwrite: true
+    });
+    counter++;
+
+    const {
+        x,
+        y,
+        w,
+        h
+    } = getDrawBoundsInArtboard(node, artboard);
+
+    Object.assign(json, {
+        image: fileName,
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        opacity: 100
+    });
+
+    // 画像出力登録
+    renditions.push({
+        node: node,
+        outputFile: file,
+        type: application.RenditionType.PNG,
+        scale: scale
+    });
+
+}
+
+
 /**
  * Groupの処理 戻り値は処理したType
  * 注意:ここで､子供の処理もしてしまう
@@ -184,19 +229,13 @@ function checkOptionRasterize(options) {
  * @param {string[]} options 
  */
 async function extractedGroup(json, node, funcForEachChild, name, options) {
-    let pivot = null;
-
     if (name.endsWith("Button")) {
         const type = "Button";
         Object.assign(json, {
             type: type,
             name: name
         });
-        if (pivot) {
-            Object.assign(json, {
-                pivot: pivot
-            });
-        }
+        assignPivotAndStretch(json, node);
         await funcForEachChild();
         return type;
     }
@@ -235,7 +274,6 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
         if (areaElement != null) {
             console.log("*** found Area ***");
         }
-        printAllProperties(node);
         return type;
     }
 
@@ -245,16 +283,81 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
         type: type,
         name: name,
     });
-    if (pivot) {
-        Object.assign(json, {
-            pivot: pivot
-        });
-    }
-    if (checkOptionRasterize(options)) {
-
-    }
+    assignPivotAndStretch(json, node);
+    if (checkOptionRasterize(options)) {}
     await funcForEachChild();
     return type;
+}
+
+
+function getPivotAndStretch(node) {
+    try {
+        let parent = node.parent;
+        let parentBounds = parent.boundsInParent;
+        let parentWidth = parentBounds.width;
+        let parentHeight = parentBounds.height;
+
+        let horizontalFix = null; // left center right
+        let verticalFix = null; // top middle bottom
+
+        let beforeBounds = node.boundsInParent;
+        let beforeFontSize = node.fontSize;
+
+        // 親のサイズ変更
+        parent.resize(parentWidth + 100, parentHeight + 100);
+        let afterBounds = node.boundsInParent;
+
+        // 親のサイズを元に戻す
+        parent.resize(parentWidth, parentHeight);
+        // 場合によって､フォントサイズが変わるためもとに戻す
+        if (beforeFontSize != null) {
+            node.fontSize = beforeFontSize;
+        }
+
+        // 横のレスポンシブパラメータを取得する
+        if (beforeBounds.x == afterBounds.x) {
+            horizontalFix = "left";
+        } else {
+            horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
+        }
+
+        // 縦のレスポンシブパラメータを取得する
+        if (beforeBounds.y == afterBounds.y) {
+            verticalFix = "top";
+        } else {
+            verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
+        }
+
+        let ret = {};
+
+        // 横ストレッチチェック
+        if (beforeBounds.width < afterBounds.width) {
+            horizontalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+            Object.assign(ret, {
+                stretchx: true
+            })
+        }
+
+        // 縦ストレッチチェック
+        if (beforeBounds.height < afterBounds.height) {
+            verticalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+            Object.assign(ret, {
+                stretchy: true
+            })
+        }
+
+        // Pivot出力
+        if (horizontalFix != null || verticalFix != null) {
+            Object.assign(ret, {
+                pivot: (horizontalFix || "") + (verticalFix || "")
+            })
+        }
+
+        return ret;
+    } catch (e) {
+        console.log("***error getPivotAndStretch() failed");
+    }
+    return null;
 }
 
 
@@ -270,6 +373,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
  */
 async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
     const label = convertToLabel(node.name);
+    // ラスタライズオプションチェック
     if (checkOptionRasterize(options)) {
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
@@ -279,9 +383,9 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
         y,
         w,
         h
-    } = getBounds(node, artboard);
+    } = getDrawBoundsInArtboard(node, artboard);
+
     // text.styleRangesの適応をしていない
-    // Textレイヤーもラスタライズしてしまうオプションがあっても良いと思う
     Object.assign(json, {
         type: "Text",
         name: name,
@@ -298,10 +402,12 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
         vh: h,
         opacity: 100
     });
+
+    //
+    assignPivotAndStretch(json, node);
 }
 
 
-let counter = 1;
 /**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json 
@@ -313,37 +419,19 @@ let counter = 1;
  * @param {string[]} options 
  */
 async function extractedDrawing(json, node, artboard, subFolder, renditions, name, options) {
-    const fileName = convertToFileName(`${name}(${counter})`);
-    counter++;
-    const {
-        x,
-        y,
-        w,
-        h
-    } = getBounds(node, artboard);
     //
     Object.assign(json, {
         type: "Image",
         name: name,
-        image: fileName,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
-        opacity: 100
     });
-    // 出力画像ファイル
-    const file = await subFolder.createFile(fileName + ".png", {
-        overwrite: true
-    });
-    // 画像出力登録
-    renditions.push({
-        node: node,
-        outputFile: file,
-        type: application.RenditionType.PNG,
-        scale: scale
-    });
+
+    // 
+    assignPivotAndStretch(json, node);
+
+    await assignImage(json, node, artboard, subFolder, renditions, name);
+
 }
+
 
 /**
  * アートボードの処理
@@ -374,7 +462,7 @@ async function extractedArtboard(renditions, folder, artboard) {
         y,
         w,
         h
-    } = getGlobalBounds(artboard);
+    } = getGlobalDrawBounds(artboard);
 
     let layoutJson = {
         info: {
@@ -491,6 +579,7 @@ async function extractedArtboard(renditions, folder, artboard) {
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
 
 }
+
 
 // メインファンクション
 async function mainHandlerFunction(selection, root) {
