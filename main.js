@@ -174,7 +174,7 @@ function checkOptionRasterize(options) {
 }
 
 
-function assignPivot(json, node) {
+function assignPivotAndStretch(json, node) {
     let pivot = getPivotAndStretch(node);
     if (pivot != null) {
         Object.assign(json, pivot);
@@ -235,7 +235,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
             type: type,
             name: name
         });
-        assignPivot(json, node);
+        assignPivotAndStretch(json, node);
         await funcForEachChild();
         return type;
     }
@@ -283,7 +283,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
         type: type,
         name: name,
     });
-    assignPivot(json, node);
+    assignPivotAndStretch(json, node);
     if (checkOptionRasterize(options)) {}
     await funcForEachChild();
     return type;
@@ -404,7 +404,7 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
     });
 
     //
-    assignPivot(json, node);
+    assignPivotAndStretch(json, node);
 }
 
 
@@ -426,7 +426,7 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions, nam
     });
 
     // 
-    assignPivot(json, node);
+    assignPivotAndStretch(json, node);
 
     await assignImage(json, node, artboard, subFolder, renditions, name);
 
