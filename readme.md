@@ -1,10 +1,12 @@
 ## Unityでのモック作成にAdobeXDを利用したい
 
 AdobeXDでの作成
-![キャプチャ.PNG](https://qiita-image-store.s3.amazonaws.com/0/350704/0a97880b-259e-3eb1-8a47-525f2467dd04.png)
+
+![xd-anim](https://user-images.githubusercontent.com/20549024/52560748-abfe5c80-2e3c-11e9-8bbb-fdb457f7efc3.gif)
 
 Unity Prefab化
-![キャプチャ.PNG](https://qiita-image-store.s3.amazonaws.com/0/350704/45832958-4e27-45c6-b40b-7bde0b79e69b.png)
+
+![unity-anim](https://user-images.githubusercontent.com/20549024/52560758-b28cd400-2e3c-11e9-8f5f-a0beb0307d3a.gif)
 
 プラグイン開発GitHub
 https://github.com/itouh2-i0plus/xd-baum2-export/
@@ -21,7 +23,7 @@ https://qiita.com/itouh2-i0plus/items/6a948aa40acada879ce7
 |2019/01/29|リピートグリッド仮対応 パスの出力追加|@itouh2-i0plus|
 |2019/02/03|シンボル仮対応|@itouh2-i0plus|
 |2019/02/03|レイヤーラスタライズ対応|@itouh2-i0plus|
-|2019/02/11|レスポンシブデザイン対応<br> **※｢レスポンシブサイズ変更｣パラメータの取得にresizeをつかっている 形が変わっているケースがあるかもしれない**|@itouh2-i0plus|
+|2019/02/11|レスポンシブデザイン対応<br> **※｢レスポンシブサイズ変更｣パラメータの取得にresizeをつかっている プラグイン実行後形が変わっているかもしれない**|@itouh2-i0plus|
 
 ## インストール
 
