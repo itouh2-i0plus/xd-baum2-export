@@ -13,8 +13,13 @@ const fs = require("uxp").storage.localFileSystem;
 const experimentalOptionsEnable = true;
 
 // 全体にかけるスケール
-const scale = 4;
+var scale = 4.0;
 
+// 出力するフォルダ
+var outputFolder = null;
+
+// レスポンシブパラメータを取得するオプション
+var optionGetResponsiveParameter = false;
 
 /**
  * ファイル名につかえる文字列に変換する
@@ -289,11 +294,18 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
     return type;
 }
 
-
+/**
+ * レスポンシブパラメータの取得
+ * @param {*} node 
+ */
 function getPivotAndStretch(node) {
+    if (!optionGetResponsiveParameter) {
+        return null;
+    }
     try {
         let parent = node.parent;
         let parentBounds = parent.boundsInParent;
+        let parentTopLeft = parent.topLeftInParent;
         let parentWidth = parentBounds.width;
         let parentHeight = parentBounds.height;
 
@@ -309,8 +321,12 @@ function getPivotAndStretch(node) {
 
         // 親のサイズを元に戻す
         parent.resize(parentWidth, parentHeight);
+
+        // 場合によって､位置がかわってしまうためもとに戻す
+        // parent.topLeftInParent = parentTopLeft;
+
         // 場合によって､フォントサイズが変わるためもとに戻す
-        if (beforeFontSize != null) {
+        if (beforeFontSize != null && node.fontSize != beforeFontSize) {
             node.fontSize = beforeFontSize;
         }
 
@@ -353,9 +369,11 @@ function getPivotAndStretch(node) {
             })
         }
 
+        console.log(ret);
+
         return ret;
     } catch (e) {
-        console.log("***error getPivotAndStretch() failed");
+        console.log("***error getPivotAndStretch() failed:" + e.message);
     }
     return null;
 }
@@ -554,6 +572,7 @@ async function extractedArtboard(renditions, folder, artboard) {
                     let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
                 }
                 break;
+            case "Line":
             case "Ellipse":
             case "Rectangle":
             case "Path":
@@ -582,24 +601,7 @@ async function extractedArtboard(renditions, folder, artboard) {
 
 
 // メインファンクション
-async function mainHandlerFunction(selection, root) {
-    let artboards = [];
-
-    // 選択されているものがない場合 全てが変換対象
-    (selection.items.length > 0 ? selection.items : root.children).forEach(child => {
-        if (child instanceof Artboard) {
-            artboards.push(child);
-        }
-    });
-
-    if (artboards.length == 0) {
-        console.log("変換対象がありません");
-        return;
-    }
-
-    //const folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
-    const folder = await fs.getFolder(); // 出力フォルダの選択
-
+async function exportBaum2(artboards, outputFolder) {
     // ラスタライズする要素を入れる
     let renditions = [];
 
@@ -607,7 +609,7 @@ async function mainHandlerFunction(selection, root) {
     // 画像を一度にラスタライズ･保存する処理と比較し､ここは非同期にするまでもないと考えます
     // TODO: Promise.allをつかいたい
     for (let index = 0; index < artboards.length; index++) {
-        await extractedArtboard(renditions, folder, artboards[index]);
+        await extractedArtboard(renditions, outputFolder, artboards[index]);
     }
 
     if (renditions.length == 0) {
@@ -627,8 +629,212 @@ async function mainHandlerFunction(selection, root) {
         });
 }
 
+
+/**
+ * Shorthand for creating Elements.
+ * @param {*} tag The tag name of the element.
+ * @param {*} [props] Optional props.
+ * @param {*} children Child elements or strings
+ */
+function h(tag, props, ...children) {
+    let element = document.createElement(tag);
+    if (props) {
+        if (props.nodeType || typeof props !== "object") {
+            children.unshift(props);
+        } else {
+            for (let name in props) {
+                let value = props[name];
+                if (name == "style") {
+                    Object.assign(element.style, value);
+                } else {
+                    element.setAttribute(name, value);
+                    element[name] = value;
+                }
+            }
+        }
+    }
+    for (let child of children) {
+        element.appendChild(typeof child === "object" ? child : document.createTextNode(child));
+    }
+    return element;
+}
+
+/**
+ * alertの表示
+ * @param {string} message 
+ */
+async function alert(message) {
+    let dialog =
+        h("dialog",
+            h("form", {
+                    method: "dialog",
+                    style: {
+                        width: 400
+                    }
+                },
+                h("h1", "XD Baum2 Export"),
+                h("hr"),
+                h("span", message),
+                h("footer",
+                    h("button", {
+                        uxpVariant: "primary",
+                        onclick(e) {
+                            dialog.close()
+                        }
+                    }, "Close"),
+                )
+            )
+        )
+    document.body.appendChild(dialog);
+    return await dialog.showModal();
+}
+
+
+async function showModal(selection, root) {
+    let inputFolder;
+    let inputScale;
+    let errorLabel;
+    let checkResponsiveParameter;
+    let dialog = h("dialog",
+        h("form", {
+                method: "dialog",
+                style: {
+                    width: 400
+                }
+            },
+            h("h1", "XD Baum2 Export"),
+            h("hr"),
+            h("label", {
+                    style: {
+                        flexDirection: "row",
+                        alignItems: "center"
+                    }
+                },
+                h("span", "Folder"),
+                inputFolder = h("input", {
+                    style: {
+                        width: "60%",
+                    },
+                    readonly: true,
+                    border: 0
+                }),
+                h("button", {
+                    async onclick(e) {
+                        var folder = await fs.getFolder();
+                        if (folder != null) {
+                            inputFolder.value = folder.nativePath;
+                            outputFolder = folder;
+                        }
+                    }
+                }, "...")
+            ),
+            h("label", {
+                    style: {
+                        flexDirection: "row",
+                        alignItems: "center"
+                    }
+                },
+                h("span", "Scale"),
+                inputScale = h("input", {
+                    value: "4.0"
+                })
+            ),
+            h("label", {
+                    style: {
+                        flexDirection: "row",
+                        alignItems: "center"
+                    }
+                },
+                checkResponsiveParameter = h("input", {
+                    type: "checkbox"
+                }),
+                h("span", "export responsive parameter (EXPERIMENTAL)")
+            ),
+            errorLabel = h("label", {
+                    style: {
+                        alignItems: "center",
+                        color: "#f00"
+                    }
+                },
+                ""
+            ),
+            h("footer",
+                h("button", {
+                    uxpVariant: "primary",
+                    onclick(e) {
+                        dialog.close()
+                    }
+                }, "Cancel"),
+                h("button", {
+                    uxpVariant: "cta",
+                    onclick(e) {
+                        // 出力できる状態かチェック
+                        // スケールの値が正常か
+                        let tmpScale = Number.parseFloat(inputScale.value);
+                        if (Number.isNaN(tmpScale)) {
+                            errorLabel.textContent = "invalid scale value";
+                            return;
+                        }
+                        scale = tmpScale;
+                        // 出力フォルダは設定してあるか
+                        if (outputFolder == null) {
+                            errorLabel.textContent = "invalid output folder";
+                            return;
+                        }
+                        // レスポンシブパラメータ
+                        optionGetResponsiveParameter = checkResponsiveParameter.checked;
+                        dialog.close("export");
+                    }
+                }, "Export")
+            )
+        )
+    )
+
+    // 出力前にセッションデータをダイアログに反映する
+    // Scale
+    inputScale.value = scale;
+    // Folder
+    inputFolder.value = "";
+    if (outputFolder != null) {
+        inputFolder.value = outputFolder.nativePath;
+    }
+    // Responsive Parameter
+    checkResponsiveParameter.checked = optionGetResponsiveParameter;
+
+    // Dialog表示
+    document.body.appendChild(dialog);
+    let result = await dialog.showModal();
+
+    // Dialogの結果チェック
+    if (result == "export") {
+        let artboards = [];
+
+        // 選択されているものがない場合 全てが変換対象
+        (selection.items.length > 0 ? selection.items : root.children).forEach(child => {
+            if (child instanceof Artboard) {
+                artboards.push(child);
+            }
+        });
+
+        if (artboards.length == 0) {
+            // 出力するものが見つからなかった
+            alert("no selected artboards.")
+            return;
+        }
+
+        //let folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
+        //const folder = await fs.getFolder(); // 出力フォルダの選択
+        //folder = folder.getEntry("/");
+
+        await exportBaum2(artboards, outputFolder);
+    }
+
+}
+
+
 module.exports = { // コマンドIDとファンクションの紐付け
     commands: {
-        baum2ExportCommand: mainHandlerFunction
+        //baum2ExportCommand: mainHandlerFunction
+        baum2ExportCommand: showModal
     }
 };
