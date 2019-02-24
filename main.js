@@ -5,6 +5,7 @@ const {
     Color,
     ImageFill
 } = require("scenegraph");
+const scenegraph = require("scenegraph");
 
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
@@ -133,36 +134,6 @@ function getDrawBoundsInArtboard(node, artboard) {
 
 
 /**
- * string配列から指定のオプションがあるか検索し
- * ある場合は分解して戻す　ない場合はnull
- * 例
- * let r = getOption(["Pivot=LeftTop","pivot"]); 
- * // r:["Pivot","LeftTop"]
- * @param {string} optionName 
- * @param {string[]} options 
- */
-function getOption(optionName, options) {
-    if (options == null || !(options instanceof Array)) {
-        return null;
-    }
-    const optionNameLowerCase = optionName.toLowerCase();
-    let param = null;
-    options.find(arg => {
-        let f = arg.split("=");
-        if (f == null) {
-            f = [arg];
-        }
-        if (f[0].toLowerCase() == optionNameLowerCase) { // 大文字小文字関係なしに比較
-            param = f;
-            return true;
-        }
-        return false;
-    });
-    return param;
-}
-
-
-/**
  * オプションRasterizeチェック
  * 有効ならTrue
  * @param {string[]} options 
@@ -170,16 +141,20 @@ function getOption(optionName, options) {
  */
 function checkOptionRasterize(options) {
     if (!experimentalOptionsEnable) return false;
-    const r = getOption("rasterize", options);
-    if (r == null || r.length == 0) return false;
-    if (r.length == 1) return true; // デフォルト True
-    const val = r[1].toLowerCase();
-    if (val == "false" || val == "0" || val == "null") return false;
+    const r = options["rasterize"];
+    if ((typeof r) == "string") {
+        const val = r.toLowerCase();
+        if (val == "false" || val == "0" || val == "null") return false;
+    }
+    if (!r) return false;
     return true;
 }
 
 
 function assignPivotAndStretch(json, node) {
+    if (!optionGetResponsiveParameter) {
+        return null;
+    }
     let pivot = getPivotAndStretch(node);
     if (pivot != null) {
         Object.assign(json, pivot);
@@ -299,9 +274,6 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
  * @param {*} node 
  */
 function getPivotAndStretch(node) {
-    if (!optionGetResponsiveParameter) {
-        return null;
-    }
     try {
         let parent = node.parent;
         let parentBounds = parent.boundsInParent;
@@ -317,13 +289,23 @@ function getPivotAndStretch(node) {
 
         // 親のサイズ変更
         parent.resize(parentWidth + 100, parentHeight + 100);
+        //parent.width = parentWidth + 100;
+        //parent.height = parentHeight + 100;
         let afterBounds = node.boundsInParent;
 
         // 親のサイズを元に戻す
         parent.resize(parentWidth, parentHeight);
 
         // 場合によって､位置がかわってしまうためもとに戻す
-        // parent.topLeftInParent = parentTopLeft;
+        let a = parent.topLeftInParent;
+        if (a.x != parentTopLeft.x || a.y != parentTopLeft.y) {
+            console.log("*** error changed parent paramaeter");
+            try {
+                parent.topLeftInParent = parentTopLeft;
+            } catch (e) {
+                console.log("****** error changed parent paramaeter");
+            }
+        }
 
         // 場合によって､フォントサイズが変わるためもとに戻す
         if (beforeFontSize != null && node.fontSize != beforeFontSize) {
@@ -451,6 +433,41 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions, nam
 }
 
 
+function parseNameOptions(str) {
+    let name = null;
+    let options = {};
+    let optionArray = str.split("@");
+    if (optionArray != null && options.length > 0) {
+        name = options[0].trim();
+        optionArray.shift();
+        optionArray.forEach(option => {
+            let args = option.split("=");
+            if (args > 1) {
+                options[args[0].trim()] = args[1].trim();
+            } else {
+                options[option.trim()] = true;
+            }
+        })
+    } else {
+        name = str;
+    }
+    return {
+        name: name,
+        options: {}
+    };
+}
+
+function concatNameOptions(name, options) {
+    let str = "" + name;
+
+    for (let key in options) {
+        let val = options[key];
+        str += "@" + key + "=" + val;
+    }
+
+    return str;
+}
+
 /**
  * アートボードの処理
  * @param {*} renditions 
@@ -517,12 +534,12 @@ async function extractedArtboard(renditions, folder, artboard) {
         console.log(indent + "'" + node.name + "':" + constructorName);
 
         // レイヤー名から名前とオプションの分割
-        let name = node.name;
-        let options = name.split("@");
-        if (options != null && options.length > 0) {
-            name = options[0];
-            options.shift();
-        }
+        let {
+            name,
+            options
+        } = parseNameOptions(node.name);
+
+        console.log(node.name, name, options);
 
         // 名前の最初1文字目での処理分別
         if (name.length > 0) {
@@ -532,7 +549,7 @@ async function extractedArtboard(renditions, folder, artboard) {
                     return;
                 case '*':
                     // そのレイヤーをラスタライズする
-                    options.push("Rasterize=true");
+                    options["rasterize"] = true;
                     name = name.substring(1);
                     break;
                 default:
@@ -832,9 +849,32 @@ async function showModal(selection, root) {
 }
 
 
+async function pivot(selection, root) {
+    console.log("pivot");
+    var node = selection.items[0];
+    if (node == null || !node.isContainer) {
+        alert("select group");
+        return;
+    }
+    node.children.forEach(child => {
+        let {
+            name,
+            options
+        } = parseNameOptions(child.name);
+        var pivot = getPivotAndStretch(child);
+        Object.assign(options, pivot);
+        name = concatNameOptions(name, options);
+        console.log(name);
+        child.name = "hello";
+        //child.name = name;
+    });
+    node.name="aaaa";
+}
+
+
 module.exports = { // コマンドIDとファンクションの紐付け
     commands: {
-        //baum2ExportCommand: mainHandlerFunction
-        baum2ExportCommand: showModal
+        baum2ExportCommand: showModal,
+        baum2PivotCommand: pivot
     }
 };
