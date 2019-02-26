@@ -24,10 +24,14 @@ var optionGetResponsiveParameter = false;
 
 /**
  * ファイル名につかえる文字列に変換する
- * @param {string} name 
+ * @param {*} name 
+ * @param {boolean} includeDot ドットも変換対象にするか
  * @return {string}
  */
-function convertToFileName(name) {
+function convertToFileName(name, includeDot) {
+    if (includeDot) {
+        return name.replace(/[\\/:*?"<>|#\.]/g, "_");
+    }
     return name.replace(/[\\/:*?"<>|#]/g, "_");
 }
 
@@ -81,6 +85,7 @@ function getGlobalDrawBounds(node) {
         height: bounds.height * scale
     };
 }
+
 
 /**
  * グローバル座標とサイズを取得する
@@ -149,7 +154,7 @@ function assignPivotAndStretch(json, node) {
 let counter = 1;
 
 async function assignImage(json, node, root, subFolder, renditions, name) {
-    const fileName = convertToFileName(`${name}(${counter})`);
+    const fileName = convertToFileName(`${name}(${counter})`, true);
     // 出力画像ファイル
     const file = await subFolder.createFile(fileName + ".png", {
         overwrite: true
@@ -353,7 +358,6 @@ function getPivotAndStretch(node) {
  * @param {string[]} options 
  */
 async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
-    const label = convertToLabel(node.name);
     // ラスタライズオプションチェック
     if (checkOptionRasterize(options)) {
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
@@ -464,7 +468,7 @@ async function extractedArtboard(renditions, folder, root) {
         subFolder = await folder.createFolder(subFolderName);
     }
 
-    const layoutFileName = subFolderName + ".layouta.txt";
+    const layoutFileName = subFolderName + ".layout.txt";
     const layoutFile = await folder.createFile(layoutFileName, {
         overwrite: true
     });
