@@ -828,10 +828,6 @@ async function showModal(selection, root) {
             return;
         }
 
-        //let folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
-        //const folder = await fs.getFolder(); // 出力フォルダの選択
-        //folder = folder.getEntry("/");
-
         await exportBaum2(artboards, outputFolder);
     }
 
