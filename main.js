@@ -10,9 +10,6 @@ const scenegraph = require("scenegraph");
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
 
-// 実験的オプションを有効にするかどうか
-const experimentalOptionsEnable = true;
-
 // 全体にかけるスケール
 var scale = 4.0;
 
@@ -21,6 +18,9 @@ var outputFolder = null;
 
 // レスポンシブパラメータを取得するオプション
 var optionGetResponsiveParameter = false;
+
+// レスポンシブパラメータを取得するオプション
+var optionEnableSubPrefab = false;
 
 /**
  * ファイル名につかえる文字列に変換する
@@ -129,7 +129,6 @@ function getDrawBoundsInRoot(node, root) {
  * @return {boolean}
  */
 function checkOptionRasterize(options) {
-    if (!experimentalOptionsEnable) return false;
     const r = options["rasterize"];
     if ((typeof r) == "string") {
         const val = r.toLowerCase();
@@ -195,6 +194,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string[]} options 
  */
 async function extractedGroup(json, node, funcForEachChild, name, options) {
+    if (optionEnableSubPrefab && name.endsWith("/")) return;
     if (name.endsWith("Button")) {
         const type = "Button";
         Object.assign(json, {
@@ -469,7 +469,7 @@ async function extractedArtboard(renditions, folder, root) {
         subFolder = await folder.createFolder(subFolderName);
     }
 
-    const layoutFileName = subFolderName + ".layout.txt";
+    const layoutFileName = subFolderName + ".layouta.txt";
     const layoutFile = await folder.createFile(layoutFileName, {
         overwrite: true
     });
@@ -503,7 +503,7 @@ async function extractedArtboard(renditions, folder, root) {
         }
     };
 
-    let nodeWalker = async (nodeStack, layoutJson, depth) => {
+    let nodeWalker = async (nodeStack, layoutJson, depth, isRoot) => {
         var node = nodeStack[nodeStack.length - 1];
         let constructorName = node.constructor.name;
         const indent = (depth => {
@@ -518,6 +518,10 @@ async function extractedArtboard(renditions, folder, root) {
             name,
             options
         } = parseNameOptions(node.name);
+
+        if (isRoot && optionEnableSubPrefab && name.endsWith("/")) {
+            name = name.slice(0, -1);
+        }
 
         console.log(node.name, name, options);
 
@@ -596,7 +600,7 @@ async function extractedArtboard(renditions, folder, root) {
 
     };
 
-    await nodeWalker([root], layoutJson.root, 0);
+    await nodeWalker([root], layoutJson.root, 0, true);
 
     // layout.txtの出力
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
@@ -606,13 +610,13 @@ async function extractedArtboard(renditions, folder, root) {
 
 
 // メインファンクション
-async function exportBaum2(artboards, outputFolder) {
+async function exportBaum2(roots, outputFolder) {
     // ラスタライズする要素を入れる
     let renditions = [];
 
     // アートボード毎の処理
-    for (var i = 0; i < artboards.length; i++) {
-        let artboard = artboards[i];
+    for (var i = 0; i < roots.length; i++) {
+        let artboard = roots[i];
         await extractedArtboard(renditions, outputFolder, artboard);
     }
 
@@ -699,7 +703,8 @@ async function showModal(selection, root) {
     let inputFolder;
     let inputScale;
     let errorLabel;
-    let checkResponsiveParameter;
+    let checkGetResponsiveParameter;
+    let checkEnableSubPrefab;
     let dialog =
         h("dialog",
             h("form", {
@@ -751,10 +756,21 @@ async function showModal(selection, root) {
                             alignItems: "center"
                         }
                     },
-                    checkResponsiveParameter = h("input", {
+                    checkGetResponsiveParameter = h("input", {
                         type: "checkbox"
                     }),
                     h("span", "export responsive parameter (EXPERIMENTAL)")
+                ),
+                h("label", {
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
+                        }
+                    },
+                    checkEnableSubPrefab = h("input", {
+                        type: "checkbox"
+                    }),
+                    h("span", "名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)")
                 ),
                 errorLabel = h("label", {
                         style: {
@@ -788,7 +804,10 @@ async function showModal(selection, root) {
                                 return;
                             }
                             // レスポンシブパラメータ
-                            optionGetResponsiveParameter = checkResponsiveParameter.checked;
+                            optionGetResponsiveParameter = checkGetResponsiveParameter.checked;
+                            // サブPrefab
+                            optionEnableSubPrefab = checkEnableSubPrefab.checed;
+
                             dialog.close("export");
                         }
                     }, "Export")
@@ -805,7 +824,8 @@ async function showModal(selection, root) {
         inputFolder.value = outputFolder.nativePath;
     }
     // Responsive Parameter
-    checkResponsiveParameter.checked = optionGetResponsiveParameter;
+    checkGetResponsiveParameter.checked = optionGetResponsiveParameter;
+    checkEnableSubPrefab.checked = optionEnableSubPrefab;
 
     // Dialog表示
     document.body.appendChild(dialog);
@@ -813,22 +833,31 @@ async function showModal(selection, root) {
 
     // Dialogの結果チェック
     if (result == "export") {
-        let artboards = [];
+        let roots = [];
 
         // 選択されているものがない場合 全てが変換対象
-        (selection.items.length > 0 ? selection.items : root.children).forEach(child => {
-            if (child instanceof Artboard) {
-                artboards.push(child);
-            }
-        });
+        let searchItems = selection.items.length > 0 ? selection.items : root.children
 
-        if (artboards.length == 0) {
+        let func = nodes => {
+            nodes.forEach(node => {
+                if (node instanceof Artboard || (optionEnableSubPrefab && parseNameOptions(node.name).name.endsWith("/"))) {
+                    console.log("push");
+                    roots.push(node);
+                }
+                var children = node.children;
+                if (children) func(children);
+            });
+        }
+
+        func(searchItems);
+
+        if (roots.length == 0) {
             // 出力するものが見つからなかった
             alert("no selected artboards.")
             return;
         }
 
-        await exportBaum2(artboards, outputFolder);
+        await exportBaum2(roots, outputFolder);
     }
 
 }
