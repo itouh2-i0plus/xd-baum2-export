@@ -248,6 +248,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
     Object.assign(json, {
         type: type,
         name: name,
+        elements: [] // Groupは空でもelementsをもっていないといけない
     });
     assignPivotAndStretch(json, node);
     if (checkOptionRasterize(options)) {}
@@ -561,8 +562,14 @@ async function extractedArtboard(renditions, folder, root) {
             case "Artboard":
                 await forEachChild();
                 break;
-            case "Group":
             case "BooleanGroup":
+                {
+                    // BooleanGroupは強制的にラスタライズする
+                    options["rasterize"] = true;
+                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
+                }
+                break;
+            case "Group":
             case "RepeatGrid":
             case "SymbolInstance":
                 {
