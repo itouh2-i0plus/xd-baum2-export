@@ -14,5 +14,12 @@
         "shortcut": {
             "win": "Ctrl+Shift+p"
         }
+    },{
+        "type": "menu",
+        "label": "baum2 pivot",
+        "commandId": "baum2PivotCommand",
+        "shortcut": {
+            "win": "Ctrl+Shift+Alt+p"
+        }
     }]
 }

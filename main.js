@@ -5,6 +5,7 @@ const {
     Color,
     ImageFill
 } = require("scenegraph");
+const scenegraph = require("scenegraph");
 
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
@@ -23,10 +24,14 @@ var optionGetResponsiveParameter = false;
 
 /**
  * ファイル名につかえる文字列に変換する
- * @param {string} name 
+ * @param {*} name 
+ * @param {boolean} includeDot ドットも変換対象にするか
  * @return {string}
  */
-function convertToFileName(name) {
+function convertToFileName(name, includeDot) {
+    if (includeDot) {
+        return name.replace(/[\\/:*?"<>|#\.]/g, "_");
+    }
     return name.replace(/[\\/:*?"<>|#]/g, "_");
 }
 
@@ -72,34 +77,27 @@ function getRGB(color) {
  * @param {scenegraph} node 
  */
 function getGlobalDrawBounds(node) {
-    let bounds = node.globalDrawBounds;
-    const x = bounds.x * scale;
-    const y = bounds.y * scale;
-    const w = bounds.width * scale;
-    const h = bounds.height * scale;
+    const bounds = node.globalDrawBounds;
     return {
-        x,
-        y,
-        w,
-        h
+        x: bounds.x * scale,
+        y: bounds.y * scale,
+        width: bounds.width * scale,
+        height: bounds.height * scale
     };
 }
 
 
 /**
- * アートボードの座標とサイズを取得する
- * @param {artboard} artboard 
+ * グローバル座標とサイズを取得する
+ * @param {scenegraph} node 
  */
-function getArtboardBounds(artboard) {
-    const x = artboard.translation.x * scale;
-    const y = artboard.translation.y * scale;
-    const w = artboard.width * scale;
-    const h = artboard.height * scale;
+function getGlobalBounds(node) {
+    const bounds = node.globalBounds;
     return {
-        x,
-        y,
-        w,
-        h
+        x: bounds.x * scale,
+        y: bounds.y * scale,
+        width: bounds.width * scale,
+        height: bounds.height * scale
     };
 }
 
@@ -108,57 +106,19 @@ function getArtboardBounds(artboard) {
  * Artboard内での座標とサイズを取得する
  * x､yはCenterMiddleでの座標になる
  * @param {scenegraph} node 
- * @param {artboard} artboard 
+ * @param {artboard} root 
  */
-function getDrawBoundsInArtboard(node, artboard) {
-    let {
-        x,
-        y,
-        w,
-        h
-    } = getGlobalDrawBounds(node);
-    const {
-        x: ab_x,
-        y: ab_y,
-        w: ab_w,
-        h: ab_h
-    } = getArtboardBounds(artboard);
+function getDrawBoundsInRoot(node, root) {
+    const nodeDrawBounds = getGlobalDrawBounds(node);
+    console.log("node:", nodeDrawBounds);
+    const rootBounds = getGlobalBounds(root);
+    console.log("root:", rootBounds);
     return {
-        x: x - ab_x + ab_w / 2,
-        y: y - ab_y + ab_h / 2,
-        w,
-        h
+        x: nodeDrawBounds.x - rootBounds.x - rootBounds.width / 2,
+        y: nodeDrawBounds.y - rootBounds.y - rootBounds.height / 2,
+        width: nodeDrawBounds.width,
+        height: nodeDrawBounds.height
     };
-}
-
-
-/**
- * string配列から指定のオプションがあるか検索し
- * ある場合は分解して戻す　ない場合はnull
- * 例
- * let r = getOption(["Pivot=LeftTop","pivot"]); 
- * // r:["Pivot","LeftTop"]
- * @param {string} optionName 
- * @param {string[]} options 
- */
-function getOption(optionName, options) {
-    if (options == null || !(options instanceof Array)) {
-        return null;
-    }
-    const optionNameLowerCase = optionName.toLowerCase();
-    let param = null;
-    options.find(arg => {
-        let f = arg.split("=");
-        if (f == null) {
-            f = [arg];
-        }
-        if (f[0].toLowerCase() == optionNameLowerCase) { // 大文字小文字関係なしに比較
-            param = f;
-            return true;
-        }
-        return false;
-    });
-    return param;
 }
 
 
@@ -170,16 +130,20 @@ function getOption(optionName, options) {
  */
 function checkOptionRasterize(options) {
     if (!experimentalOptionsEnable) return false;
-    const r = getOption("rasterize", options);
-    if (r == null || r.length == 0) return false;
-    if (r.length == 1) return true; // デフォルト True
-    const val = r[1].toLowerCase();
-    if (val == "false" || val == "0" || val == "null") return false;
+    const r = options["rasterize"];
+    if ((typeof r) == "string") {
+        const val = r.toLowerCase();
+        if (val == "false" || val == "0" || val == "null") return false;
+    }
+    if (!r) return false;
     return true;
 }
 
 
 function assignPivotAndStretch(json, node) {
+    if (!optionGetResponsiveParameter) {
+        return null;
+    }
     let pivot = getPivotAndStretch(node);
     if (pivot != null) {
         Object.assign(json, pivot);
@@ -189,27 +153,22 @@ function assignPivotAndStretch(json, node) {
 
 let counter = 1;
 
-async function assignImage(json, node, artboard, subFolder, renditions, name) {
-    const fileName = convertToFileName(`${name}(${counter})`);
+async function assignImage(json, node, root, subFolder, renditions, name) {
+    const fileName = convertToFileName(`${name}(${counter})`, true);
     // 出力画像ファイル
     const file = await subFolder.createFile(fileName + ".png", {
         overwrite: true
     });
     counter++;
 
-    const {
-        x,
-        y,
-        w,
-        h
-    } = getDrawBoundsInArtboard(node, artboard);
+    const drawBounds = getDrawBoundsInRoot(node, root);
 
     Object.assign(json, {
         image: fileName,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
+        x: drawBounds.x,
+        y: drawBounds.y,
+        w: drawBounds.width,
+        h: drawBounds.height,
         opacity: 100
     });
 
@@ -220,6 +179,8 @@ async function assignImage(json, node, artboard, subFolder, renditions, name) {
         type: application.RenditionType.PNG,
         scale: scale
     });
+
+    console.log("image:", drawBounds);
 
 }
 
@@ -287,6 +248,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
     Object.assign(json, {
         type: type,
         name: name,
+        elements: [] // Groupは空でもelementsをもっていないといけない
     });
     assignPivotAndStretch(json, node);
     if (checkOptionRasterize(options)) {}
@@ -299,9 +261,6 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
  * @param {*} node 
  */
 function getPivotAndStretch(node) {
-    if (!optionGetResponsiveParameter) {
-        return null;
-    }
     try {
         let parent = node.parent;
         let parentBounds = parent.boundsInParent;
@@ -317,13 +276,23 @@ function getPivotAndStretch(node) {
 
         // 親のサイズ変更
         parent.resize(parentWidth + 100, parentHeight + 100);
+        //parent.width = parentWidth + 100;
+        //parent.height = parentHeight + 100;
         let afterBounds = node.boundsInParent;
 
         // 親のサイズを元に戻す
         parent.resize(parentWidth, parentHeight);
 
         // 場合によって､位置がかわってしまうためもとに戻す
-        // parent.topLeftInParent = parentTopLeft;
+        let a = parent.topLeftInParent;
+        if (a.x != parentTopLeft.x || a.y != parentTopLeft.y) {
+            console.log("*** error changed parent paramaeter");
+            try {
+                parent.topLeftInParent = parentTopLeft;
+            } catch (e) {
+                console.log("****** error changed parent paramaeter");
+            }
+        }
 
         // 場合によって､フォントサイズが変わるためもとに戻す
         if (beforeFontSize != null && node.fontSize != beforeFontSize) {
@@ -390,18 +359,12 @@ function getPivotAndStretch(node) {
  * @param {string[]} options 
  */
 async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
-    const label = convertToLabel(node.name);
     // ラスタライズオプションチェック
     if (checkOptionRasterize(options)) {
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
-    const {
-        x,
-        y,
-        w,
-        h
-    } = getDrawBoundsInArtboard(node, artboard);
+    const drawBounds = getDrawBoundsInRoot(node, artboard);
 
     // text.styleRangesの適応をしていない
     Object.assign(json, {
@@ -413,11 +376,11 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
         size: node.fontSize * scale,
         color: getRGB(node.fill.value),
         align: node.textAlign,
-        x: x,
-        y: y,
-        w: w,
-        h: h,
-        vh: h,
+        x: drawBounds.x,
+        y: drawBounds.y,
+        w: drawBounds.width,
+        h: drawBounds.height,
+        vh: drawBounds.height,
         opacity: 100
     });
 
@@ -451,14 +414,49 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions, nam
 }
 
 
+function parseNameOptions(str) {
+    let name = null;
+    let options = {};
+    let optionArray = str.split("@");
+    if (optionArray != null && options.length > 0) {
+        name = options[0].trim();
+        optionArray.shift();
+        optionArray.forEach(option => {
+            let args = option.split("=");
+            if (args > 1) {
+                options[args[0].trim()] = args[1].trim();
+            } else {
+                options[option.trim()] = true;
+            }
+        })
+    } else {
+        name = str;
+    }
+    return {
+        name: name,
+        options: {}
+    };
+}
+
+function concatNameOptions(name, options) {
+    let str = "" + name;
+
+    for (let key in options) {
+        let val = options[key];
+        str += "@" + key + "=" + val;
+    }
+
+    return str;
+}
+
 /**
  * アートボードの処理
  * @param {*} renditions 
  * @param {*} folder 
- * @param {artboard} artboard 
+ * @param {artboard} root 
  */
-async function extractedArtboard(renditions, folder, artboard) {
-    let subFolderName = artboard.name;
+async function extractedArtboard(renditions, folder, root) {
+    let subFolderName = root.name;
 
     // フォルダ名に使えない文字を'_'に変換
     subFolderName = convertToFileName(subFolderName);
@@ -471,38 +469,37 @@ async function extractedArtboard(renditions, folder, artboard) {
         subFolder = await folder.createFolder(subFolderName);
     }
 
-    const layoutFile = await folder.createFile(subFolderName + ".layout.txt", {
+    const layoutFileName = subFolderName + ".layout.txt";
+    const layoutFile = await folder.createFile(layoutFileName, {
         overwrite: true
     });
 
-    const {
-        x,
-        y,
-        w,
-        h
-    } = getGlobalDrawBounds(artboard);
+    const rootBounds = getGlobalDrawBounds(root);
+    console.log(rootBounds);
 
     let layoutJson = {
         info: {
             version: "0.6.1",
             canvas: {
                 image: {
-                    w: w,
-                    h: h
+                    w: rootBounds.width,
+                    h: rootBounds.height
                 },
                 size: {
-                    w: w,
-                    h: h
+                    w: rootBounds.width,
+                    h: rootBounds.height
                 },
                 base: {
-                    x: w,
-                    y: h
+                    x: 0,
+                    y: 0,
+                    w: rootBounds.width,
+                    h: rootBounds.height
                 }
             }
         },
         root: {
             type: "Root",
-            name: artboard.name
+            name: root.name
         }
     };
 
@@ -517,12 +514,12 @@ async function extractedArtboard(renditions, folder, artboard) {
         console.log(indent + "'" + node.name + "':" + constructorName);
 
         // レイヤー名から名前とオプションの分割
-        let name = node.name;
-        let options = name.split("@");
-        if (options != null && options.length > 0) {
-            name = options[0];
-            options.shift();
-        }
+        let {
+            name,
+            options
+        } = parseNameOptions(node.name);
+
+        console.log(node.name, name, options);
 
         // 名前の最初1文字目での処理分別
         if (name.length > 0) {
@@ -532,7 +529,7 @@ async function extractedArtboard(renditions, folder, artboard) {
                     return;
                 case '*':
                     // そのレイヤーをラスタライズする
-                    options.push("Rasterize=true");
+                    options["rasterize"] = true;
                     name = name.substring(1);
                     break;
                 default:
@@ -565,6 +562,13 @@ async function extractedArtboard(renditions, folder, artboard) {
             case "Artboard":
                 await forEachChild();
                 break;
+            case "BooleanGroup":
+                {
+                    // BooleanGroupは強制的にラスタライズする
+                    options["rasterize"] = true;
+                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
+                }
+                break;
             case "Group":
             case "RepeatGrid":
             case "SymbolInstance":
@@ -577,11 +581,11 @@ async function extractedArtboard(renditions, folder, artboard) {
             case "Rectangle":
             case "Path":
                 nodeStack.forEach(node => {});
-                await extractedDrawing(layoutJson, node, artboard, subFolder, renditions, name, options);
+                await extractedDrawing(layoutJson, node, root, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             case "Text":
-                await extractedText(layoutJson, node, artboard, subFolder, renditions, name, options);
+                await extractedText(layoutJson, node, root, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             default:
@@ -592,10 +596,11 @@ async function extractedArtboard(renditions, folder, artboard) {
 
     };
 
-    await nodeWalker([artboard], layoutJson.root, 0);
+    await nodeWalker([root], layoutJson.root, 0);
 
     // layout.txtの出力
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
+    console.log(layoutFileName);
 
 }
 
@@ -606,14 +611,14 @@ async function exportBaum2(artboards, outputFolder) {
     let renditions = [];
 
     // アートボード毎の処理
-    // 画像を一度にラスタライズ･保存する処理と比較し､ここは非同期にするまでもないと考えます
-    // TODO: Promise.allをつかいたい
-    for (let index = 0; index < artboards.length; index++) {
-        await extractedArtboard(renditions, outputFolder, artboards[index]);
+    for (var i = 0; i < artboards.length; i++) {
+        let artboard = artboards[i];
+        await extractedArtboard(renditions, outputFolder, artboard);
     }
 
     if (renditions.length == 0) {
         // 画像出力の必要がなければ終了
+        alert("no outputs");
         return;
     }
 
@@ -695,100 +700,101 @@ async function showModal(selection, root) {
     let inputScale;
     let errorLabel;
     let checkResponsiveParameter;
-    let dialog = h("dialog",
-        h("form", {
-                method: "dialog",
-                style: {
-                    width: 400
-                }
-            },
-            h("h1", "XD Baum2 Export"),
-            h("hr"),
-            h("label", {
+    let dialog =
+        h("dialog",
+            h("form", {
+                    method: "dialog",
                     style: {
-                        flexDirection: "row",
-                        alignItems: "center"
+                        width: 400
                     }
                 },
-                h("span", "Folder"),
-                inputFolder = h("input", {
-                    style: {
-                        width: "60%",
+                h("h1", "XD Baum2 Export"),
+                h("hr"),
+                h("label", {
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
+                        }
                     },
-                    readonly: true,
-                    border: 0
-                }),
-                h("button", {
-                    async onclick(e) {
-                        var folder = await fs.getFolder();
-                        if (folder != null) {
-                            inputFolder.value = folder.nativePath;
-                            outputFolder = folder;
+                    h("span", "Folder"),
+                    inputFolder = h("input", {
+                        style: {
+                            width: "60%",
+                        },
+                        readonly: true,
+                        border: 0
+                    }),
+                    h("button", {
+                        async onclick(e) {
+                            var folder = await fs.getFolder();
+                            if (folder != null) {
+                                inputFolder.value = folder.nativePath;
+                                outputFolder = folder;
+                            }
                         }
-                    }
-                }, "...")
-            ),
-            h("label", {
-                    style: {
-                        flexDirection: "row",
-                        alignItems: "center"
-                    }
-                },
-                h("span", "Scale"),
-                inputScale = h("input", {
-                    value: "4.0"
-                })
-            ),
-            h("label", {
-                    style: {
-                        flexDirection: "row",
-                        alignItems: "center"
-                    }
-                },
-                checkResponsiveParameter = h("input", {
-                    type: "checkbox"
-                }),
-                h("span", "export responsive parameter (EXPERIMENTAL)")
-            ),
-            errorLabel = h("label", {
-                    style: {
-                        alignItems: "center",
-                        color: "#f00"
-                    }
-                },
-                ""
-            ),
-            h("footer",
-                h("button", {
-                    uxpVariant: "primary",
-                    onclick(e) {
-                        dialog.close()
-                    }
-                }, "Cancel"),
-                h("button", {
-                    uxpVariant: "cta",
-                    onclick(e) {
-                        // 出力できる状態かチェック
-                        // スケールの値が正常か
-                        let tmpScale = Number.parseFloat(inputScale.value);
-                        if (Number.isNaN(tmpScale)) {
-                            errorLabel.textContent = "invalid scale value";
-                            return;
+                    }, "...")
+                ),
+                h("label", {
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
                         }
-                        scale = tmpScale;
-                        // 出力フォルダは設定してあるか
-                        if (outputFolder == null) {
-                            errorLabel.textContent = "invalid output folder";
-                            return;
+                    },
+                    h("span", "Scale"),
+                    inputScale = h("input", {
+                        value: "4.0"
+                    })
+                ),
+                h("label", {
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
                         }
-                        // レスポンシブパラメータ
-                        optionGetResponsiveParameter = checkResponsiveParameter.checked;
-                        dialog.close("export");
-                    }
-                }, "Export")
+                    },
+                    checkResponsiveParameter = h("input", {
+                        type: "checkbox"
+                    }),
+                    h("span", "export responsive parameter (EXPERIMENTAL)")
+                ),
+                errorLabel = h("label", {
+                        style: {
+                            alignItems: "center",
+                            color: "#f00"
+                        }
+                    },
+                    ""
+                ),
+                h("footer",
+                    h("button", {
+                        uxpVariant: "primary",
+                        onclick(e) {
+                            dialog.close()
+                        }
+                    }, "Cancel"),
+                    h("button", {
+                        uxpVariant: "cta",
+                        onclick(e) {
+                            // 出力できる状態かチェック
+                            // スケールの値が正常か
+                            let tmpScale = Number.parseFloat(inputScale.value);
+                            if (Number.isNaN(tmpScale)) {
+                                errorLabel.textContent = "invalid scale value";
+                                return;
+                            }
+                            scale = tmpScale;
+                            // 出力フォルダは設定してあるか
+                            if (outputFolder == null) {
+                                errorLabel.textContent = "invalid output folder";
+                                return;
+                            }
+                            // レスポンシブパラメータ
+                            optionGetResponsiveParameter = checkResponsiveParameter.checked;
+                            dialog.close("export");
+                        }
+                    }, "Export")
+                )
             )
         )
-    )
 
     // 出力前にセッションデータをダイアログに反映する
     // Scale
@@ -822,19 +828,49 @@ async function showModal(selection, root) {
             return;
         }
 
-        //let folder = await fs.getTemporaryFolder(); // テンポラリフォルダの選択
-        //const folder = await fs.getFolder(); // 出力フォルダの選択
-        //folder = folder.getEntry("/");
-
         await exportBaum2(artboards, outputFolder);
     }
 
 }
 
 
+async function pivot(selection, root) {
+    console.log("pivot");
+    var node = selection.items[0];
+
+    console.log(node.root.x);
+    console.log(node.globalBounds);
+    console.log(node.globalDrawBounds);
+    console.log(node.localBounds);
+
+    return;
+
+
+    if (node == null || !node.isContainer) {
+        alert("select group");
+        return;
+    }
+
+
+    node.name = "aaaa";
+    node.children.forEach(child => {
+        let {
+            name,
+            options
+        } = parseNameOptions(child.name);
+        var pivot = getPivotAndStretch(child);
+        Object.assign(options, pivot);
+        name = concatNameOptions(name, options);
+        console.log(name);
+        //child.name = "hello";
+        //child.name = name;
+    });
+}
+
+
 module.exports = { // コマンドIDとファンクションの紐付け
     commands: {
-        //baum2ExportCommand: mainHandlerFunction
-        baum2ExportCommand: showModal
+        baum2ExportCommand: showModal,
+        baum2PivotCommand: pivot
     }
 };
