@@ -685,7 +685,7 @@ async function exportBaum2(roots, outputFolder) {
     }
 
     if (!checkBounds(responsiveBounds)) {
-        alert("サイズ･位置が変わってしまった");
+        alert("bounds is changed. Please execute UNDO.");
     }
 
 }
