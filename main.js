@@ -20,10 +20,11 @@ var responsiveBounds = {};
 var outputFolder = null;
 
 // レスポンシブパラメータを取得するオプション
-var optionGetResponsiveParameter = false;
+var optionNeedResponsiveParameter = false;
 
 // レスポンシブパラメータを取得するオプション
 var optionEnableSubPrefab = false;
+
 
 /**
  * ファイル名につかえる文字列に変換する
@@ -143,7 +144,7 @@ function checkOptionRasterize(options) {
 
 
 function assignPivotAndStretch(json, node) {
-    if (!optionGetResponsiveParameter) {
+    if (!optionNeedResponsiveParameter) {
         return null;
     }
     let pivot = getPivotAndStretch(node);
@@ -305,6 +306,84 @@ function getResponsiveParameter(beforeBounds, afterBounds) {
 
     return ret;
 }
+
+
+function makeResponsiveParameter(root) {
+    let nodeWalker = (node, func) => {
+        func(node);
+        node.children.forEach(child => {
+            nodeWalker(child, func);
+        });
+    }
+
+    let hashBounds = {};
+    // 現在のboundsを取得する
+    nodeWalker(root, node => {
+        hashBounds[node.guid] = {
+            before: {
+                bounds: getGlobalBounds(node)
+            }
+        }
+    });
+
+    const artboardWidth = root.width;
+    const artboardHeight = root.height;
+    // Artboardのリサイズ
+    root.resize(artboardWidth + 100, artboardHeight + 100);
+
+    // 変更されたboundsを取得する
+    nodeWalker(root, node => {
+        hashBounds[node.guid]["after"] = {
+            bounds: getGlobalBounds(node)
+        }
+    });
+
+    // Artboardのサイズを元に戻す
+    root.resize(artboardWidth, artboardHeight);
+
+    // 元に戻ったときのbounds
+    nodeWalker(root, node => {
+        hashBounds[node.guid]["restore"] = {
+            bounds: getGlobalBounds(node)
+        }
+    });
+
+    // レスポンシブパラメータの生成
+    for (var key in hashBounds) {
+        var value = hashBounds[key];
+        var beforeBounds = value["before"]["bounds"];
+        var afterBounds = value["after"]["bounds"];
+        var responsiveParameter = getResponsiveParameter(beforeBounds, afterBounds);
+        value["responsiveParameter"] = responsiveParameter;
+    }
+
+    return hashBounds;
+}
+
+
+/**
+ * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
+ * 元通りのサイズに戻ったかどうかのチェック
+ * @param {*} hashBounds 
+ */
+function checkBounds(hashBounds) {
+    for (var key in hashBounds) {
+        var value = hashBounds[key];
+        var beforeBounds = value["before"]["bounds"];
+        var restoreBounds = value["restore"]["bounds"];
+        if (beforeBounds.x != restoreBounds.x ||
+            beforeBounds.y != restoreBounds.y ||
+            beforeBounds.width != restoreBounds.width ||
+            beforeBounds.height != restoreBounds.height) {
+            // 変わってしまった
+            console.log(beforeBounds);
+            console.log(restoreBounds);
+            return false;
+        }
+    }
+    return true;
+}
+
 
 /**
  * レスポンシブパラメータの取得
@@ -583,26 +662,32 @@ async function exportBaum2(roots, outputFolder) {
     // アートボード毎の処理
     for (var i = 0; i < roots.length; i++) {
         let artboard = roots[i];
-        responsiveBounds = makeResponsiveParameter(artboard);
+        if (optionNeedResponsiveParameter) {
+            responsiveBounds = makeResponsiveParameter(artboard);
+        }
         await extractedArtboard(renditions, outputFolder, artboard);
     }
 
-    if (renditions.length == 0) {
+    if (renditions.length != 0) {
+        // 一括画像ファイル出力
+        application.createRenditions(renditions)
+            .then(results => {
+                results.forEach(result => {
+                    console.log(`saved at ${result.outputFile.nativePath}`);
+                });
+            })
+            .catch(error => {
+                console.log("error:" + error);
+            });
+    } else {
         // 画像出力の必要がなければ終了
         alert("no outputs");
-        return;
     }
 
-    // 一括画像ファイル出力
-    application.createRenditions(renditions)
-        .then(results => {
-            results.forEach(result => {
-                console.log(`saved at ${result.outputFile.nativePath}`);
-            });
-        })
-        .catch(error => {
-            console.log("error:" + error);
-        });
+    if (!checkBounds(responsiveBounds)) {
+        alert("サイズ･位置が変わってしまった");
+    }
+
 }
 
 
@@ -664,7 +749,6 @@ async function alert(message) {
     document.body.appendChild(dialog);
     return await dialog.showModal();
 }
-
 
 async function showModal(selection, root) {
     let inputFolder;
@@ -771,7 +855,7 @@ async function showModal(selection, root) {
                                 return;
                             }
                             // レスポンシブパラメータ
-                            optionGetResponsiveParameter = checkGetResponsiveParameter.checked;
+                            optionNeedResponsiveParameter = checkGetResponsiveParameter.checked;
                             // サブPrefab
                             optionEnableSubPrefab = checkEnableSubPrefab.checed;
 
@@ -791,7 +875,7 @@ async function showModal(selection, root) {
         inputFolder.value = outputFolder.nativePath;
     }
     // Responsive Parameter
-    checkGetResponsiveParameter.checked = optionGetResponsiveParameter;
+    checkGetResponsiveParameter.checked = optionNeedResponsiveParameter;
     checkEnableSubPrefab.checked = optionEnableSubPrefab;
 
     // Dialog表示
@@ -827,43 +911,6 @@ async function showModal(selection, root) {
         await exportBaum2(roots, outputFolder);
     }
 
-}
-
-function makeResponsiveParameter(root) {
-    let nodeWalker = (node, func) => {
-        func(node);
-        node.children.forEach(child => {
-            nodeWalker(child, func);
-        });
-    }
-
-    let hashBounds = {};
-    nodeWalker(root, node => {
-        hashBounds[node.guid] = {
-            before: {
-                bounds: getGlobalBounds(node)
-            }
-        }
-    });
-    const artboardWidth = root.width;
-    const artboardHeight = root.height;
-    root.resize(artboardWidth + 100, artboardHeight + 100);
-    nodeWalker(root, node => {
-        hashBounds[node.guid]["after"] = {
-            bounds: getGlobalBounds(node)
-        }
-    });
-    root.resize(artboardWidth, artboardHeight);
-
-    for (var key in hashBounds) {
-        var value = hashBounds[key];
-        var beforeBounds = value["before"]["bounds"];
-        var afterBounds = value["after"]["bounds"];
-        var responsiveParameter = getResponsiveParameter(beforeBounds, afterBounds);
-        value["responsiveParameter"] = responsiveParameter;
-    }
-
-    return hashBounds;
 }
 
 
