@@ -256,6 +256,53 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
     return type;
 }
 
+
+function getResponsiveParameter(beforeBounds, afterBounds) {
+    let horizontalFix = null; // left center right
+    let verticalFix = null; // top middle bottom
+
+    // 横のレスポンシブパラメータを取得する
+    if (beforeBounds.x == afterBounds.x) {
+        horizontalFix = "left";
+    } else {
+        horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
+    }
+
+    // 縦のレスポンシブパラメータを取得する
+    if (beforeBounds.y == afterBounds.y) {
+        verticalFix = "top";
+    } else {
+        verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
+    }
+
+    let ret = {};
+
+    // 横ストレッチチェック
+    if (beforeBounds.width < afterBounds.width) {
+        horizontalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+        Object.assign(ret, {
+            stretchx: true
+        })
+    }
+
+    // 縦ストレッチチェック
+    if (beforeBounds.height < afterBounds.height) {
+        verticalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+        Object.assign(ret, {
+            stretchy: true
+        })
+    }
+
+    // Pivot出力
+    if (horizontalFix != null || verticalFix != null) {
+        Object.assign(ret, {
+            pivot: (horizontalFix || "") + (verticalFix || "")
+        })
+    }
+
+    return ret;
+}
+
 /**
  * レスポンシブパラメータの取得
  * @param {*} node 
@@ -299,45 +346,7 @@ function getPivotAndStretch(node) {
             node.fontSize = beforeFontSize;
         }
 
-        // 横のレスポンシブパラメータを取得する
-        if (beforeBounds.x == afterBounds.x) {
-            horizontalFix = "left";
-        } else {
-            horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
-        }
-
-        // 縦のレスポンシブパラメータを取得する
-        if (beforeBounds.y == afterBounds.y) {
-            verticalFix = "top";
-        } else {
-            verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
-        }
-
-        let ret = {};
-
-        // 横ストレッチチェック
-        if (beforeBounds.width < afterBounds.width) {
-            horizontalFix = null; // 縦ストレッチがある場合､pivot情報を消す
-            Object.assign(ret, {
-                stretchx: true
-            })
-        }
-
-        // 縦ストレッチチェック
-        if (beforeBounds.height < afterBounds.height) {
-            verticalFix = null; // 縦ストレッチがある場合､pivot情報を消す
-            Object.assign(ret, {
-                stretchy: true
-            })
-        }
-
-        // Pivot出力
-        if (horizontalFix != null || verticalFix != null) {
-            Object.assign(ret, {
-                pivot: (horizontalFix || "") + (verticalFix || "")
-            })
-        }
-
+        let ret = getResponsiveParameter(beforeBounds, afterBounds);
         console.log(ret);
 
         return ret;
