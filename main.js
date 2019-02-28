@@ -13,6 +13,9 @@ const fs = require("uxp").storage.localFileSystem;
 // 全体にかけるスケール
 var scale = 4.0;
 
+// レスポンシブパラメータを保存する
+var responsiveBounds = {};
+
 // 出力するフォルダ
 var outputFolder = null;
 
@@ -308,52 +311,7 @@ function getResponsiveParameter(beforeBounds, afterBounds) {
  * @param {*} node 
  */
 function getPivotAndStretch(node) {
-    try {
-        let parent = node.parent;
-        let parentBounds = parent.boundsInParent;
-        let parentTopLeft = parent.topLeftInParent;
-        let parentWidth = parentBounds.width;
-        let parentHeight = parentBounds.height;
-
-        let horizontalFix = null; // left center right
-        let verticalFix = null; // top middle bottom
-
-        let beforeBounds = node.boundsInParent;
-        let beforeFontSize = node.fontSize;
-
-        // 親のサイズ変更
-        parent.resize(parentWidth + 100, parentHeight + 100);
-        //parent.width = parentWidth + 100;
-        //parent.height = parentHeight + 100;
-        let afterBounds = node.boundsInParent;
-
-        // 親のサイズを元に戻す
-        parent.resize(parentWidth, parentHeight);
-
-        // 場合によって､位置がかわってしまうためもとに戻す
-        let a = parent.topLeftInParent;
-        if (a.x != parentTopLeft.x || a.y != parentTopLeft.y) {
-            console.log("*** error changed parent paramaeter");
-            try {
-                parent.topLeftInParent = parentTopLeft;
-            } catch (e) {
-                console.log("****** error changed parent paramaeter");
-            }
-        }
-
-        // 場合によって､フォントサイズが変わるためもとに戻す
-        if (beforeFontSize != null && node.fontSize != beforeFontSize) {
-            node.fontSize = beforeFontSize;
-        }
-
-        let ret = getResponsiveParameter(beforeBounds, afterBounds);
-        console.log(ret);
-
-        return ret;
-    } catch (e) {
-        console.log("***error getPivotAndStretch() failed:" + e.message);
-    }
-    return null;
+    return responsiveBounds[node.guid]["responsiveParameter"];
 }
 
 
@@ -478,7 +436,7 @@ async function extractedArtboard(renditions, folder, root) {
         subFolder = await folder.createFolder(subFolderName);
     }
 
-    const layoutFileName = subFolderName + ".layouta.txt";
+    const layoutFileName = subFolderName + ".layout.txt";
     const layoutFile = await folder.createFile(layoutFileName, {
         overwrite: true
     });
@@ -617,7 +575,6 @@ async function extractedArtboard(renditions, folder, root) {
 
 }
 
-
 // メインファンクション
 async function exportBaum2(roots, outputFolder) {
     // ラスタライズする要素を入れる
@@ -626,6 +583,7 @@ async function exportBaum2(roots, outputFolder) {
     // アートボード毎の処理
     for (var i = 0; i < roots.length; i++) {
         let artboard = roots[i];
+        responsiveBounds = makeResponsiveParameter(artboard);
         await extractedArtboard(renditions, outputFolder, artboard);
     }
 
@@ -871,38 +829,56 @@ async function showModal(selection, root) {
 
 }
 
+function makeResponsiveParameter(root) {
+    let nodeWalker = (node, func) => {
+        func(node);
+        node.children.forEach(child => {
+            nodeWalker(child, func);
+        });
+    }
+
+    let hashBounds = {};
+    nodeWalker(root, node => {
+        hashBounds[node.guid] = {
+            before: {
+                bounds: getGlobalBounds(node)
+            }
+        }
+    });
+    const artboardWidth = root.width;
+    const artboardHeight = root.height;
+    root.resize(artboardWidth + 100, artboardHeight + 100);
+    nodeWalker(root, node => {
+        hashBounds[node.guid]["after"] = {
+            bounds: getGlobalBounds(node)
+        }
+    });
+    root.resize(artboardWidth, artboardHeight);
+
+    for (var key in hashBounds) {
+        var value = hashBounds[key];
+        var beforeBounds = value["before"]["bounds"];
+        var afterBounds = value["after"]["bounds"];
+        var responsiveParameter = getResponsiveParameter(beforeBounds, afterBounds);
+        value["responsiveParameter"] = responsiveParameter;
+    }
+
+    return hashBounds;
+}
+
 
 async function pivot(selection, root) {
     console.log("pivot");
-    var node = selection.items[0];
+    var artboard = selection.items[0];
 
-    console.log(node.root.x);
-    console.log(node.globalBounds);
-    console.log(node.globalDrawBounds);
-    console.log(node.localBounds);
-
-    return;
-
-
-    if (node == null || !node.isContainer) {
-        alert("select group");
+    if (artboard == null || !(artboard instanceof Artboard)) {
+        alert("select artboard");
         return;
     }
 
+    makeResponsiveParameter(artboard);
 
-    node.name = "aaaa";
-    node.children.forEach(child => {
-        let {
-            name,
-            options
-        } = parseNameOptions(child.name);
-        var pivot = getPivotAndStretch(child);
-        Object.assign(options, pivot);
-        name = concatNameOptions(name, options);
-        console.log(name);
-        //child.name = "hello";
-        //child.name = name;
-    });
+    return;
 }
 
 
