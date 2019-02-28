@@ -10,17 +10,21 @@ const scenegraph = require("scenegraph");
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
 
-// 実験的オプションを有効にするかどうか
-const experimentalOptionsEnable = true;
-
 // 全体にかけるスケール
 var scale = 4.0;
+
+// レスポンシブパラメータを保存する
+var responsiveBounds = {};
 
 // 出力するフォルダ
 var outputFolder = null;
 
 // レスポンシブパラメータを取得するオプション
-var optionGetResponsiveParameter = false;
+var optionNeedResponsiveParameter = false;
+
+// レスポンシブパラメータを取得するオプション
+var optionEnableSubPrefab = false;
+
 
 /**
  * ファイル名につかえる文字列に変換する
@@ -129,7 +133,6 @@ function getDrawBoundsInRoot(node, root) {
  * @return {boolean}
  */
 function checkOptionRasterize(options) {
-    if (!experimentalOptionsEnable) return false;
     const r = options["rasterize"];
     if ((typeof r) == "string") {
         const val = r.toLowerCase();
@@ -141,7 +144,7 @@ function checkOptionRasterize(options) {
 
 
 function assignPivotAndStretch(json, node) {
-    if (!optionGetResponsiveParameter) {
+    if (!optionNeedResponsiveParameter) {
         return null;
     }
     let pivot = getPivotAndStretch(node);
@@ -195,6 +198,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string[]} options 
  */
 async function extractedGroup(json, node, funcForEachChild, name, options) {
+    if (optionEnableSubPrefab && name.endsWith("/")) return;
     if (name.endsWith("Button")) {
         const type = "Button";
         Object.assign(json, {
@@ -256,95 +260,137 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
     return type;
 }
 
+
+function getResponsiveParameter(beforeBounds, afterBounds) {
+    let horizontalFix = null; // left center right
+    let verticalFix = null; // top middle bottom
+
+    // 横のレスポンシブパラメータを取得する
+    if (beforeBounds.x == afterBounds.x) {
+        horizontalFix = "left";
+    } else {
+        horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
+    }
+
+    // 縦のレスポンシブパラメータを取得する
+    if (beforeBounds.y == afterBounds.y) {
+        verticalFix = "top";
+    } else {
+        verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
+    }
+
+    let ret = {};
+
+    // 横ストレッチチェック
+    if (beforeBounds.width < afterBounds.width) {
+        horizontalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+        Object.assign(ret, {
+            stretchx: true
+        })
+    }
+
+    // 縦ストレッチチェック
+    if (beforeBounds.height < afterBounds.height) {
+        verticalFix = null; // 縦ストレッチがある場合､pivot情報を消す
+        Object.assign(ret, {
+            stretchy: true
+        })
+    }
+
+    // Pivot出力
+    if (horizontalFix != null || verticalFix != null) {
+        Object.assign(ret, {
+            pivot: (horizontalFix || "") + (verticalFix || "")
+        })
+    }
+
+    return ret;
+}
+
+
+function makeResponsiveParameter(root) {
+    let nodeWalker = (node, func) => {
+        func(node);
+        node.children.forEach(child => {
+            nodeWalker(child, func);
+        });
+    }
+
+    let hashBounds = {};
+    // 現在のboundsを取得する
+    nodeWalker(root, node => {
+        hashBounds[node.guid] = {
+            before: {
+                bounds: getGlobalBounds(node)
+            }
+        }
+    });
+
+    const artboardWidth = root.width;
+    const artboardHeight = root.height;
+    // Artboardのリサイズ
+    root.resize(artboardWidth + 100, artboardHeight + 100);
+
+    // 変更されたboundsを取得する
+    nodeWalker(root, node => {
+        hashBounds[node.guid]["after"] = {
+            bounds: getGlobalBounds(node)
+        }
+    });
+
+    // Artboardのサイズを元に戻す
+    root.resize(artboardWidth, artboardHeight);
+
+    // 元に戻ったときのbounds
+    nodeWalker(root, node => {
+        hashBounds[node.guid]["restore"] = {
+            bounds: getGlobalBounds(node)
+        }
+    });
+
+    // レスポンシブパラメータの生成
+    for (var key in hashBounds) {
+        var value = hashBounds[key];
+        var beforeBounds = value["before"]["bounds"];
+        var afterBounds = value["after"]["bounds"];
+        var responsiveParameter = getResponsiveParameter(beforeBounds, afterBounds);
+        value["responsiveParameter"] = responsiveParameter;
+    }
+
+    return hashBounds;
+}
+
+
+/**
+ * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
+ * 元通りのサイズに戻ったかどうかのチェック
+ * @param {*} hashBounds 
+ */
+function checkBounds(hashBounds) {
+    for (var key in hashBounds) {
+        var value = hashBounds[key];
+        var beforeBounds = value["before"]["bounds"];
+        var restoreBounds = value["restore"]["bounds"];
+        if (beforeBounds.x != restoreBounds.x ||
+            beforeBounds.y != restoreBounds.y ||
+            beforeBounds.width != restoreBounds.width ||
+            beforeBounds.height != restoreBounds.height) {
+            // 変わってしまった
+            console.log(beforeBounds);
+            console.log(restoreBounds);
+            return false;
+        }
+    }
+    return true;
+}
+
+
 /**
  * レスポンシブパラメータの取得
  * @param {*} node 
  */
 function getPivotAndStretch(node) {
-    try {
-        let parent = node.parent;
-        let parentBounds = parent.boundsInParent;
-        let parentTopLeft = parent.topLeftInParent;
-        let parentWidth = parentBounds.width;
-        let parentHeight = parentBounds.height;
-
-        let horizontalFix = null; // left center right
-        let verticalFix = null; // top middle bottom
-
-        let beforeBounds = node.boundsInParent;
-        let beforeFontSize = node.fontSize;
-
-        // 親のサイズ変更
-        parent.resize(parentWidth + 100, parentHeight + 100);
-        //parent.width = parentWidth + 100;
-        //parent.height = parentHeight + 100;
-        let afterBounds = node.boundsInParent;
-
-        // 親のサイズを元に戻す
-        parent.resize(parentWidth, parentHeight);
-
-        // 場合によって､位置がかわってしまうためもとに戻す
-        let a = parent.topLeftInParent;
-        if (a.x != parentTopLeft.x || a.y != parentTopLeft.y) {
-            console.log("*** error changed parent paramaeter");
-            try {
-                parent.topLeftInParent = parentTopLeft;
-            } catch (e) {
-                console.log("****** error changed parent paramaeter");
-            }
-        }
-
-        // 場合によって､フォントサイズが変わるためもとに戻す
-        if (beforeFontSize != null && node.fontSize != beforeFontSize) {
-            node.fontSize = beforeFontSize;
-        }
-
-        // 横のレスポンシブパラメータを取得する
-        if (beforeBounds.x == afterBounds.x) {
-            horizontalFix = "left";
-        } else {
-            horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
-        }
-
-        // 縦のレスポンシブパラメータを取得する
-        if (beforeBounds.y == afterBounds.y) {
-            verticalFix = "top";
-        } else {
-            verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
-        }
-
-        let ret = {};
-
-        // 横ストレッチチェック
-        if (beforeBounds.width < afterBounds.width) {
-            horizontalFix = null; // 縦ストレッチがある場合､pivot情報を消す
-            Object.assign(ret, {
-                stretchx: true
-            })
-        }
-
-        // 縦ストレッチチェック
-        if (beforeBounds.height < afterBounds.height) {
-            verticalFix = null; // 縦ストレッチがある場合､pivot情報を消す
-            Object.assign(ret, {
-                stretchy: true
-            })
-        }
-
-        // Pivot出力
-        if (horizontalFix != null || verticalFix != null) {
-            Object.assign(ret, {
-                pivot: (horizontalFix || "") + (verticalFix || "")
-            })
-        }
-
-        console.log(ret);
-
-        return ret;
-    } catch (e) {
-        console.log("***error getPivotAndStretch() failed:" + e.message);
-    }
-    return null;
+    return responsiveBounds[node.guid]["responsiveParameter"];
 }
 
 
@@ -503,7 +549,7 @@ async function extractedArtboard(renditions, folder, root) {
         }
     };
 
-    let nodeWalker = async (nodeStack, layoutJson, depth) => {
+    let nodeWalker = async (nodeStack, layoutJson, depth, isRoot) => {
         var node = nodeStack[nodeStack.length - 1];
         let constructorName = node.constructor.name;
         const indent = (depth => {
@@ -518,6 +564,10 @@ async function extractedArtboard(renditions, folder, root) {
             name,
             options
         } = parseNameOptions(node.name);
+
+        if (isRoot && optionEnableSubPrefab && name.endsWith("/")) {
+            name = name.slice(0, -1);
+        }
 
         console.log(node.name, name, options);
 
@@ -596,7 +646,7 @@ async function extractedArtboard(renditions, folder, root) {
 
     };
 
-    await nodeWalker([root], layoutJson.root, 0);
+    await nodeWalker([root], layoutJson.root, 0, true);
 
     // layout.txtの出力
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
@@ -604,34 +654,40 @@ async function extractedArtboard(renditions, folder, root) {
 
 }
 
-
 // メインファンクション
-async function exportBaum2(artboards, outputFolder) {
+async function exportBaum2(roots, outputFolder) {
     // ラスタライズする要素を入れる
     let renditions = [];
 
     // アートボード毎の処理
-    for (var i = 0; i < artboards.length; i++) {
-        let artboard = artboards[i];
+    for (var i = 0; i < roots.length; i++) {
+        let artboard = roots[i];
+        if (optionNeedResponsiveParameter) {
+            responsiveBounds = makeResponsiveParameter(artboard);
+        }
         await extractedArtboard(renditions, outputFolder, artboard);
     }
 
-    if (renditions.length == 0) {
+    if (renditions.length != 0) {
+        // 一括画像ファイル出力
+        application.createRenditions(renditions)
+            .then(results => {
+                results.forEach(result => {
+                    console.log(`saved at ${result.outputFile.nativePath}`);
+                });
+            })
+            .catch(error => {
+                console.log("error:" + error);
+            });
+    } else {
         // 画像出力の必要がなければ終了
         alert("no outputs");
-        return;
     }
 
-    // 一括画像ファイル出力
-    application.createRenditions(renditions)
-        .then(results => {
-            results.forEach(result => {
-                console.log(`saved at ${result.outputFile.nativePath}`);
-            });
-        })
-        .catch(error => {
-            console.log("error:" + error);
-        });
+    if (!checkBounds(responsiveBounds)) {
+        alert("bounds is changed. Please execute UNDO.");
+    }
+
 }
 
 
@@ -694,12 +750,12 @@ async function alert(message) {
     return await dialog.showModal();
 }
 
-
 async function showModal(selection, root) {
     let inputFolder;
     let inputScale;
     let errorLabel;
-    let checkResponsiveParameter;
+    let checkGetResponsiveParameter;
+    let checkEnableSubPrefab;
     let dialog =
         h("dialog",
             h("form", {
@@ -751,10 +807,21 @@ async function showModal(selection, root) {
                             alignItems: "center"
                         }
                     },
-                    checkResponsiveParameter = h("input", {
+                    checkGetResponsiveParameter = h("input", {
                         type: "checkbox"
                     }),
                     h("span", "export responsive parameter (EXPERIMENTAL)")
+                ),
+                h("label", {
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
+                        }
+                    },
+                    checkEnableSubPrefab = h("input", {
+                        type: "checkbox"
+                    }),
+                    h("span", "名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)")
                 ),
                 errorLabel = h("label", {
                         style: {
@@ -788,7 +855,10 @@ async function showModal(selection, root) {
                                 return;
                             }
                             // レスポンシブパラメータ
-                            optionGetResponsiveParameter = checkResponsiveParameter.checked;
+                            optionNeedResponsiveParameter = checkGetResponsiveParameter.checked;
+                            // サブPrefab
+                            optionEnableSubPrefab = checkEnableSubPrefab.checed;
+
                             dialog.close("export");
                         }
                     }, "Export")
@@ -805,7 +875,8 @@ async function showModal(selection, root) {
         inputFolder.value = outputFolder.nativePath;
     }
     // Responsive Parameter
-    checkResponsiveParameter.checked = optionGetResponsiveParameter;
+    checkGetResponsiveParameter.checked = optionNeedResponsiveParameter;
+    checkEnableSubPrefab.checked = optionEnableSubPrefab;
 
     // Dialog表示
     document.body.appendChild(dialog);
@@ -813,22 +884,31 @@ async function showModal(selection, root) {
 
     // Dialogの結果チェック
     if (result == "export") {
-        let artboards = [];
+        let roots = [];
 
         // 選択されているものがない場合 全てが変換対象
-        (selection.items.length > 0 ? selection.items : root.children).forEach(child => {
-            if (child instanceof Artboard) {
-                artboards.push(child);
-            }
-        });
+        let searchItems = selection.items.length > 0 ? selection.items : root.children
 
-        if (artboards.length == 0) {
+        let func = nodes => {
+            nodes.forEach(node => {
+                if (node instanceof Artboard || (optionEnableSubPrefab && parseNameOptions(node.name).name.endsWith("/"))) {
+                    console.log("push");
+                    roots.push(node);
+                }
+                var children = node.children;
+                if (children) func(children);
+            });
+        }
+
+        func(searchItems);
+
+        if (roots.length == 0) {
             // 出力するものが見つからなかった
             alert("no selected artboards.")
             return;
         }
 
-        await exportBaum2(artboards, outputFolder);
+        await exportBaum2(roots, outputFolder);
     }
 
 }
@@ -836,35 +916,16 @@ async function showModal(selection, root) {
 
 async function pivot(selection, root) {
     console.log("pivot");
-    var node = selection.items[0];
+    var artboard = selection.items[0];
 
-    console.log(node.root.x);
-    console.log(node.globalBounds);
-    console.log(node.globalDrawBounds);
-    console.log(node.localBounds);
-
-    return;
-
-
-    if (node == null || !node.isContainer) {
-        alert("select group");
+    if (artboard == null || !(artboard instanceof Artboard)) {
+        alert("select artboard");
         return;
     }
 
+    makeResponsiveParameter(artboard);
 
-    node.name = "aaaa";
-    node.children.forEach(child => {
-        let {
-            name,
-            options
-        } = parseNameOptions(child.name);
-        var pivot = getPivotAndStretch(child);
-        Object.assign(options, pivot);
-        name = concatNameOptions(name, options);
-        console.log(name);
-        //child.name = "hello";
-        //child.name = name;
-    });
+    return;
 }
 
 
