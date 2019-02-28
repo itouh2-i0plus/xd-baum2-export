@@ -107,24 +107,60 @@ function getGlobalBounds(node) {
 
 
 /**
- * Artboard内での座標とサイズを取得する
+ * Artboard内でのDrawBoundsを取得する
  * x､yはCenterMiddleでの座標になる
  * @param {scenegraph} node 
- * @param {artboard} root 
+ * @param {artboard} base 
  */
-function getDrawBoundsInRoot(node, root) {
+function getDrawBoundsInBase(node, base) {
     const nodeDrawBounds = getGlobalDrawBounds(node);
-    console.log("node:", nodeDrawBounds);
-    const rootBounds = getGlobalBounds(root);
-    console.log("root:", rootBounds);
+    const baseBounds = getGlobalBounds(base);
     return {
-        x: nodeDrawBounds.x - rootBounds.x - rootBounds.width / 2,
-        y: nodeDrawBounds.y - rootBounds.y - rootBounds.height / 2,
+        x: nodeDrawBounds.x - baseBounds.x - baseBounds.width / 2,
+        y: nodeDrawBounds.y - baseBounds.y - baseBounds.height / 2,
         width: nodeDrawBounds.width,
         height: nodeDrawBounds.height
     };
 }
 
+
+/**
+ * Artboard内でのBoundsを取得する
+ * @param {scenegraph} node 
+ * @param {artboard} base 
+ */
+function getTopLeftBoundsInBase(node, base) {
+    const nodeBounds = getGlobalBounds(node);
+    console.log("node:", nodeBounds);
+    const rootBounds = getGlobalBounds(base);
+    console.log("root:", rootBounds);
+    return {
+        x: nodeBounds.x - (rootBounds.x + rootBounds.width / 2),
+        y: nodeBounds.y - (rootBounds.y + rootBounds.height / 2),
+        width: nodeBounds.width,
+        height: nodeBounds.height
+    };
+}
+
+
+/**
+ * Artboard内でのBoundsを取得する
+ * x､yはCenterMiddleでの座標になる
+ * @param {scenegraph} node 
+ * @param {artboard} base 
+ */
+function getBoundsInBase(node, base) {
+    const nodeBounds = getGlobalBounds(node);
+    console.log("node:", nodeBounds);
+    const rootBounds = getGlobalBounds(base);
+    console.log("root:", rootBounds);
+    return {
+        x: nodeBounds.x + nodeBounds.width / 2 - (rootBounds.x + rootBounds.width / 2),
+        y: nodeBounds.y + nodeBounds.height / 2 - (rootBounds.y + rootBounds.height / 2),
+        width: nodeBounds.width,
+        height: nodeBounds.height
+    };
+}
 
 /**
  * オプションRasterizeチェック
@@ -164,7 +200,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
     });
     counter++;
 
-    const drawBounds = getDrawBoundsInRoot(node, root);
+    const drawBounds = getDrawBoundsInBase(node, root);
 
     Object.assign(json, {
         image: fileName,
@@ -183,8 +219,6 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
         scale: scale
     });
 
-    console.log("image:", drawBounds);
-
 }
 
 
@@ -197,54 +231,58 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string} name 
  * @param {string[]} options 
  */
-async function extractedGroup(json, node, funcForEachChild, name, options) {
-    if (optionEnableSubPrefab && name.endsWith("/")) return;
-    if (name.endsWith("Button")) {
-        const type = "Button";
-        Object.assign(json, {
-            type: type,
-            name: name
-        });
-        assignPivotAndStretch(json, node);
-        await funcForEachChild();
-        return type;
-    }
-
-    if (name.endsWith("Slider")) {
-        const type = "Slider";
-        Object.assign(json, {
-            type: type,
-            name: name
-        });
-        await funcForEachChild();
-        return type;
-    }
-
-    if (name.endsWith("Scrollbar")) {
-        const type = "Scrollbar";
-        Object.assign(json, {
-            type: type,
-            name: name
-        });
-        await funcForEachChild();
-        return type;
-    }
-
-    if (name.endsWith("List")) {
-        const type = "List";
-        Object.assign(json, {
-            type: type,
-            name: name,
-            scroll: "vertical" // TODO:オプションを取得するようにする
-        });
-        await funcForEachChild();
-        let areaElement = json.elements.find(element => {
-            return element.name == "Area";
-        });
-        if (areaElement != null) {
-            console.log("*** found Area ***");
+async function extractedGroup(json, node, funcForEachChild, name, options, depth) {
+    // 深度が0の場合はサブPrefabチェックを回避し､通常の処理をする
+    if (depth > 0 && optionEnableSubPrefab && options["subPrefab"]) {
+        return "subPrefab";
+    } else {
+        let type = "Button";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name
+            });
+            assignPivotAndStretch(json, node);
+            await funcForEachChild();
+            return type;
         }
-        return type;
+
+        type = "Slider";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name
+            });
+            await funcForEachChild();
+            return type;
+        }
+
+        type = "Scrollbar";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name
+            });
+            await funcForEachChild();
+            return type;
+        }
+
+        type = "List";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name,
+                scroll: "vertical" // TODO:オプションを取得するようにする
+            });
+            await funcForEachChild();
+            let areaElement = json.elements.find(element => {
+                return element.name == "Area";
+            });
+            if (areaElement != null) {
+                console.log("*** found Area ***");
+            }
+            return type;
+        }
     }
 
     // 通常のグループ
@@ -254,14 +292,33 @@ async function extractedGroup(json, node, funcForEachChild, name, options) {
         name: name,
         elements: [] // Groupは空でもelementsをもっていないといけない
     });
-    assignPivotAndStretch(json, node);
+    if (depth > 0) {
+        assignPivotAndStretch(json, node);
+    }
     if (checkOptionRasterize(options)) {}
     await funcForEachChild();
+
     return type;
 }
 
 
-function getResponsiveParameter(beforeBounds, afterBounds) {
+/**
+ * 
+ * @param {*} beforeBounds 
+ * @param {*} afterBounds 
+ * @param {number} resizePlusWidth リサイズ時に増えた幅
+ * @param {number} resizePlusHeight リサイズ時に増えた高さ
+ */
+function getResponsiveParameter(node, hashBounds) {
+    const nodeBounds = hashBounds[node.guid];
+    if (!nodeBounds || !nodeBounds["before"] || !nodeBounds["after"]) return null;
+    const beforeBounds = nodeBounds["before"]["bounds"];
+    const afterBounds = nodeBounds["after"]["bounds"];
+    const parentBounds = hashBounds[node.parent.guid];
+    if (!parentBounds || !parentBounds["before"] || !parentBounds["after"]) return null;
+    const resizePlusWidth = parentBounds["after"]["bounds"].width - parentBounds["before"]["bounds"].width;
+    const resizePlusHeight = parentBounds["after"]["bounds"].height - parentBounds["before"]["bounds"].height;
+
     let horizontalFix = null; // left center right
     let verticalFix = null; // top middle bottom
 
@@ -269,14 +326,16 @@ function getResponsiveParameter(beforeBounds, afterBounds) {
     if (beforeBounds.x == afterBounds.x) {
         horizontalFix = "left";
     } else {
-        horizontalFix = (afterBounds.x - beforeBounds.x < 10) ? "center" : "right";
+        const subx = afterBounds.x - beforeBounds.x;
+        horizontalFix = (subx > 0 && subx <= resizePlusWidth * 0.50001) ? "center" : "right";
     }
 
     // 縦のレスポンシブパラメータを取得する
     if (beforeBounds.y == afterBounds.y) {
         verticalFix = "top";
     } else {
-        verticalFix = (afterBounds.y - beforeBounds.y < 10) ? "middle" : "bottom";
+        const suby = afterBounds.y - beforeBounds.y;
+        verticalFix = (suby > 0 && suby <= resizePlusHeight * 0.50001) ? "middle" : "bottom";
     }
 
     let ret = {};
@@ -320,20 +379,28 @@ function makeResponsiveParameter(root) {
     // 現在のboundsを取得する
     nodeWalker(root, node => {
         hashBounds[node.guid] = {
+            node: node,
             before: {
                 bounds: getGlobalBounds(node)
             }
         }
     });
 
-    const artboardWidth = root.width;
-    const artboardHeight = root.height;
+    const artboardWidth = root.globalBounds.width;
+    const artboardHeight = root.globalBounds.height;
+    const resizePlusWidth = 100;
+    const resizePlusHeight = 100;
     // Artboardのリサイズ
-    root.resize(artboardWidth + 100, artboardHeight + 100);
+    root.resize(artboardWidth + resizePlusWidth, artboardHeight + resizePlusHeight);
 
     // 変更されたboundsを取得する
     nodeWalker(root, node => {
-        hashBounds[node.guid]["after"] = {
+        var hash = hashBounds[node.guid];
+        if (!hash) {
+            hash = {};
+            hashBounds[node.guid] = hash;
+        }
+        hash["after"] = {
             bounds: getGlobalBounds(node)
         }
     });
@@ -351,10 +418,9 @@ function makeResponsiveParameter(root) {
     // レスポンシブパラメータの生成
     for (var key in hashBounds) {
         var value = hashBounds[key];
-        var beforeBounds = value["before"]["bounds"];
-        var afterBounds = value["after"]["bounds"];
-        var responsiveParameter = getResponsiveParameter(beforeBounds, afterBounds);
-        value["responsiveParameter"] = responsiveParameter;
+        if (value["before"] && value["after"]) {
+            value["responsiveParameter"] = getResponsiveParameter(value["node"], hashBounds);
+        }
     }
 
     return hashBounds;
@@ -369,16 +435,18 @@ function makeResponsiveParameter(root) {
 function checkBounds(hashBounds) {
     for (var key in hashBounds) {
         var value = hashBounds[key];
-        var beforeBounds = value["before"]["bounds"];
-        var restoreBounds = value["restore"]["bounds"];
-        if (beforeBounds.x != restoreBounds.x ||
-            beforeBounds.y != restoreBounds.y ||
-            beforeBounds.width != restoreBounds.width ||
-            beforeBounds.height != restoreBounds.height) {
-            // 変わってしまった
-            console.log(beforeBounds);
-            console.log(restoreBounds);
-            return false;
+        if (value["before"] && value["restore"]) {
+            var beforeBounds = value["before"]["bounds"];
+            var restoreBounds = value["restore"]["bounds"];
+            if (beforeBounds.x != restoreBounds.x ||
+                beforeBounds.y != restoreBounds.y ||
+                beforeBounds.width != restoreBounds.width ||
+                beforeBounds.height != restoreBounds.height) {
+                // 変わってしまった
+                console.log(beforeBounds);
+                console.log(restoreBounds);
+                return false;
+            }
         }
     }
     return true;
@@ -410,7 +478,7 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
-    const drawBounds = getDrawBoundsInRoot(node, artboard);
+    const drawBounds = getDrawBoundsInBase(node, artboard);
 
     // text.styleRangesの適応をしていない
     Object.assign(json, {
@@ -476,11 +544,24 @@ function parseNameOptions(str) {
             }
         })
     } else {
-        name = str;
+        name = str.trim();
     }
+
+    // そのレイヤーをラスタライズする
+    if (name.startsWith("*")) {
+        options["rasterize"] = true;
+        name = name.substring(1);
+    }
+
+    // 名前の最後が/であれば､サブPrefabのオプションをONにする
+    if (name.endsWith("/")) {
+        options["subPrefab"] = true;
+        name = name.slice(0, -1);
+    }
+
     return {
         name: name,
-        options: {}
+        options: options
     };
 }
 
@@ -501,8 +582,10 @@ function concatNameOptions(name, options) {
  * @param {*} folder 
  * @param {artboard} root 
  */
-async function extractedArtboard(renditions, folder, root) {
-    let subFolderName = root.name;
+async function extractedRoot(renditions, folder, root) {
+    let nameOptions = parseNameOptions(root.name);
+
+    let subFolderName = nameOptions.name;
 
     // フォルダ名に使えない文字を'_'に変換
     subFolderName = convertToFileName(subFolderName);
@@ -520,8 +603,14 @@ async function extractedArtboard(renditions, folder, root) {
         overwrite: true
     });
 
-    const rootBounds = getGlobalDrawBounds(root);
-    console.log(rootBounds);
+    let rootBounds;
+    if (root instanceof Artboard) {
+        rootBounds = getGlobalBounds(root);
+        rootBounds.x = 0;
+        rootBounds.y = 0;
+    } else {
+        rootBounds = getBoundsInBase(root, root.parent);
+    }
 
     let layoutJson = {
         info: {
@@ -536,8 +625,8 @@ async function extractedArtboard(renditions, folder, root) {
                     h: rootBounds.height
                 },
                 base: {
-                    x: 0,
-                    y: 0,
+                    x: -rootBounds.x,
+                    y: -rootBounds.y,
                     w: rootBounds.width,
                     h: rootBounds.height
                 }
@@ -549,7 +638,7 @@ async function extractedArtboard(renditions, folder, root) {
         }
     };
 
-    let nodeWalker = async (nodeStack, layoutJson, depth, isRoot) => {
+    let nodeWalker = async (nodeStack, layoutJson, depth) => {
         var node = nodeStack[nodeStack.length - 1];
         let constructorName = node.constructor.name;
         const indent = (depth => {
@@ -565,26 +654,11 @@ async function extractedArtboard(renditions, folder, root) {
             options
         } = parseNameOptions(node.name);
 
-        if (isRoot && optionEnableSubPrefab && name.endsWith("/")) {
-            name = name.slice(0, -1);
-        }
-
         console.log(node.name, name, options);
 
-        // 名前の最初1文字目での処理分別
-        if (name.length > 0) {
-            switch (name[0]) {
-                case '#':
-                    // コメント レイヤー
-                    return;
-                case '*':
-                    // そのレイヤーをラスタライズする
-                    options["rasterize"] = true;
-                    name = name.substring(1);
-                    break;
-                default:
-                    break;
-            }
+        // 名前の最初1文字目が#ならコメントNode
+        if (name.startsWith("#")) {
+            return;
         }
 
         // 子Node処理関数
@@ -616,14 +690,14 @@ async function extractedArtboard(renditions, folder, root) {
                 {
                     // BooleanGroupは強制的にラスタライズする
                     options["rasterize"] = true;
-                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
+                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options, depth);
                 }
                 break;
             case "Group":
             case "RepeatGrid":
             case "SymbolInstance":
                 {
-                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options);
+                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options, depth);
                 }
                 break;
             case "Line":
@@ -646,7 +720,7 @@ async function extractedArtboard(renditions, folder, root) {
 
     };
 
-    await nodeWalker([root], layoutJson.root, 0, true);
+    await nodeWalker([root], layoutJson.root, 0);
 
     // layout.txtの出力
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
@@ -660,12 +734,12 @@ async function exportBaum2(roots, outputFolder) {
     let renditions = [];
 
     // アートボード毎の処理
-    for (var i = 0; i < roots.length; i++) {
-        let artboard = roots[i];
-        if (optionNeedResponsiveParameter) {
-            responsiveBounds = makeResponsiveParameter(artboard);
+    for (var i in roots) {
+        let root = roots[i];
+        if (optionNeedResponsiveParameter && root instanceof Artboard) {
+            responsiveBounds = makeResponsiveParameter(root);
         }
-        await extractedArtboard(renditions, outputFolder, artboard);
+        await extractedRoot(renditions, outputFolder, root);
     }
 
     if (renditions.length != 0) {
@@ -857,7 +931,7 @@ async function showModal(selection, root) {
                             // レスポンシブパラメータ
                             optionNeedResponsiveParameter = checkGetResponsiveParameter.checked;
                             // サブPrefab
-                            optionEnableSubPrefab = checkEnableSubPrefab.checed;
+                            optionEnableSubPrefab = checkEnableSubPrefab.checked;
 
                             dialog.close("export");
                         }
@@ -884,16 +958,17 @@ async function showModal(selection, root) {
 
     // Dialogの結果チェック
     if (result == "export") {
-        let roots = [];
+        let roots = {};
 
         // 選択されているものがない場合 全てが変換対象
         let searchItems = selection.items.length > 0 ? selection.items : root.children
 
         let func = nodes => {
             nodes.forEach(node => {
-                if (node instanceof Artboard || (optionEnableSubPrefab && parseNameOptions(node.name).name.endsWith("/"))) {
-                    console.log("push");
-                    roots.push(node);
+                let nameOptions = parseNameOptions(node.name);
+                if (node instanceof Artboard || (optionEnableSubPrefab && nameOptions.options["subPrefab"])) {
+                    // 同じ名前のものは上書きされる
+                    roots[nameOptions.name] = node;
                 }
                 var children = node.children;
                 if (children) func(children);
