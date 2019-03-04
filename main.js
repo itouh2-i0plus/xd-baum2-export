@@ -6,7 +6,6 @@ const {
     ImageFill
 } = require("scenegraph");
 const scenegraph = require("scenegraph");
-
 const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
 
@@ -24,6 +23,22 @@ var optionNeedResponsiveParameter = false;
 
 // レスポンシブパラメータを取得するオプション
 var optionEnableSubPrefab = false;
+
+// Textノードは強制的にImageに変換する
+var optionForceTextToImage = false;
+
+
+const OPTION_RASTERIZE = "rasterize";
+
+function checkOptionRasterize(options) {
+    return checkBoolean(options[OPTION_RASTERIZE]);
+}
+
+const OPTION_SUB_PREFAB = "subPrefab";
+
+function checkOptionSubPrefab(options) {
+    return optionEnableSubPrefab && checkBoolean(options[OPTION_SUB_PREFAB]);
+}
 
 
 /**
@@ -131,12 +146,10 @@ function getDrawBoundsInBase(node, base) {
  */
 function getTopLeftBoundsInBase(node, base) {
     const nodeBounds = getGlobalBounds(node);
-    console.log("node:", nodeBounds);
-    const rootBounds = getGlobalBounds(base);
-    console.log("root:", rootBounds);
+    const baseBounds = getGlobalBounds(base);
     return {
-        x: nodeBounds.x - (rootBounds.x + rootBounds.width / 2),
-        y: nodeBounds.y - (rootBounds.y + rootBounds.height / 2),
+        x: nodeBounds.x - (baseBounds.x + baseBounds.width / 2),
+        y: nodeBounds.y - (baseBounds.y + baseBounds.height / 2),
         width: nodeBounds.width,
         height: nodeBounds.height
     };
@@ -151,31 +164,21 @@ function getTopLeftBoundsInBase(node, base) {
  */
 function getBoundsInBase(node, base) {
     const nodeBounds = getGlobalBounds(node);
-    console.log("node:", nodeBounds);
-    const rootBounds = getGlobalBounds(base);
-    console.log("root:", rootBounds);
+    const baseBounds = getGlobalBounds(base);
     return {
-        x: nodeBounds.x + nodeBounds.width / 2 - (rootBounds.x + rootBounds.width / 2),
-        y: nodeBounds.y + nodeBounds.height / 2 - (rootBounds.y + rootBounds.height / 2),
+        x: nodeBounds.x + nodeBounds.width / 2 - (baseBounds.x + baseBounds.width / 2),
+        y: nodeBounds.y + nodeBounds.height / 2 - (baseBounds.y + baseBounds.height / 2),
         width: nodeBounds.width,
         height: nodeBounds.height
     };
 }
 
-/**
- * オプションRasterizeチェック
- * 有効ならTrue
- * @param {string[]} options 
- * @return {boolean}
- */
-function checkOptionRasterize(options) {
-    const r = options["rasterize"];
+function checkBoolean(r) {
     if ((typeof r) == "string") {
         const val = r.toLowerCase();
         if (val == "false" || val == "0" || val == "null") return false;
     }
-    if (!r) return false;
-    return true;
+    return r ? true : false;
 }
 
 
@@ -233,7 +236,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  */
 async function extractedGroup(json, node, funcForEachChild, name, options, depth) {
     // 深度が0の場合はサブPrefabチェックを回避し､通常の処理をする
-    if (depth > 0 && optionEnableSubPrefab && options["subPrefab"]) {
+    if (depth > 0 && checkOptionSubPrefab(options)) {
         return "subPrefab";
     } else {
         let type = "Button";
@@ -267,6 +270,16 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
             return type;
         }
 
+        type = "Toggle";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name
+            });
+            await funcForEachChild();
+            return type;
+        }
+
         type = "List";
         if (name.endsWith(type)) {
             Object.assign(json, {
@@ -283,6 +296,8 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
             }
             return type;
         }
+
+        // 他に"Mask"がある
     }
 
     // 通常のグループ
@@ -395,11 +410,7 @@ function makeResponsiveParameter(root) {
 
     // 変更されたboundsを取得する
     nodeWalker(root, node => {
-        var hash = hashBounds[node.guid];
-        if (!hash) {
-            hash = {};
-            hashBounds[node.guid] = hash;
-        }
+        var hash = hashBounds[node.guid] || (hashBounds[node.guid] = {});
         hash["after"] = {
             bounds: getGlobalBounds(node)
         }
@@ -418,9 +429,7 @@ function makeResponsiveParameter(root) {
     // レスポンシブパラメータの生成
     for (var key in hashBounds) {
         var value = hashBounds[key];
-        if (value["before"] && value["after"]) {
-            value["responsiveParameter"] = getResponsiveParameter(value["node"], hashBounds);
-        }
+        value["responsiveParameter"] = getResponsiveParameter(value["node"], hashBounds);
     }
 
     return hashBounds;
@@ -458,7 +467,8 @@ function checkBounds(hashBounds) {
  * @param {*} node 
  */
 function getPivotAndStretch(node) {
-    return responsiveBounds[node.guid]["responsiveParameter"];
+    let bounds = responsiveBounds[node.guid];
+    return bounds ? bounds["responsiveParameter"] : null;
 }
 
 
@@ -474,7 +484,7 @@ function getPivotAndStretch(node) {
  */
 async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
     // ラスタライズオプションチェック
-    if (checkOptionRasterize(options)) {
+    if (optionForceTextToImage || checkOptionRasterize(options)) {
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
@@ -549,13 +559,13 @@ function parseNameOptions(str) {
 
     // そのレイヤーをラスタライズする
     if (name.startsWith("*")) {
-        options["rasterize"] = true;
+        options[OPTION_RASTERIZE] = true;
         name = name.substring(1);
     }
 
     // 名前の最後が/であれば､サブPrefabのオプションをONにする
     if (name.endsWith("/")) {
-        options["subPrefab"] = true;
+        options[OPTION_SUB_PREFAB] = true;
         name = name.slice(0, -1);
     }
 
@@ -641,20 +651,18 @@ async function extractedRoot(renditions, folder, root) {
     let nodeWalker = async (nodeStack, layoutJson, depth) => {
         var node = nodeStack[nodeStack.length - 1];
         let constructorName = node.constructor.name;
-        const indent = (depth => {
-            let sp = "";
-            for (let i = 0; i < depth; i++) sp += "  ";
-            return sp;
-        })(depth);
-        console.log(indent + "'" + node.name + "':" + constructorName);
-
         // レイヤー名から名前とオプションの分割
         let {
             name,
             options
         } = parseNameOptions(node.name);
+        const indent = (depth => {
+            let sp = "";
+            for (let i = 0; i < depth; i++) sp += "  ";
+            return sp;
+        })(depth);
 
-        console.log(node.name, name, options);
+        console.log(indent + "'" + node.name + "':" + constructorName + " " + options);
 
         // 名前の最初1文字目が#ならコメントNode
         if (name.startsWith("#")) {
@@ -728,7 +736,7 @@ async function extractedRoot(renditions, folder, root) {
 
 }
 
-// メインファンクション
+// Baum2 export
 async function exportBaum2(roots, outputFolder) {
     // ラスタライズする要素を入れる
     let renditions = [];
@@ -824,12 +832,14 @@ async function alert(message) {
     return await dialog.showModal();
 }
 
-async function showModal(selection, root) {
+
+async function exportBaum2Command(selection, root) {
     let inputFolder;
     let inputScale;
     let errorLabel;
     let checkGetResponsiveParameter;
     let checkEnableSubPrefab;
+    let checkForceTextToImage;
     let dialog =
         h("dialog",
             h("form", {
@@ -897,6 +907,17 @@ async function showModal(selection, root) {
                     }),
                     h("span", "名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)")
                 ),
+                h("label", {
+                    style: {
+                        flexDirection: "row",
+                        alignItems: "center"
+                    }
+                },
+                checkForceTextToImage = h("input", {
+                    type: "checkbox"
+                }),
+                h("span", "Textを強制的に画像にして出力する (EXPERIMENTAL)")
+                ),
                 errorLabel = h("label", {
                         style: {
                             alignItems: "center",
@@ -932,6 +953,8 @@ async function showModal(selection, root) {
                             optionNeedResponsiveParameter = checkGetResponsiveParameter.checked;
                             // サブPrefab
                             optionEnableSubPrefab = checkEnableSubPrefab.checked;
+                            //
+                            optionForceTextToImage = checkForceTextToImage.checked;
 
                             dialog.close("export");
                         }
@@ -951,6 +974,7 @@ async function showModal(selection, root) {
     // Responsive Parameter
     checkGetResponsiveParameter.checked = optionNeedResponsiveParameter;
     checkEnableSubPrefab.checked = optionEnableSubPrefab;
+    checkForceTextToImage.checked = optionForceTextToImage;
 
     // Dialog表示
     document.body.appendChild(dialog);
@@ -989,7 +1013,7 @@ async function showModal(selection, root) {
 }
 
 
-async function pivot(selection, root) {
+async function exportPivotCommand(selection, root) {
     console.log("pivot");
     var artboard = selection.items[0];
 
@@ -1006,7 +1030,7 @@ async function pivot(selection, root) {
 
 module.exports = { // コマンドIDとファンクションの紐付け
     commands: {
-        baum2ExportCommand: showModal,
-        baum2PivotCommand: pivot
+        baum2ExportCommand: exportBaum2Command,
+        baum2PivotCommand: exportPivotCommand
     }
 };
