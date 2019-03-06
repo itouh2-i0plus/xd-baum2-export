@@ -297,6 +297,23 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
             return type;
         }
 
+        type = "EnhancedScroller";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name,
+                scroll: "vertical" // TODO:オプションを取得するようにする
+            });
+            await funcForEachChild();
+            let areaElement = json.elements.find(element => {
+                return element.name == "Area";
+            });
+            if (areaElement != null) {
+                console.log("*** found Area ***");
+            }
+            return type;
+        }
+
         // 他に"Mask"がある
     }
 
@@ -325,6 +342,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
 function getResponsiveParameter(node, hashBounds) {
+    if (!node) return null;
     const nodeBounds = hashBounds[node.guid];
     if (!nodeBounds || !nodeBounds["before"] || !nodeBounds["after"]) return null;
     const beforeBounds = nodeBounds["before"]["bounds"];
@@ -908,15 +926,15 @@ async function exportBaum2Command(selection, root) {
                     h("span", "名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)")
                 ),
                 h("label", {
-                    style: {
-                        flexDirection: "row",
-                        alignItems: "center"
-                    }
-                },
-                checkForceTextToImage = h("input", {
-                    type: "checkbox"
-                }),
-                h("span", "Textを強制的に画像にして出力する (EXPERIMENTAL)")
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
+                        }
+                    },
+                    checkForceTextToImage = h("input", {
+                        type: "checkbox"
+                    }),
+                    h("span", "Textを強制的に画像にして出力する (EXPERIMENTAL)")
                 ),
                 errorLabel = h("label", {
                         style: {
