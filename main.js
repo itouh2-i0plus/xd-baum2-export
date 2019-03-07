@@ -10,7 +10,7 @@ const application = require("application");
 const fs = require("uxp").storage.localFileSystem;
 
 // 全体にかけるスケール
-var scale = 4.0;
+var scale = 1.0;
 
 // レスポンシブパラメータを保存する
 var responsiveBounds = {};
@@ -131,8 +131,8 @@ function getDrawBoundsInBase(node, base) {
     const nodeDrawBounds = getGlobalDrawBounds(node);
     const baseBounds = getGlobalBounds(base);
     return {
-        x: nodeDrawBounds.x - baseBounds.x - baseBounds.width / 2,
-        y: nodeDrawBounds.y - baseBounds.y - baseBounds.height / 2,
+        x: nodeDrawBounds.x - (baseBounds.x + baseBounds.width / 2),
+        y: nodeDrawBounds.y - (baseBounds.y + baseBounds.height / 2),
         width: nodeDrawBounds.width,
         height: nodeDrawBounds.height
     };
@@ -172,6 +172,7 @@ function getBoundsInBase(node, base) {
         height: nodeBounds.height
     };
 }
+
 
 function checkBoolean(r) {
     if ((typeof r) == "string") {
@@ -234,7 +235,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string} name 
  * @param {string[]} options 
  */
-async function extractedGroup(json, node, funcForEachChild, name, options, depth) {
+async function extractedGroup(json, node, root, funcForEachChild, name, options, depth) {
     // 深度が0の場合はサブPrefabチェックを回避し､通常の処理をする
     if (depth > 0 && checkOptionSubPrefab(options)) {
         return "subPrefab";
@@ -297,19 +298,37 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
             return type;
         }
 
+        type = "EnhancedScroller";
+        if (name.endsWith(type)) {
+            Object.assign(json, {
+                type: type,
+                name: name,
+                scroll: "vertical" // TODO:オプションを取得するようにする
+            });
+            await funcForEachChild();
+            let areaElement = json.elements.find(element => {
+                return element.name == "Area";
+            });
+            if (areaElement != null) {
+                console.log("*** found Area ***");
+            }
+            return type;
+        }
+
         // 他に"Mask"がある
     }
 
     // 通常のグループ
     const type = "Group";
+    let bounds = getGlobalDrawBounds(node);
     Object.assign(json, {
         type: type,
         name: name,
+        w: bounds.width, // Baum2ではつかわないが､情報としていれる
+        h: bounds.height, // Baum2ではつかわないが､情報としていれる
         elements: [] // Groupは空でもelementsをもっていないといけない
     });
-    if (depth > 0) {
-        assignPivotAndStretch(json, node);
-    }
+    assignPivotAndStretch(json, node);
     if (checkOptionRasterize(options)) {}
     await funcForEachChild();
 
@@ -325,6 +344,7 @@ async function extractedGroup(json, node, funcForEachChild, name, options, depth
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
 function getResponsiveParameter(node, hashBounds) {
+    if (!node) return null;
     const nodeBounds = hashBounds[node.guid];
     if (!nodeBounds || !nodeBounds["before"] || !nodeBounds["after"]) return null;
     const beforeBounds = nodeBounds["before"]["bounds"];
@@ -334,6 +354,7 @@ function getResponsiveParameter(node, hashBounds) {
     const resizePlusWidth = parentBounds["after"]["bounds"].width - parentBounds["before"]["bounds"].width;
     const resizePlusHeight = parentBounds["after"]["bounds"].height - parentBounds["before"]["bounds"].height;
 
+
     let horizontalFix = null; // left center right
     let verticalFix = null; // top middle bottom
 
@@ -342,7 +363,7 @@ function getResponsiveParameter(node, hashBounds) {
         horizontalFix = "left";
     } else {
         const subx = afterBounds.x - beforeBounds.x;
-        horizontalFix = (subx > 0 && subx <= resizePlusWidth * 0.50001) ? "center" : "right";
+        horizontalFix = (subx > 0 && subx <= resizePlusWidth * 0.6) ? "center" : "right"; // 0.6 → 0.5より多めにとる
     }
 
     // 縦のレスポンシブパラメータを取得する
@@ -350,7 +371,7 @@ function getResponsiveParameter(node, hashBounds) {
         verticalFix = "top";
     } else {
         const suby = afterBounds.y - beforeBounds.y;
-        verticalFix = (suby > 0 && suby <= resizePlusHeight * 0.50001) ? "middle" : "bottom";
+        verticalFix = (suby > 0 && suby <= resizePlusHeight * 0.6) ? "middle" : "bottom";
     }
 
     let ret = {};
@@ -586,6 +607,46 @@ function concatNameOptions(name, options) {
     return str;
 }
 
+
+function makeLayoutJson(root) {
+    let rootBounds;
+    if (root instanceof Artboard) {
+        rootBounds = getGlobalBounds(root);
+        rootBounds.x = 0;
+        rootBounds.y = 0;
+    } else {
+        rootBounds = getBoundsInBase(root, root.parent);
+    }
+
+    let layoutJson = {
+        info: {
+            version: "0.6.1",
+            canvas: {
+                image: {
+                    w: rootBounds.width,
+                    h: rootBounds.height
+                },
+                size: {
+                    w: rootBounds.width,
+                    h: rootBounds.height
+                },
+                base: {
+                    x: rootBounds.x,
+                    y: rootBounds.y,
+                    w: rootBounds.width,
+                    h: rootBounds.height
+                }
+            }
+        },
+        root: {
+            type: "Root",
+            name: root.name
+        }
+    };
+    return layoutJson;
+}
+
+
 /**
  * アートボードの処理
  * @param {*} renditions 
@@ -613,40 +674,7 @@ async function extractedRoot(renditions, folder, root) {
         overwrite: true
     });
 
-    let rootBounds;
-    if (root instanceof Artboard) {
-        rootBounds = getGlobalBounds(root);
-        rootBounds.x = 0;
-        rootBounds.y = 0;
-    } else {
-        rootBounds = getBoundsInBase(root, root.parent);
-    }
-
-    let layoutJson = {
-        info: {
-            version: "0.6.1",
-            canvas: {
-                image: {
-                    w: rootBounds.width,
-                    h: rootBounds.height
-                },
-                size: {
-                    w: rootBounds.width,
-                    h: rootBounds.height
-                },
-                base: {
-                    x: -rootBounds.x,
-                    y: -rootBounds.y,
-                    w: rootBounds.width,
-                    h: rootBounds.height
-                }
-            }
-        },
-        root: {
-            type: "Root",
-            name: root.name
-        }
-    };
+    var layoutJson = makeLayoutJson(root);
 
     let nodeWalker = async (nodeStack, layoutJson, depth) => {
         var node = nodeStack[nodeStack.length - 1];
@@ -698,14 +726,14 @@ async function extractedRoot(renditions, folder, root) {
                 {
                     // BooleanGroupは強制的にラスタライズする
                     options["rasterize"] = true;
-                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options, depth);
+                    let type = await extractedGroup(layoutJson, node, root, forEachChild, name, options, depth);
                 }
                 break;
             case "Group":
             case "RepeatGrid":
             case "SymbolInstance":
                 {
-                    let type = await extractedGroup(layoutJson, node, forEachChild, name, options, depth);
+                    let type = await extractedGroup(layoutJson, node, root, forEachChild, name, options, depth);
                 }
                 break;
             case "Line":
@@ -729,6 +757,26 @@ async function extractedRoot(renditions, folder, root) {
     };
 
     await nodeWalker([root], layoutJson.root, 0);
+
+    // rootにPivot情報があった場合､canvas.baseの位置を調整する
+    let pivot = layoutJson.root["pivot"];
+    if (pivot && root.parent) {
+        let node = getGlobalBounds(root);
+        let parent = getGlobalBounds(root.parent);
+        if (pivot.indexOf("left") >= 0) {
+            layoutJson.info.canvas.base.x = (parent.x - node.x) - (node.width / 2);
+        }
+        if (pivot.indexOf("right") >= 0) {
+            console.log("right");
+            layoutJson.info.canvas.base.x = (parent.x + parent.width) - (node.x + node.width / 2);
+        }
+        if (pivot.indexOf("top") >= 0) {
+            layoutJson.info.canvas.base.y = (parent.y - node.y) - (node.height / 2);
+        }
+        if (pivot.indexOf("bottom") >= 0) {
+            layoutJson.info.canvas.base.y = (parent.y + parent.height) - (node.y + node.height / 2);
+        }
+    }
 
     // layout.txtの出力
     layoutFile.write(JSON.stringify(layoutJson, null, "  "));
@@ -908,15 +956,15 @@ async function exportBaum2Command(selection, root) {
                     h("span", "名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)")
                 ),
                 h("label", {
-                    style: {
-                        flexDirection: "row",
-                        alignItems: "center"
-                    }
-                },
-                checkForceTextToImage = h("input", {
-                    type: "checkbox"
-                }),
-                h("span", "Textを強制的に画像にして出力する (EXPERIMENTAL)")
+                        style: {
+                            flexDirection: "row",
+                            alignItems: "center"
+                        }
+                    },
+                    checkForceTextToImage = h("input", {
+                        type: "checkbox"
+                    }),
+                    h("span", "Textを強制的に画像にして出力する (EXPERIMENTAL)")
                 ),
                 errorLabel = h("label", {
                         style: {
