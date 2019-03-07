@@ -767,7 +767,6 @@ async function extractedRoot(renditions, folder, root) {
             layoutJson.info.canvas.base.x = (parent.x - node.x) - (node.width / 2);
         }
         if (pivot.indexOf("right") >= 0) {
-            console.log("right");
             layoutJson.info.canvas.base.x = (parent.x + parent.width) - (node.x + node.width / 2);
         }
         if (pivot.indexOf("top") >= 0) {
@@ -789,12 +788,18 @@ async function exportBaum2(roots, outputFolder) {
     // ラスタライズする要素を入れる
     let renditions = [];
 
-    // アートボード毎の処理
+    // レスポンシブパラメータの作成
+    responsiveBounds = {}
     for (var i in roots) {
         let root = roots[i];
         if (optionNeedResponsiveParameter && root instanceof Artboard) {
-            responsiveBounds = makeResponsiveParameter(root);
+            Object.assign(responsiveBounds, makeResponsiveParameter(root));
         }
+    }
+
+    // アートボード毎の処理
+    for (var i in roots) {
+        let root = roots[i];
         await extractedRoot(renditions, outputFolder, root);
     }
 
