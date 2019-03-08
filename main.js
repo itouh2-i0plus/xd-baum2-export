@@ -292,13 +292,13 @@ async function extractedGroup(json, node, root, funcForEachChild, name, options,
             let areaElement = json.elements.find(element => {
                 return element.name == "Area";
             });
-            if (areaElement != null) {
-                console.log("*** found Area ***");
+            if (!areaElement) {
+                console.log("***error not found Area");
             }
             return type;
         }
 
-        type = "EnhancedScroller";
+        type = "Scroller";
         if (name.endsWith(type)) {
             Object.assign(json, {
                 type: type,
@@ -309,8 +309,8 @@ async function extractedGroup(json, node, root, funcForEachChild, name, options,
             let areaElement = json.elements.find(element => {
                 return element.name == "Area";
             });
-            if (areaElement != null) {
-                console.log("*** found Area ***");
+            if (!areaElement) {
+                console.log("***error not found Area");
             }
             return type;
         }
@@ -473,8 +473,8 @@ function checkBounds(hashBounds) {
                 beforeBounds.width != restoreBounds.width ||
                 beforeBounds.height != restoreBounds.height) {
                 // 変わってしまった
-                console.log(beforeBounds);
-                console.log(restoreBounds);
+                console.log("***error bounds changed:")
+                console.log(value["node"]);
                 return false;
             }
         }
