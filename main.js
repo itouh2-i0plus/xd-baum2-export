@@ -19,25 +19,53 @@ var responsiveBounds = {};
 var outputFolder = null;
 
 // レスポンシブパラメータを取得するオプション
-var optionNeedResponsiveParameter = false;
+var optionNeedResponsiveParameter = true;
 
 // レスポンシブパラメータを取得するオプション
-var optionEnableSubPrefab = false;
+var optionEnableSubPrefab = true;
 
 // Textノードは強制的にImageに変換する
-var optionForceTextToImage = false;
-
+var optionForceTextToImage = true;
 
 const OPTION_RASTERIZE = "rasterize";
+const OPTION_SUB_PREFAB = "subPrefab";
+const OPTION_BUTTON = "button";
+const OPTION_SLIDER = "slider";
+const OPTION_SCROLLBAR = "scrollbar";
+const OPTION_TOGGLE = "toggle";
+const OPTION_LIST = "list";
+const OPTION_SCROLLER = "scroller";
 
 function checkOptionRasterize(options) {
     return checkBoolean(options[OPTION_RASTERIZE]);
 }
 
-const OPTION_SUB_PREFAB = "subPrefab";
-
 function checkOptionSubPrefab(options) {
     return optionEnableSubPrefab && checkBoolean(options[OPTION_SUB_PREFAB]);
+}
+
+function checkOptionButton(options) {
+    return checkBoolean(options[OPTION_BUTTON]);
+}
+
+function checkOptionSlider(options) {
+    return checkBoolean(options[OPTION_SLIDER]);
+}
+
+function checkOptionScrollbar(options) {
+    return checkBoolean(options[OPTION_SCROLLBAR]);
+}
+
+function checkOptionToggle(options) {
+    return checkBoolean(options[OPTION_TOGGLE]);
+}
+
+function checkOptionList(options) {
+    return checkBoolean(options[OPTION_LIST]);
+}
+
+function checkOptionScroller(options) {
+    return checkBoolean(options[OPTION_SCROLLER]);
 }
 
 
@@ -236,87 +264,85 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string[]} options 
  */
 async function extractedGroup(json, node, root, funcForEachChild, name, options, depth) {
-    // 深度が0の場合はサブPrefabチェックを回避し､通常の処理をする
     if (depth > 0 && checkOptionSubPrefab(options)) {
+        // 深度が0以上で､SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
         return "subPrefab";
-    } else {
-        let type = "Button";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name
-            });
-            assignPivotAndStretch(json, node);
-            await funcForEachChild();
-            return type;
-        }
-
-        type = "Slider";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name
-            });
-            await funcForEachChild();
-            return type;
-        }
-
-        type = "Scrollbar";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name
-            });
-            await funcForEachChild();
-            return type;
-        }
-
-        type = "Toggle";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name
-            });
-            await funcForEachChild();
-            return type;
-        }
-
-        type = "List";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name,
-                scroll: "vertical" // TODO:オプションを取得するようにする
-            });
-            await funcForEachChild();
-            let areaElement = json.elements.find(element => {
-                return element.name == "Area";
-            });
-            if (areaElement != null) {
-                console.log("*** found Area ***");
-            }
-            return type;
-        }
-
-        type = "EnhancedScroller";
-        if (name.endsWith(type)) {
-            Object.assign(json, {
-                type: type,
-                name: name,
-                scroll: "vertical" // TODO:オプションを取得するようにする
-            });
-            await funcForEachChild();
-            let areaElement = json.elements.find(element => {
-                return element.name == "Area";
-            });
-            if (areaElement != null) {
-                console.log("*** found Area ***");
-            }
-            return type;
-        }
-
-        // 他に"Mask"がある
     }
+    if (checkOptionButton(options)) {
+        const type = "Button"
+        Object.assign(json, {
+            type: type,
+            name: name
+        });
+        assignPivotAndStretch(json, node);
+        await funcForEachChild();
+        return type;
+    }
+
+    if (checkOptionSlider(options)) {
+        const type = "Slider"
+        Object.assign(json, {
+            type: type,
+            name: name
+        });
+        await funcForEachChild();
+        return type;
+    }
+
+    if (checkOptionSlider(options)) {
+        const type = "Scrollbar";
+        Object.assign(json, {
+            type: type,
+            name: name
+        });
+        await funcForEachChild();
+        return type;
+    }
+
+    if (checkOptionToggle(options)) {
+        const type = "Toggle";
+        Object.assign(json, {
+            type: type,
+            name: name
+        });
+        await funcForEachChild();
+        return type;
+    }
+
+    if (checkOptionList(options)) {
+        const type = "List";
+        Object.assign(json, {
+            type: type,
+            name: name,
+            scroll: "vertical" // TODO:オプションを取得するようにする
+        });
+        await funcForEachChild();
+        let areaElement = json.elements.find(element => {
+            return element.name == "Area";
+        });
+        if (!areaElement) {
+            console.log("***error not found Area");
+        }
+        return type;
+    }
+
+    if (checkOptionScroller(options)) {
+        const type = "Scroller";
+        Object.assign(json, {
+            type: type,
+            name: name,
+            scroll: "vertical" // TODO:オプションを取得するようにする
+        });
+        await funcForEachChild();
+        let areaElement = json.elements.find(element => {
+            return element.name == "Area";
+        });
+        if (!areaElement) {
+            console.log("***error not found Area");
+        }
+        return type;
+    }
+    // 他に"Mask"がある
 
     // 通常のグループ
     const type = "Group";
@@ -473,8 +499,8 @@ function checkBounds(hashBounds) {
                 beforeBounds.width != restoreBounds.width ||
                 beforeBounds.height != restoreBounds.height) {
                 // 変わってしまった
-                console.log(beforeBounds);
-                console.log(restoreBounds);
+                console.log("***error bounds changed:")
+                console.log(value["node"]);
                 return false;
             }
         }
@@ -555,10 +581,12 @@ async function extractedDrawing(json, node, artboard, subFolder, renditions, nam
     assignPivotAndStretch(json, node);
 
     await assignImage(json, node, artboard, subFolder, renditions, name);
-
 }
 
-
+/**
+ * .nameをパースしオプションに分解する
+ * @param {*} str 
+ */
 function parseNameOptions(str) {
     let name = null;
     let options = {};
@@ -588,6 +616,30 @@ function parseNameOptions(str) {
     if (name.endsWith("/")) {
         options[OPTION_SUB_PREFAB] = true;
         name = name.slice(0, -1);
+    }
+
+    if (name.endsWith("Button")) {
+        options[OPTION_BUTTON] = true;
+    }
+
+    if (name.endsWith("Slider")) {
+        options[OPTION_SLIDER] = true;
+    }
+
+    if (name.endsWith("Scrollbar")) {
+        options[OPTION_SCROLLBAR] = true;
+    }
+
+    if (name.endsWith("Toggle")) {
+        options[OPTION_TOGGLE] = true;
+    }
+
+    if (name.endsWith("List")) {
+        options[OPTION_LIST] = true;
+    }
+
+    if (name.endsWith("Scroller")) {
+        options[OPTION_SCROLLER] = true;
     }
 
     return {
@@ -807,9 +859,7 @@ async function exportBaum2(roots, outputFolder) {
         // 一括画像ファイル出力
         application.createRenditions(renditions)
             .then(results => {
-                results.forEach(result => {
-                    console.log(`saved at ${result.outputFile.nativePath}`);
-                });
+                console.log(`saved ${renditions.length} files`);
             })
             .catch(error => {
                 console.log("error:" + error);
@@ -1043,7 +1093,7 @@ async function exportBaum2Command(selection, root) {
         let func = nodes => {
             nodes.forEach(node => {
                 let nameOptions = parseNameOptions(node.name);
-                if (node instanceof Artboard || (optionEnableSubPrefab && nameOptions.options["subPrefab"])) {
+                if (node instanceof Artboard || checkOptionSubPrefab(nameOptions.options)) {
                     // 同じ名前のものは上書きされる
                     roots[nameOptions.name] = node;
                 }
