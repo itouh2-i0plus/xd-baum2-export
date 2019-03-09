@@ -25,13 +25,14 @@ var optionNeedResponsiveParameter = true;
 var optionEnableSubPrefab = true;
 
 // Textノードは強制的にImageに変換する
-var optionForceTextToImage = true;
+var optionForceTextToImage = false;
 
 const OPTION_RASTERIZE = "rasterize";
 const OPTION_SUB_PREFAB = "subPrefab";
 const OPTION_BUTTON = "button";
 const OPTION_SLIDER = "slider";
 const OPTION_SCROLLBAR = "scrollbar";
+const OPTION_TEXT = "text";
 const OPTION_TOGGLE = "toggle";
 const OPTION_LIST = "list";
 const OPTION_SCROLLER = "scroller";
@@ -54,6 +55,10 @@ function checkOptionSlider(options) {
 
 function checkOptionScrollbar(options) {
     return checkBoolean(options[OPTION_SCROLLBAR]);
+}
+
+function checkOptionText(options) {
+    return checkBoolean(options[OPTION_TEXT]);
 }
 
 function checkOptionToggle(options) {
@@ -513,7 +518,7 @@ function getPivotAndStretch(node) {
  */
 async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
     // ラスタライズオプションチェック
-    if (optionForceTextToImage || checkOptionRasterize(options)) {
+    if (optionForceTextToImage || checkOptionRasterize(options) || !checkOptionText(options)) {
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
@@ -610,6 +615,10 @@ function parseNameOptions(str) {
 
     if (name.endsWith("Scrollbar")) {
         options[OPTION_SCROLLBAR] = true;
+    }
+
+    if (name.endsWith("Text")) {
+        options[OPTION_TEXT] = true;
     }
 
     if (name.endsWith("Toggle")) {
