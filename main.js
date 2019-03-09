@@ -27,15 +27,21 @@ var optionEnableSubPrefab = true;
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false;
 
+const OPTION_COMMENTOUT = "commentout";
 const OPTION_RASTERIZE = "rasterize";
 const OPTION_SUB_PREFAB = "subPrefab";
 const OPTION_BUTTON = "button";
 const OPTION_SLIDER = "slider";
 const OPTION_SCROLLBAR = "scrollbar";
 const OPTION_TEXT = "text";
+const OPTION_INPUT = "input";
 const OPTION_TOGGLE = "toggle";
 const OPTION_LIST = "list";
 const OPTION_SCROLLER = "scroller";
+
+function checkOptionCommentOut(options) {
+    return checkBoolean(options[OPTION_COMMENTOUT]);
+}
 
 function checkOptionRasterize(options) {
     return checkBoolean(options[OPTION_RASTERIZE]);
@@ -59,6 +65,10 @@ function checkOptionScrollbar(options) {
 
 function checkOptionText(options) {
     return checkBoolean(options[OPTION_TEXT]);
+}
+
+function checkOptionInput(options) {
+    return checkBoolean(options[OPTION_INPUT]);
 }
 
 function checkOptionToggle(options) {
@@ -250,7 +260,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
  * @param {string} name 
  * @param {string[]} options 
  */
-async function extractedGroup(json, node, root, funcForEachChild, name, options, depth) {
+async function nodeGroup(json, node, root, funcForEachChild, name, options, depth) {
     if (depth > 0 && checkOptionSubPrefab(options)) {
         // 深度が0以上で､SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
         return "subPrefab";
@@ -516,17 +526,28 @@ function getPivotAndStretch(node) {
  * @param {string} name 
  * @param {string[]} options 
  */
-async function extractedText(json, node, artboard, subfolder, renditions, name, options) {
+async function nodeText(json, node, artboard, subfolder, renditions, name, options) {
     // ラスタライズオプションチェック
-    if (optionForceTextToImage || checkOptionRasterize(options) || !checkOptionText(options)) {
-        await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
+    if (optionForceTextToImage || checkOptionRasterize(options)) {
+        await nodeDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
+
+    if (!checkOptionText(options) && !checkOptionInput(options)) {
+        await nodeDrawing(json, node, artboard, subfolder, renditions, name, options);
+        return;
+    }
+
     const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard);
+
+    let type = "Text";
+    if (checkOptionInput(options)) {
+        type = "Input";
+    }
 
     // text.styleRangesの適応をしていない
     Object.assign(json, {
-        type: "Text",
+        type: type,
         name: name,
         text: node.text,
         textType: "point",
@@ -548,6 +569,16 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
 
 
 /**
+ * レスポンシブパラメータの取得
+ * @param {*} node 
+ */
+function getPivotAndStretch(node) {
+    let bounds = responsiveBounds[node.guid];
+    return bounds ? bounds["responsiveParameter"] : null;
+}
+
+
+/**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json 
  * @param {scenegraph} node 
@@ -557,7 +588,7 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
  * @param {string} name 
  * @param {string[]} options 
  */
-async function extractedDrawing(json, node, artboard, subFolder, renditions, name, options) {
+async function nodeDrawing(json, node, artboard, subFolder, renditions, name, options) {
     //
     Object.assign(json, {
         type: "Image",
@@ -593,6 +624,13 @@ function parseNameOptions(str) {
         name = str.trim();
     }
 
+    // 名前の最初1文字目が#ならコメントNode
+    if (name.startsWith("#")) {
+        options[OPTION_COMMENTOUT] = true;
+        name = name.substring(1);
+        return;
+    }
+
     // そのレイヤーをラスタライズする
     if (name.startsWith("*")) {
         options[OPTION_RASTERIZE] = true;
@@ -619,6 +657,10 @@ function parseNameOptions(str) {
 
     if (name.endsWith("Text")) {
         options[OPTION_TEXT] = true;
+    }
+
+    if (name.endsWith("Input")) {
+        options[OPTION_INPUT] = true;
     }
 
     if (name.endsWith("Toggle")) {
@@ -727,16 +769,17 @@ async function extractedRoot(renditions, folder, root) {
             name,
             options
         } = parseNameOptions(node.name);
-        const indent = (depth => {
+
+        const indent = (() => {
             let sp = "";
             for (let i = 0; i < depth; i++) sp += "  ";
             return sp;
-        })(depth);
+        })();
 
         console.log(indent + "'" + node.name + "':" + constructorName + " " + options);
 
-        // 名前の最初1文字目が#ならコメントNode
-        if (name.startsWith("#")) {
+        // コメントアウトチェック
+        if (checkOptionCommentOut(options)) {
             return;
         }
 
@@ -763,20 +806,25 @@ async function extractedRoot(renditions, folder, root) {
         // nodeの型で処理の分岐
         switch (constructorName) {
             case "Artboard":
+                Object.assign(layoutJson,
+                    {
+                        artboard:true
+                    }
+                );
                 await forEachChild();
                 break;
             case "BooleanGroup":
                 {
                     // BooleanGroupは強制的にラスタライズする
                     options["rasterize"] = true;
-                    let type = await extractedGroup(layoutJson, node, root, forEachChild, name, options, depth);
+                    let type = await nodeGroup(layoutJson, node, root, forEachChild, name, options, depth);
                 }
                 break;
             case "Group":
             case "RepeatGrid":
             case "SymbolInstance":
                 {
-                    let type = await extractedGroup(layoutJson, node, root, forEachChild, name, options, depth);
+                    let type = await nodeGroup(layoutJson, node, root, forEachChild, name, options, depth);
                 }
                 break;
             case "Line":
@@ -784,11 +832,11 @@ async function extractedRoot(renditions, folder, root) {
             case "Rectangle":
             case "Path":
                 nodeStack.forEach(node => {});
-                await extractedDrawing(layoutJson, node, root, subFolder, renditions, name, options);
+                await nodeDrawing(layoutJson, node, root, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             case "Text":
-                await extractedText(layoutJson, node, root, subFolder, renditions, name, options);
+                await nodeText(layoutJson, node, root, subFolder, renditions, name, options);
                 await forEachChild();
                 break;
             default:
