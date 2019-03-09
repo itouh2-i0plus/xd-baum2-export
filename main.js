@@ -155,7 +155,7 @@ function getGlobalBounds(node) {
  * @param {scenegraph} node 
  * @param {artboard} base 
  */
-function getDrawBoundsInBase(node, base) {
+function getDrawBoundsInBaseCenterMiddle(node, base) {
     const nodeDrawBounds = getGlobalDrawBounds(node);
     const baseBounds = getGlobalBounds(base);
     return {
@@ -168,29 +168,11 @@ function getDrawBoundsInBase(node, base) {
 
 
 /**
- * Artboard内でのBoundsを取得する
+ * Base内での x､yはCenterMiddleでの座標, WidhtHeightを取得する
  * @param {scenegraph} node 
  * @param {artboard} base 
  */
-function getTopLeftBoundsInBase(node, base) {
-    const nodeBounds = getGlobalBounds(node);
-    const baseBounds = getGlobalBounds(base);
-    return {
-        x: nodeBounds.x - (baseBounds.x + baseBounds.width / 2),
-        y: nodeBounds.y - (baseBounds.y + baseBounds.height / 2),
-        width: nodeBounds.width,
-        height: nodeBounds.height
-    };
-}
-
-
-/**
- * Artboard内でのBoundsを取得する
- * x､yはCenterMiddleでの座標になる
- * @param {scenegraph} node 
- * @param {artboard} base 
- */
-function getBoundsInBase(node, base) {
+function getCMWHInBase(node, base) {
     const nodeBounds = getGlobalBounds(node);
     const baseBounds = getGlobalBounds(base);
     return {
@@ -232,7 +214,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
     });
     counter++;
 
-    const drawBounds = getDrawBoundsInBase(node, root);
+    const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root);
 
     Object.assign(json, {
         image: fileName,
@@ -535,7 +517,7 @@ async function extractedText(json, node, artboard, subfolder, renditions, name, 
         await extractedDrawing(json, node, artboard, subfolder, renditions, name, options);
         return;
     }
-    const drawBounds = getDrawBoundsInBase(node, artboard);
+    const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard);
 
     // text.styleRangesの適応をしていない
     Object.assign(json, {
@@ -667,7 +649,7 @@ function makeLayoutJson(root) {
         rootBounds.x = 0;
         rootBounds.y = 0;
     } else {
-        rootBounds = getBoundsInBase(root, root.parent);
+        rootBounds = getCMWHInBase(root, root.parent);
     }
 
     let layoutJson = {
