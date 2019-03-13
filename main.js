@@ -252,9 +252,11 @@ async function nodeGroup(
   json,
   node,
   root,
-  funcForEachChild,
+  subFolder,
+  renditions,
   name,
   options,
+  funcForEachChild,
   depth,
 ) {
   if (depth > 0 && checkOptionSubPrefab(options)) {
@@ -320,20 +322,47 @@ async function nodeGroup(
   }
 
   if (checkOptionScroller(options)) {
-    const type = 'Scroller'
-    Object.assign(json, {
-      type: type,
-      name: name,
-      scroll: 'vertical', // TODO:オプションを取得するようにする
-    })
     await funcForEachChild()
+    //
     let areaElement = json.elements.find(element => {
       return element.name == 'Area'
     })
     if (!areaElement) {
+      if (node.constructor.name == 'RepeatGrid') {
+        let itemJson = json.elements[0]
+
+        var scrollDirection = 'vertical'
+
+        if (node.numColumns > 1) {
+          if (node.numRows == 1) {
+            scrollDirection = 'horizontal'
+          }
+        }
+
+        Object.assign(json, {
+          type: 'Scroller',
+          name: name,
+          scroll: scrollDirection, // TODO:オプションを取得するようにする
+        })
+
+        // リピートグリッドなら子供はすべてScrollerにいれるものになっている
+        // 隙間のパラメータ
+        const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+        Object.assign(json, {
+          paddingRight: node.paddingX,
+          spacing: node.paddingY,
+          x: drawBounds.x,
+          y: drawBounds.y,
+          w: drawBounds.width,
+          h: drawBounds.height,
+          opacity: 100,
+          elements: [itemJson], // トップの一個だけ
+        })
+        assignPivotAndStretch(json, node)
+      }
       console.log('***error not found Area')
     }
-    return type
+    return 'Scroller'
   }
   // 他に"Mask"がある
 
@@ -343,8 +372,8 @@ async function nodeGroup(
   Object.assign(json, {
     type: type,
     name: name,
-    w: bounds.width, // Baum2ではつかわないが､情報としていれる
-    h: bounds.height, // Baum2ではつかわないが､情報としていれる
+    w: bounds.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
+    h: bounds.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
   assignPivotAndStretch(json, node)
@@ -654,7 +683,8 @@ async function nodeDrawing(
  * .nameをパースしオプションに分解する
  * @param {*} str
  */
-function parseNameOptions(str) {
+function parseNameOptions(node) {
+  let str = node.name
   let name = null
   let options = {}
   let optionArray = str.split('@')
@@ -690,6 +720,12 @@ function parseNameOptions(str) {
   if (name.endsWith('/')) {
     options[OPTION_SUB_PREFAB] = true
     name = name.slice(0, -1)
+  }
+
+  if (node.parent.constructor.name == 'RepeatGrid') {
+    // 親がリピートグリッドの場合､名前が適当につけられるようで
+    // Buttonといった名前がつき､機能してしまうことを防ぐ
+    name = 'item0'
   }
 
   if (name.endsWith('Button')) {
@@ -786,7 +822,7 @@ function makeLayoutJson(root) {
  * @param {artboard} root
  */
 async function extractedRoot(renditions, folder, root) {
-  let nameOptions = parseNameOptions(root.name)
+  let nameOptions = parseNameOptions(root)
 
   let subFolderName = nameOptions.name
 
@@ -812,7 +848,7 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = parseNameOptions(node.name)
+    let { name, options } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -821,7 +857,8 @@ async function extractedRoot(renditions, folder, root) {
     })()
 
     console.log(
-      indent + "'" + node.name + "':" + constructorName,
+      indent + "'" + name + "':" + constructorName,
+      options,
       responsiveBounds[node.guid]['responsiveParameter'],
     )
 
@@ -838,13 +875,13 @@ async function extractedRoot(renditions, folder, root) {
         // 後ろから順番に処理をする
         // 描画順に関わるので､非同期処理にしない
         for (let i = numChildren - 1; i >= 0; i--) {
-          let childElement = {}
+          let childJson = {}
           nodeStack.push(node.children.at(i))
-          await nodeWalker(nodeStack, childElement, depth + 1)
+          await nodeWalker(nodeStack, childJson, depth + 1)
           nodeStack.pop()
           // なにも入っていない場合はelementsに追加しない
-          if (Object.keys(childElement).length > 0) {
-            layoutJson.elements.push(childElement)
+          if (Object.keys(childJson).length > 0) {
+            layoutJson.elements.push(childJson)
           }
         }
       }
@@ -866,9 +903,11 @@ async function extractedRoot(renditions, folder, root) {
             layoutJson,
             node,
             root,
-            forEachChild,
+            subFolder,
+            renditions,
             name,
             options,
+            forEachChild,
             depth,
           )
         }
@@ -881,9 +920,11 @@ async function extractedRoot(renditions, folder, root) {
             layoutJson,
             node,
             root,
-            forEachChild,
+            subFolder,
+            renditions,
             name,
             options,
+            forEachChild,
             depth,
           )
         }
@@ -1247,7 +1288,7 @@ async function exportBaum2Command(selection, root) {
 
     let func = nodes => {
       nodes.forEach(node => {
-        let nameOptions = parseNameOptions(node.name)
+        let nameOptions = parseNameOptions(node)
         if (
           node instanceof Artboard ||
           checkOptionSubPrefab(nameOptions.options)
