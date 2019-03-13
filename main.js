@@ -329,12 +329,18 @@ async function nodeGroup(
     })
     if (!areaElement) {
       if (node.constructor.name == 'RepeatGrid') {
+        // Areaがなくて､リピートグリッドだけでもScrollerを作成する
         let itemJson = json.elements[0]
+
+        // itemの下のグループをcentermiddleにする
+        itemJson.elements[0]['pivot'] = 'centermiddle'
 
         var scrollDirection = 'vertical'
 
         if (node.numColumns > 1) {
+          // 縦に一列以上か
           if (node.numRows == 1) {
+            // 縦に一列か
             scrollDirection = 'horizontal'
           }
         }
@@ -342,15 +348,24 @@ async function nodeGroup(
         Object.assign(json, {
           type: 'Scroller',
           name: name,
-          scroll: scrollDirection, // TODO:オプションを取得するようにする
+          scroll: scrollDirection,
         })
+
+        const cell = node.children.at(0)
+        const cellWidth = node.cellSize.width
+        const cellHeight = node.cellSize.height
+
+        const spacing = (node.paddingY * scale) / 2
+        const paddingLeft = (cell.topLeftInParent.x * scale) / 2
+        const paddingTop = (cell.topLeftInParent.y * scale) / 2
 
         // リピートグリッドなら子供はすべてScrollerにいれるものになっている
         // 隙間のパラメータ
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
         Object.assign(json, {
-          paddingRight: node.paddingX,
-          spacing: node.paddingY,
+          paddingLeft: paddingLeft,
+          paddingTop: paddingTop,
+          spacing: spacing,
           x: drawBounds.x,
           y: drawBounds.y,
           w: drawBounds.width,
@@ -359,8 +374,9 @@ async function nodeGroup(
           elements: [itemJson], // トップの一個だけ
         })
         assignPivotAndStretch(json, node)
+      } else {
+        console.log('***error not found Area')
       }
-      console.log('***error not found Area')
     }
     return 'Scroller'
   }
