@@ -1,10 +1,5 @@
 // XD拡張APIのクラスをインポート
-const {
-  Artboard,
-  Text,
-  Color,
-  ImageFill
-} = require('scenegraph')
+const { Artboard, Text, Color, ImageFill } = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -183,10 +178,12 @@ function getCMWHInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x: nodeBounds.x +
+    x:
+      nodeBounds.x +
       nodeBounds.width / 2 -
       (baseBounds.x + baseBounds.width / 2),
-    y: nodeBounds.y +
+    y:
+      nodeBounds.y +
       nodeBounds.height / 2 -
       (baseBounds.y + baseBounds.height / 2),
     width: nodeBounds.width,
@@ -344,31 +341,47 @@ async function nodeGroup(
         それ以外 → Grid
         */
         var scrollDirection = 'vertical'
-        let itemJson;
+        let itemJson
         if (node.numColumns == 1) {
           // vertical
-          itemJson = json.elements[0]
+          itemJson = []
+          // ~Itemは無いか探す
+          // Scroller直下にはなく､名前対策してあるため､
+          // もう1段したの子供を検索する
+          json.elements[0].elements.forEach(elem => {
+            if (elem.name.endsWith('Item')) {
+              itemJson.push(elem)
+            }
+          })
+          if (itemJson.length == 0) {
+            itemJson = [json.elements[0]]
+          }
         } else if (node.numRows == 1) {
           // Horizontal
-          itemJson = json.elements[0]
+          itemJson = [json.elements[0]]
           scrollDirection = 'horizontal'
         } else {
           // Grid
-          itemJson = {
-            type: 'Group',
-            name: 'item0',
-            elements: []
-          }
+          itemJson = [
+            {
+              type: 'Group',
+              name: 'item0',
+              elements: [],
+            },
+          ]
+          // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
             elem.name = 'item0-' + (node.numColumns - i - 1)
-            itemJson.elements.push(elem)
+            itemJson[0].elements.push(elem)
           }
         }
         // itemの下のグループをlefttopにする
-        itemJson.elements.forEach(elem => {
-          elem['pivot'] = 'lefttop'
-        });
+        itemJson.forEach(item => {
+          item.elements.forEach(elem => {
+            elem['pivot'] = 'lefttop'
+          })
+        })
 
         Object.assign(json, {
           type: 'Scroller',
@@ -377,17 +390,25 @@ async function nodeGroup(
         })
 
         const cell = node.children.at(0)
-        const cellWidth = node.cellSize.width * scale;
-        const cellHeight = node.cellSize.height * scale;
+        const cellWidth = node.cellSize.width * scale
+        const cellHeight = node.cellSize.height * scale
 
-        const spacing = scrollDirection == 'vertical' ? (node.paddingY * scale) : (node.paddingX * scale)
+        const spacing =
+          scrollDirection == 'vertical'
+            ? node.paddingY * scale
+            : node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
-        const itemWidth = cell.topLeftInParent.x * scale + (cellWidth + node.paddingX * scale) * node.numColumns
-        const itemHeight = cell.topLeftInParent.y * scale + (cellHeight + node.paddingY * scale) * node.numRows
+        const itemWidth =
+          cell.topLeftInParent.x * scale +
+          (cellWidth + node.paddingX * scale) * node.numColumns
+        const itemHeight =
+          cell.topLeftInParent.y * scale +
+          (cellHeight + node.paddingY * scale) * node.numRows
 
-        const paddingLeft = (cell.topLeftInParent.x * scale)
-        const paddingTop = (cell.topLeftInParent.y * scale)
-        const paddingRight = (itemWidth > drawBounds.width) ? drawBounds.width - itemWidth : 0;
+        const paddingLeft = cell.topLeftInParent.x * scale
+        const paddingTop = cell.topLeftInParent.y * scale
+        const paddingRight =
+          itemWidth > drawBounds.width ? drawBounds.width - itemWidth : 0
 
         // リピートグリッドなら子供はすべてScrollerにいれるものになっている
         // 隙間のパラメータ
@@ -401,7 +422,7 @@ async function nodeGroup(
           w: drawBounds.width,
           h: drawBounds.height,
           opacity: 100,
-          elements: [itemJson], // トップの一個だけ
+          elements: itemJson, // トップの一個だけ
         })
         assignPivotAndStretch(json, node)
       } else {
@@ -423,7 +444,8 @@ async function nodeGroup(
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
   assignPivotAndStretch(json, node)
-  if (checkOptionRasterize(options)) {}
+  if (checkOptionRasterize(options)) {
+  }
   await funcForEachChild()
 
   return type
@@ -659,7 +681,7 @@ async function nodeText(
 
   let type = 'Text'
   if (checkOptionInput(options)) {
-    // type = 'Input' // 一旦Disable...
+    type = 'Input'
   }
 
   // text.styleRangesの適応をしていない
@@ -893,10 +915,7 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let {
-      name,
-      options
-    } = parseNameOptions(node)
+    let { name, options } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -1119,7 +1138,8 @@ async function alert(message) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1131,7 +1151,8 @@ async function alert(message) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1156,7 +1177,8 @@ async function exportBaum2Command(selection, root) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1165,7 +1187,8 @@ async function exportBaum2Command(selection, root) {
       h('h1', 'XD Baum2 Export'),
       h('hr'),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1180,7 +1203,8 @@ async function exportBaum2Command(selection, root) {
           border: 0,
         })),
         h(
-          'button', {
+          'button',
+          {
             async onclick(e) {
               var folder = await fs.getFolder()
               if (folder != null) {
@@ -1193,7 +1217,8 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1205,7 +1230,8 @@ async function exportBaum2Command(selection, root) {
         })),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1217,7 +1243,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'export responsive parameter (EXPERIMENTAL)'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1232,7 +1259,8 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1244,7 +1272,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'Textを強制的に画像にして出力する (EXPERIMENTAL)'),
       ),
       (errorLabel = h(
-        'label', {
+        'label',
+        {
           style: {
             alignItems: 'center',
             color: '#f00',
@@ -1255,7 +1284,8 @@ async function exportBaum2Command(selection, root) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1264,7 +1294,8 @@ async function exportBaum2Command(selection, root) {
           'Cancel',
         ),
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'cta',
             onclick(e) {
               // 出力できる状態かチェック
