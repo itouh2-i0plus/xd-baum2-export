@@ -23,11 +23,11 @@ var optionEnableSubPrefab = true
 var optionForceTextToImage = false
 
 const OPTION_COMMENTOUT = 'commentout'
-const OPTION_RASTERIZE = 'rasterize'
 const OPTION_SUB_PREFAB = 'subPrefab'
 const OPTION_BUTTON = 'button'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
+const OPTION_IMAGE = 'image'
 const OPTION_TEXT = 'text'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
@@ -36,10 +36,6 @@ const OPTION_SCROLLER = 'scroller'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
-}
-
-function checkOptionRasterize(options) {
-  return checkBoolean(options[OPTION_RASTERIZE])
 }
 
 function checkOptionSubPrefab(options) {
@@ -56,6 +52,10 @@ function checkOptionSlider(options) {
 
 function checkOptionScrollbar(options) {
   return checkBoolean(options[OPTION_SCROLLBAR])
+}
+
+function checkOptionImage(options) {
+  return checkBoolean(options[OPTION_IMAGE])
 }
 
 function checkOptionText(options) {
@@ -263,6 +263,18 @@ async function nodeGroup(
     // 深度が0以上で､SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
     return 'subPrefab'
   }
+  if (checkOptionImage(options)) {
+    await nodeDrawing(
+      json,
+      node,
+      root,
+      subFolder,
+      renditions,
+      name,
+      options,
+    )
+    return 'Image'
+  }
   if (checkOptionButton(options)) {
     const type = 'Button'
     Object.assign(json, {
@@ -444,8 +456,6 @@ async function nodeGroup(
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
   assignPivotAndStretch(json, node)
-  if (checkOptionRasterize(options)) {
-  }
   await funcForEachChild()
 
   return type
@@ -651,7 +661,7 @@ async function nodeText(
   options,
 ) {
   // ラスタライズオプションチェック
-  if (optionForceTextToImage || checkOptionRasterize(options)) {
+  if (optionForceTextToImage || checkOptionImage(options)) {
     await nodeDrawing(
       json,
       node,
@@ -679,7 +689,7 @@ async function nodeText(
 
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard)
 
-  let type = 'Text'
+  let type = 'TextMeshPro'
   if (checkOptionInput(options)) {
     type = 'Input'
   }
@@ -779,7 +789,7 @@ function parseNameOptions(node) {
 
   // そのレイヤーをラスタライズする
   if (name.startsWith('*')) {
-    options[OPTION_RASTERIZE] = true
+    options[OPTION_IMAGE] = true
     name = name.substring(1)
   }
 
@@ -965,7 +975,7 @@ async function extractedRoot(renditions, folder, root) {
       case 'BooleanGroup':
         {
           // BooleanGroupは強制的にラスタライズする
-          options['rasterize'] = true
+          options[OPTION_IMAGE] = true
           let type = await nodeGroup(
             layoutJson,
             node,
@@ -1091,7 +1101,7 @@ async function exportBaum2(roots, outputFolder) {
       })
   } else {
     // 画像出力の必要がなければ終了
-    alert('no outputs')
+    // alert('no outputs')
   }
 
   if (!checkBounds(responsiveBounds)) {
