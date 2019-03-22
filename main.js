@@ -1,5 +1,10 @@
 // XD拡張APIのクラスをインポート
-const { Artboard, Text, Color, ImageFill } = require('scenegraph')
+const {
+  Artboard,
+  Text,
+  Color,
+  ImageFill
+} = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -18,6 +23,9 @@ var optionNeedResponsiveParameter = true
 
 // レスポンシブパラメータを取得するオプション
 var optionEnableSubPrefab = true
+
+// Textノードは強制的にTextMeshProに変換する
+var optionTextToTMP = true
 
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
@@ -178,12 +186,10 @@ function getCMWHInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x:
-      nodeBounds.x +
+    x: nodeBounds.x +
       nodeBounds.width / 2 -
       (baseBounds.x + baseBounds.width / 2),
-    y:
-      nodeBounds.y +
+    y: nodeBounds.y +
       nodeBounds.height / 2 -
       (baseBounds.y + baseBounds.height / 2),
     width: nodeBounds.width,
@@ -374,13 +380,11 @@ async function nodeGroup(
           scrollDirection = 'horizontal'
         } else {
           // Grid
-          itemJson = [
-            {
-              type: 'Group',
-              name: 'item0',
-              elements: [],
-            },
-          ]
+          itemJson = [{
+            type: 'Group',
+            name: 'item0',
+            elements: [],
+          }, ]
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
@@ -406,9 +410,9 @@ async function nodeGroup(
         const cellHeight = node.cellSize.height * scale
 
         const spacing =
-          scrollDirection == 'vertical'
-            ? node.paddingY * scale
-            : node.paddingX * scale
+          scrollDirection == 'vertical' ?
+          node.paddingY * scale :
+          node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
         const itemWidth =
           cell.topLeftInParent.x * scale +
@@ -689,7 +693,10 @@ async function nodeText(
 
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard)
 
-  let type = 'TextMeshPro'
+  let type = 'Text'
+  if (optionTextToTMP) {
+    type = 'TextMeshPro'
+  }
   if (checkOptionInput(options)) {
     type = 'Input'
   }
@@ -925,7 +932,10 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = parseNameOptions(node)
+    let {
+      name,
+      options
+    } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -1148,8 +1158,7 @@ async function alert(message) {
   let dialog = h(
     'dialog',
     h(
-      'form',
-      {
+      'form', {
         method: 'dialog',
         style: {
           width: 400,
@@ -1161,8 +1170,7 @@ async function alert(message) {
       h(
         'footer',
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1183,12 +1191,12 @@ async function exportBaum2Command(selection, root) {
   let errorLabel
   let checkGetResponsiveParameter
   let checkEnableSubPrefab
+  let checkTextToTMP
   let checkForceTextToImage
   let dialog = h(
     'dialog',
     h(
-      'form',
-      {
+      'form', {
         method: 'dialog',
         style: {
           width: 400,
@@ -1197,8 +1205,7 @@ async function exportBaum2Command(selection, root) {
       h('h1', 'XD Baum2 Export'),
       h('hr'),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1213,8 +1220,7 @@ async function exportBaum2Command(selection, root) {
           border: 0,
         })),
         h(
-          'button',
-          {
+          'button', {
             async onclick(e) {
               var folder = await fs.getFolder()
               if (folder != null) {
@@ -1227,8 +1233,7 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1240,8 +1245,7 @@ async function exportBaum2Command(selection, root) {
         })),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1253,8 +1257,7 @@ async function exportBaum2Command(selection, root) {
         h('span', 'export responsive parameter (EXPERIMENTAL)'),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1269,8 +1272,19 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label',
-        {
+        'label', {
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+          },
+        },
+        (checkTextToTMP = h('input', {
+          type: 'checkbox',
+        })),
+        h('span', 'TextはTextMeshProにして出力する'),
+      ),
+      h(
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1279,11 +1293,10 @@ async function exportBaum2Command(selection, root) {
         (checkForceTextToImage = h('input', {
           type: 'checkbox',
         })),
-        h('span', 'Textを強制的に画像にして出力する (EXPERIMENTAL)'),
+        h('span', 'Textを強制的に画像にして出力する'),
       ),
       (errorLabel = h(
-        'label',
-        {
+        'label', {
           style: {
             alignItems: 'center',
             color: '#f00',
@@ -1294,8 +1307,7 @@ async function exportBaum2Command(selection, root) {
       h(
         'footer',
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1304,8 +1316,7 @@ async function exportBaum2Command(selection, root) {
           'Cancel',
         ),
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'cta',
             onclick(e) {
               // 出力できる状態かチェック
@@ -1326,6 +1337,8 @@ async function exportBaum2Command(selection, root) {
                 checkGetResponsiveParameter.checked
               // サブPrefab
               optionEnableSubPrefab = checkEnableSubPrefab.checked
+              //
+              optionTextToTMP = checkTextToTMP.checked
               //
               optionForceTextToImage = checkForceTextToImage.checked
 
@@ -1349,6 +1362,7 @@ async function exportBaum2Command(selection, root) {
   // Responsive Parameter
   checkGetResponsiveParameter.checked = optionNeedResponsiveParameter
   checkEnableSubPrefab.checked = optionEnableSubPrefab
+  checkTextToTMP.checked = optionTextToTMP
   checkForceTextToImage.checked = optionForceTextToImage
 
   // Dialog表示
