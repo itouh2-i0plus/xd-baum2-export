@@ -13,6 +13,9 @@ var responsiveBounds = {}
 // 出力するフォルダ
 var outputFolder = null
 
+// 拡張要素を有効にするかどうか
+var optionEnableExtended = true
+
 // レスポンシブパラメータを取得するオプション
 var optionNeedResponsiveParameter = true
 
@@ -846,10 +849,6 @@ function parseNameOptions(node) {
     options[OPTION_TEXT] = true
   }
 
-  if (name.endsWith('Input')) {
-    options[OPTION_INPUT] = true
-  }
-
   if (name.endsWith('Toggle')) {
     options[OPTION_TOGGLE] = true
   }
@@ -858,8 +857,15 @@ function parseNameOptions(node) {
     options[OPTION_LIST] = true
   }
 
-  if (name.endsWith('Scroller')) {
-    options[OPTION_SCROLLER] = true
+  // 拡張モード有効時のみ
+  if (optionEnableExtended) {
+    if (name.endsWith('Input')) {
+      options[OPTION_INPUT] = true
+    }
+
+    if (name.endsWith('Scroller')) {
+      options[OPTION_SCROLLER] = true
+    }
   }
 
   return {
@@ -1206,6 +1212,7 @@ async function exportBaum2Command(selection, root) {
   let inputFolder
   let inputScale
   let errorLabel
+  let checkEnableExtended
   let checkGetResponsiveParameter
   let checkEnableSubPrefab
   let checkTextToTMP
@@ -1273,10 +1280,23 @@ async function exportBaum2Command(selection, root) {
             alignItems: 'center',
           },
         },
+        (checkEnableExtended = h('input', {
+          type: 'checkbox',
+        })),
+        h('span', '拡張モード有効(TextMeshPro/EnhancedScroller/TextInput)'),
+      ),
+      h(
+        'label',
+        {
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+          },
+        },
         (checkGetResponsiveParameter = h('input', {
           type: 'checkbox',
         })),
-        h('span', 'export responsive parameter (EXPERIMENTAL)'),
+        h('span', 'レスポンシブパラメータの出力'),
       ),
       h(
         'label',
@@ -1289,10 +1309,7 @@ async function exportBaum2Command(selection, root) {
         (checkEnableSubPrefab = h('input', {
           type: 'checkbox',
         })),
-        h(
-          'span',
-          '名前の最後に/がついている以下を独立したPrefabにする (EXPERIMENTAL)',
-        ),
+        h('span', '名前の最後に/がついている以下を独立したPrefabにする'),
       ),
       h(
         'label',
@@ -1305,7 +1322,7 @@ async function exportBaum2Command(selection, root) {
         (checkTextToTMP = h('input', {
           type: 'checkbox',
         })),
-        h('span', 'TextはTextMeshProにして出力する'),
+        h('span', 'TextはTextMeshProにして出力する (拡張モードが必要)'),
       ),
       h(
         'label',
@@ -1360,6 +1377,7 @@ async function exportBaum2Command(selection, root) {
                 errorLabel.textContent = 'invalid output folder'
                 return
               }
+              optionEnableExtended = checkEnableExtended.checked
               // レスポンシブパラメータ
               optionNeedResponsiveParameter =
                 checkGetResponsiveParameter.checked
@@ -1388,6 +1406,7 @@ async function exportBaum2Command(selection, root) {
     inputFolder.value = outputFolder.nativePath
   }
   // Responsive Parameter
+  checkEnableExtended.checked = optionEnableExtended
   checkGetResponsiveParameter.checked = optionNeedResponsiveParameter
   checkEnableSubPrefab.checked = optionEnableSubPrefab
   checkTextToTMP.checked = optionTextToTMP
