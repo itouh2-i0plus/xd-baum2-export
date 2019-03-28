@@ -1,10 +1,5 @@
 // XD拡張APIのクラスをインポート
-const {
-  Artboard,
-  Text,
-  Color,
-  ImageFill
-} = require('scenegraph')
+const { Artboard, Text, Color, ImageFill } = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -94,9 +89,9 @@ function checkOptionScroller(options) {
  */
 function convertToFileName(name, includeDot) {
   if (includeDot) {
-    return name.replace(/[\\/:*?"<>|#\.]/g, '_')
+    return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F\.]/g, '_')
   }
-  return name.replace(/[\\/:*?"<>|#]/g, '_')
+  return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F]/g, '_')
 }
 
 /**
@@ -105,7 +100,7 @@ function convertToFileName(name, includeDot) {
  * @return {string}
  */
 function convertToLabel(name) {
-  return name.replace(/[\\/:*?"<>|# ]/g, '_')
+  return name.replace(/[\\/:*?"<>|# \x00-\x1F\x7F]/g, '_')
 }
 
 /**
@@ -186,10 +181,12 @@ function getCMWHInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x: nodeBounds.x +
+    x:
+      nodeBounds.x +
       nodeBounds.width / 2 -
       (baseBounds.x + baseBounds.width / 2),
-    y: nodeBounds.y +
+    y:
+      nodeBounds.y +
       nodeBounds.height / 2 -
       (baseBounds.y + baseBounds.height / 2),
     width: nodeBounds.width,
@@ -215,15 +212,28 @@ function assignPivotAndStretch(json, node) {
   }
 }
 
-let counter = 1
+function searchFileName(renditions, fileName) {
+  const found = renditions.find(entry => {
+    return entry.fileName == fileName
+  })
+  return found
+}
 
 async function assignImage(json, node, root, subFolder, renditions, name) {
-  const fileName = convertToFileName(`${name}(${counter})`, true)
+  // 今回出力するためのユニークな名前をつける
+  let fileName = convertToFileName(node.parent.name + ' - ' + name, true)
+  // すでに同じものがあるか検索
+  const found = searchFileName(renditions, fileName)
+  if (found) {
+    // 見つかった場合は､guidから文字列を付与しユニークとする
+    const guid5 = '_' + node.guid.slice(0, 5)
+    fileName += guid5
+  }
+
   // 出力画像ファイル
   const file = await subFolder.createFile(fileName + '.png', {
     overwrite: true,
   })
-  counter++
 
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
 
@@ -238,6 +248,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
 
   // 画像出力登録
   renditions.push({
+    fileName: fileName,
     node: node,
     outputFile: file,
     type: application.RenditionType.PNG,
@@ -270,15 +281,7 @@ async function nodeGroup(
     return 'subPrefab'
   }
   if (checkOptionImage(options)) {
-    await nodeDrawing(
-      json,
-      node,
-      root,
-      subFolder,
-      renditions,
-      name,
-      options,
-    )
+    await nodeDrawing(json, node, root, subFolder, renditions, name, options)
     return 'Image'
   }
   if (checkOptionButton(options)) {
@@ -380,11 +383,13 @@ async function nodeGroup(
           scrollDirection = 'horizontal'
         } else {
           // Grid
-          itemJson = [{
-            type: 'Group',
-            name: 'item0',
-            elements: [],
-          }, ]
+          itemJson = [
+            {
+              type: 'Group',
+              name: 'item0',
+              elements: [],
+            },
+          ]
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
@@ -410,9 +415,9 @@ async function nodeGroup(
         const cellHeight = node.cellSize.height * scale
 
         const spacing =
-          scrollDirection == 'vertical' ?
-          node.paddingY * scale :
-          node.paddingX * scale
+          scrollDirection == 'vertical'
+            ? node.paddingY * scale
+            : node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
         const itemWidth =
           cell.topLeftInParent.x * scale +
@@ -701,16 +706,25 @@ async function nodeText(
     type = 'Input'
   }
 
+  let textType = 'point'
+  let align = node.textAlign
+  if (node.areaBox) {
+    // エリア内テキストだったら
+    textType = 'paragraph'
+    // 上揃え
+    align += 'upper'
+  }
+
   // text.styleRangesの適応をしていない
   Object.assign(json, {
     type: type,
     name: name,
     text: node.text,
-    textType: 'point',
+    textType: textType,
     font: node.fontFamily,
     size: node.fontSize * scale,
     color: getRGB(node.fill.value),
-    align: node.textAlign,
+    align: align,
     x: drawBounds.x,
     y: drawBounds.y,
     w: drawBounds.width,
@@ -812,7 +826,11 @@ function parseNameOptions(node) {
     name = 'item0'
   }
 
-  if (name.endsWith('Button')) {
+  if (name.endsWith('Image') || name.endsWith('_image') || name == 'image') {
+    options[OPTION_IMAGE] = true
+  }
+
+  if (name.endsWith('Button') || name.endsWith('_button') || name == 'button') {
     options[OPTION_BUTTON] = true
   }
 
@@ -824,7 +842,7 @@ function parseNameOptions(node) {
     options[OPTION_SCROLLBAR] = true
   }
 
-  if (name.endsWith('Text')) {
+  if (name.endsWith('Text') || name.endsWith('_text') || name == 'text') {
     options[OPTION_TEXT] = true
   }
 
@@ -932,10 +950,7 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let {
-      name,
-      options
-    } = parseNameOptions(node)
+    let { name, options } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -1158,7 +1173,8 @@ async function alert(message) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1170,7 +1186,8 @@ async function alert(message) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1196,7 +1213,8 @@ async function exportBaum2Command(selection, root) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1205,7 +1223,8 @@ async function exportBaum2Command(selection, root) {
       h('h1', 'XD Baum2 Export'),
       h('hr'),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1220,7 +1239,8 @@ async function exportBaum2Command(selection, root) {
           border: 0,
         })),
         h(
-          'button', {
+          'button',
+          {
             async onclick(e) {
               var folder = await fs.getFolder()
               if (folder != null) {
@@ -1233,7 +1253,8 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1245,7 +1266,8 @@ async function exportBaum2Command(selection, root) {
         })),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1257,7 +1279,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'export responsive parameter (EXPERIMENTAL)'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1272,7 +1295,8 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1284,7 +1308,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'TextはTextMeshProにして出力する'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1296,7 +1321,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'Textを強制的に画像にして出力する'),
       ),
       (errorLabel = h(
-        'label', {
+        'label',
+        {
           style: {
             alignItems: 'center',
             color: '#f00',
@@ -1307,7 +1333,8 @@ async function exportBaum2Command(selection, root) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1316,7 +1343,8 @@ async function exportBaum2Command(selection, root) {
           'Cancel',
         ),
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'cta',
             onclick(e) {
               // 出力できる状態かチェック
