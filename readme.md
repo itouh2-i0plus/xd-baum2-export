@@ -28,6 +28,7 @@ https://qiita.com/itouh2-i0plus/items/6a948aa40acada879ce7
 |2019/02/26|BooleanGroupは､強制的にラスタライズすることで対応|@itouh2-i0plus|
 |2019/02/28|レスポンシブパラメータは､Artboardを変更して取得するようにした|@itouh2-i0plus|
 |2019/02/28|レスポンシブパラメータ取得処理のため､ノードのサイズが変わってしまった場合アラートを表示するようにした|@itouh2-i0plus|
+|2019/03/28|TextMeshPro,TextInput,EnhancedScroller対応を拡張モード有効時のみにした|@itouh2-i0plus|
 
 ## インストール
 
