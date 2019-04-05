@@ -1008,9 +1008,8 @@ async function extractedRoot(renditions, folder, root) {
       case 'Artboard':
         Object.assign(layoutJson, {
           artboard: true,
-          elements: [] // これがないとエラーになる
+          elements: [] // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
-        assignPivotAndStretch(layoutJson, node)
         await forEachChild()
         break
       case 'BooleanGroup':
