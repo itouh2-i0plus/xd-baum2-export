@@ -1,5 +1,10 @@
 // XD拡張APIのクラスをインポート
-const { Artboard, Text, Color, ImageFill } = require('scenegraph')
+const {
+  Artboard,
+  Text,
+  Color,
+  ImageFill
+} = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -13,8 +18,11 @@ var responsiveBounds = {}
 // 出力するフォルダ
 var outputFolder = null
 
-// 拡張要素を有効にするかどうか
+// 拡張要素を有効にするかどうか TextMeshPro/EnhancedScroller/TextInput対応
 var optionEnableExtended = true
+
+// エキスポートフラグを見るかどうか
+var optionCheckMarkedForExport = true
 
 // レスポンシブパラメータを取得するオプション
 var optionNeedResponsiveParameter = true
@@ -69,7 +77,7 @@ function checkOptionText(options) {
 }
 
 function checkOptionInput(options) {
-  return checkBoolean(options[OPTION_INPUT])
+  return optionEnableExtended && checkBoolean(options[OPTION_INPUT])
 }
 
 function checkOptionToggle(options) {
@@ -81,7 +89,7 @@ function checkOptionList(options) {
 }
 
 function checkOptionScroller(options) {
-  return checkBoolean(options[OPTION_SCROLLER])
+  return optionEnableExtended && checkBoolean(options[OPTION_SCROLLER])
 }
 
 /**
@@ -184,12 +192,10 @@ function getCMWHInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x:
-      nodeBounds.x +
+    x: nodeBounds.x +
       nodeBounds.width / 2 -
       (baseBounds.x + baseBounds.width / 2),
-    y:
-      nodeBounds.y +
+    y: nodeBounds.y +
       nodeBounds.height / 2 -
       (baseBounds.y + baseBounds.height / 2),
     width: nodeBounds.width,
@@ -280,7 +286,8 @@ async function nodeGroup(
   depth,
 ) {
   if (depth > 0 && checkOptionSubPrefab(options)) {
-    // 深度が0以上で､SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
+    // SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
+    // 深度が0以上というのは､必要か　→　必要 出力ノードになっている場合､depth==0なので
     return 'subPrefab'
   }
   if (checkOptionImage(options)) {
@@ -373,7 +380,7 @@ async function nodeGroup(
           // Scroller直下にはなく､名前対策してあるため､
           // もう1段したの子供を検索する
           json.elements[0].elements.forEach(elem => {
-            if (elem.name.endsWith('Item')) {
+            if (elem.name.endsWith('Item') || elem.name.endsWith('_item')) {
               itemJson.push(elem)
             }
           })
@@ -386,13 +393,11 @@ async function nodeGroup(
           scrollDirection = 'horizontal'
         } else {
           // Grid
-          itemJson = [
-            {
-              type: 'Group',
-              name: 'item0',
-              elements: [],
-            },
-          ]
+          itemJson = [{
+            type: 'Group',
+            name: 'item0',
+            elements: [],
+          }, ]
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
@@ -418,9 +423,9 @@ async function nodeGroup(
         const cellHeight = node.cellSize.height * scale
 
         const spacing =
-          scrollDirection == 'vertical'
-            ? node.paddingY * scale
-            : node.paddingX * scale
+          scrollDirection == 'vertical' ?
+          node.paddingY * scale :
+          node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
         const itemWidth =
           cell.topLeftInParent.x * scale +
@@ -956,7 +961,10 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = parseNameOptions(node)
+    let {
+      name,
+      options
+    } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -1000,14 +1008,16 @@ async function extractedRoot(renditions, folder, root) {
       case 'Artboard':
         Object.assign(layoutJson, {
           artboard: true,
+          elements: [] // これがないとエラーになる
         })
+        assignPivotAndStretch(layoutJson, node)
         await forEachChild()
         break
       case 'BooleanGroup':
         {
           // BooleanGroupは強制的にラスタライズする
           options[OPTION_IMAGE] = true
-          let type = await nodeGroup(
+          const type = await nodeGroup(
             layoutJson,
             node,
             root,
@@ -1024,7 +1034,7 @@ async function extractedRoot(renditions, folder, root) {
       case 'RepeatGrid':
       case 'SymbolInstance':
         {
-          let type = await nodeGroup(
+          const type = await nodeGroup(
             layoutJson,
             node,
             root,
@@ -1101,16 +1111,16 @@ async function extractedRoot(renditions, folder, root) {
 }
 
 // Baum2 export
-async function exportBaum2(roots, outputFolder) {
+async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // ラスタライズする要素を入れる
   let renditions = []
 
   // レスポンシブパラメータの作成
   responsiveBounds = {}
-  for (var i in roots) {
-    let root = roots[i]
-    if (optionNeedResponsiveParameter && root instanceof Artboard) {
-      Object.assign(responsiveBounds, makeResponsiveParameter(root))
+  if (optionNeedResponsiveParameter) {
+    for (var i in responsiveCheckArtboards) {
+      let artboard = responsiveCheckArtboards[i]
+      Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
     }
   }
 
@@ -1179,8 +1189,7 @@ async function alert(message) {
   let dialog = h(
     'dialog',
     h(
-      'form',
-      {
+      'form', {
         method: 'dialog',
         style: {
           width: 400,
@@ -1192,8 +1201,7 @@ async function alert(message) {
       h(
         'footer',
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1217,11 +1225,11 @@ async function exportBaum2Command(selection, root) {
   let checkEnableSubPrefab
   let checkTextToTMP
   let checkForceTextToImage
+  let checkCheckMarkedForExport
   let dialog = h(
     'dialog',
     h(
-      'form',
-      {
+      'form', {
         method: 'dialog',
         style: {
           width: 400,
@@ -1230,8 +1238,7 @@ async function exportBaum2Command(selection, root) {
       h('h1', 'XD Baum2 Export'),
       h('hr'),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1246,8 +1253,7 @@ async function exportBaum2Command(selection, root) {
           border: 0,
         })),
         h(
-          'button',
-          {
+          'button', {
             async onclick(e) {
               var folder = await fs.getFolder()
               if (folder != null) {
@@ -1260,8 +1266,7 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1273,8 +1278,19 @@ async function exportBaum2Command(selection, root) {
         })),
       ),
       h(
-        'label',
-        {
+        'label', {
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+          },
+        },
+        (checkCheckMarkedForExport = h('input', {
+          type: 'checkbox',
+        })),
+        h('span', 'エキスポートマークがついているもののみ出力する'),
+      ),
+      h(
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1286,8 +1302,7 @@ async function exportBaum2Command(selection, root) {
         h('span', '拡張モード有効(TextMeshPro/EnhancedScroller/TextInput)'),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1299,8 +1314,7 @@ async function exportBaum2Command(selection, root) {
         h('span', 'レスポンシブパラメータの出力'),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1312,8 +1326,7 @@ async function exportBaum2Command(selection, root) {
         h('span', '名前の最後に/がついている以下を独立したPrefabにする'),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1325,8 +1338,7 @@ async function exportBaum2Command(selection, root) {
         h('span', 'TextはTextMeshProにして出力する (拡張モードが必要)'),
       ),
       h(
-        'label',
-        {
+        'label', {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1338,8 +1350,7 @@ async function exportBaum2Command(selection, root) {
         h('span', 'Textを強制的に画像にして出力する'),
       ),
       (errorLabel = h(
-        'label',
-        {
+        'label', {
           style: {
             alignItems: 'center',
             color: '#f00',
@@ -1350,8 +1361,7 @@ async function exportBaum2Command(selection, root) {
       h(
         'footer',
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1360,8 +1370,7 @@ async function exportBaum2Command(selection, root) {
           'Cancel',
         ),
         h(
-          'button',
-          {
+          'button', {
             uxpVariant: 'cta',
             onclick(e) {
               // 出力できる状態かチェック
@@ -1387,6 +1396,8 @@ async function exportBaum2Command(selection, root) {
               optionTextToTMP = checkTextToTMP.checked
               //
               optionForceTextToImage = checkForceTextToImage.checked
+              //
+              optionCheckMarkedForExport = checkCheckMarkedForExport.checked
 
               dialog.close('export')
             },
@@ -1411,6 +1422,7 @@ async function exportBaum2Command(selection, root) {
   checkEnableSubPrefab.checked = optionEnableSubPrefab
   checkTextToTMP.checked = optionTextToTMP
   checkForceTextToImage.checked = optionForceTextToImage
+  checkCheckMarkedForExport.checked = optionCheckMarkedForExport
 
   // Dialog表示
   document.body.appendChild(dialog)
@@ -1418,21 +1430,36 @@ async function exportBaum2Command(selection, root) {
 
   // Dialogの結果チェック
   if (result == 'export') {
-    let roots = {}
+    // 出力ノードリスト
+    let exports = {}
+    // レスポンシブパラメータを取得するため､操作を行うアートボード
+    let responsiveCheckArtboards = {}
 
     // 選択されているものがない場合 全てが変換対象
-    let searchItems =
-      selection.items.length > 0 ? selection.items : root.children
+    let searchItems = selection.items.length > 0 ? selection.items : root.children
 
+    // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
+    let currentArtboard = null;
     let func = nodes => {
       nodes.forEach(node => {
         let nameOptions = parseNameOptions(node)
+        const isArtboard = node instanceof Artboard
         if (
-          node instanceof Artboard ||
-          checkOptionSubPrefab(nameOptions.options)
+          isArtboard ||
+          checkOptionSubPrefab(nameOptions.options) //
         ) {
-          // 同じ名前のものは上書きされる
-          roots[nameOptions.name] = node
+          if (isArtboard) currentArtboard = node;
+          if (optionCheckMarkedForExport && !node.markedForExport) {
+            // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
+          } else {
+            // 同じ名前のものは上書きされる
+            exports[nameOptions.name] = node
+            if (isArtboard) {
+              responsiveCheckArtboards[nameOptions.name] = node;
+            } else {
+              responsiveCheckArtboards[currentArtboard.name] = currentArtboard;
+            }
+          }
         }
         var children = node.children
         if (children) func(children)
@@ -1441,13 +1468,13 @@ async function exportBaum2Command(selection, root) {
 
     func(searchItems)
 
-    if (roots.length == 0) {
+    if (exports.length == 0) {
       // 出力するものが見つからなかった
       alert('no selected artboards.')
       return
     }
 
-    await exportBaum2(roots, outputFolder)
+    await exportBaum2(exports, outputFolder, responsiveCheckArtboards)
   }
 }
 
@@ -1468,7 +1495,6 @@ async function exportPivotCommand(selection, root) {
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
-    baum2ExportCommand: exportBaum2Command,
-    baum2PivotCommand: exportPivotCommand,
-  },
+    baum2ExportCommand: exportBaum2Command
+  }
 }
