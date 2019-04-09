@@ -1,10 +1,5 @@
 // XD拡張APIのクラスをインポート
-const {
-  Artboard,
-  Text,
-  Color,
-  ImageFill
-} = require('scenegraph')
+const { Artboard, Text, Color, ImageFill } = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -158,6 +153,8 @@ function getGlobalDrawBounds(node) {
  */
 function getGlobalBounds(node) {
   const bounds = node.globalBounds
+  const viewPortHeight = node.viewportHeight
+  if (viewPortHeight != null) bounds.height = viewPortHeight
   return {
     x: bounds.x * scale,
     y: bounds.y * scale,
@@ -192,10 +189,12 @@ function getCMWHInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x: nodeBounds.x +
+    x:
+      nodeBounds.x +
       nodeBounds.width / 2 -
       (baseBounds.x + baseBounds.width / 2),
-    y: nodeBounds.y +
+    y:
+      nodeBounds.y +
       nodeBounds.height / 2 -
       (baseBounds.y + baseBounds.height / 2),
     width: nodeBounds.width,
@@ -393,11 +392,13 @@ async function nodeGroup(
           scrollDirection = 'horizontal'
         } else {
           // Grid
-          itemJson = [{
-            type: 'Group',
-            name: 'item0',
-            elements: [],
-          }, ]
+          itemJson = [
+            {
+              type: 'Group',
+              name: 'item0',
+              elements: [],
+            },
+          ]
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
@@ -423,9 +424,9 @@ async function nodeGroup(
         const cellHeight = node.cellSize.height * scale
 
         const spacing =
-          scrollDirection == 'vertical' ?
-          node.paddingY * scale :
-          node.paddingX * scale
+          scrollDirection == 'vertical'
+            ? node.paddingY * scale
+            : node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
         const itemWidth =
           cell.topLeftInParent.x * scale +
@@ -868,7 +869,11 @@ function parseNameOptions(node) {
       options[OPTION_INPUT] = true
     }
 
-    if (name.endsWith('Scroller')) {
+    if (
+      name.endsWith('Scroller') ||
+      name.endsWith('_scroller') ||
+      name == 'scroller'
+    ) {
       options[OPTION_SCROLLER] = true
     }
   }
@@ -961,10 +966,7 @@ async function extractedRoot(renditions, folder, root) {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let {
-      name,
-      options
-    } = parseNameOptions(node)
+    let { name, options } = parseNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -1008,7 +1010,7 @@ async function extractedRoot(renditions, folder, root) {
       case 'Artboard':
         Object.assign(layoutJson, {
           artboard: true,
-          elements: [] // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
+          elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
         await forEachChild()
         break
@@ -1188,7 +1190,8 @@ async function alert(message) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1200,7 +1203,8 @@ async function alert(message) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1228,7 +1232,8 @@ async function exportBaum2Command(selection, root) {
   let dialog = h(
     'dialog',
     h(
-      'form', {
+      'form',
+      {
         method: 'dialog',
         style: {
           width: 400,
@@ -1237,7 +1242,8 @@ async function exportBaum2Command(selection, root) {
       h('h1', 'XD Baum2 Export'),
       h('hr'),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1252,7 +1258,8 @@ async function exportBaum2Command(selection, root) {
           border: 0,
         })),
         h(
-          'button', {
+          'button',
+          {
             async onclick(e) {
               var folder = await fs.getFolder()
               if (folder != null) {
@@ -1265,7 +1272,8 @@ async function exportBaum2Command(selection, root) {
         ),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1277,7 +1285,8 @@ async function exportBaum2Command(selection, root) {
         })),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1289,7 +1298,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'エキスポートマークがついているもののみ出力する'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1301,7 +1311,8 @@ async function exportBaum2Command(selection, root) {
         h('span', '拡張モード有効(TextMeshPro/EnhancedScroller/TextInput)'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1313,7 +1324,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'レスポンシブパラメータの出力'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1325,7 +1337,8 @@ async function exportBaum2Command(selection, root) {
         h('span', '名前の最後に/がついている以下を独立したPrefabにする'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1337,7 +1350,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'TextはTextMeshProにして出力する (拡張モードが必要)'),
       ),
       h(
-        'label', {
+        'label',
+        {
           style: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -1349,7 +1363,8 @@ async function exportBaum2Command(selection, root) {
         h('span', 'Textを強制的に画像にして出力する'),
       ),
       (errorLabel = h(
-        'label', {
+        'label',
+        {
           style: {
             alignItems: 'center',
             color: '#f00',
@@ -1360,7 +1375,8 @@ async function exportBaum2Command(selection, root) {
       h(
         'footer',
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'primary',
             onclick(e) {
               dialog.close()
@@ -1369,7 +1385,8 @@ async function exportBaum2Command(selection, root) {
           'Cancel',
         ),
         h(
-          'button', {
+          'button',
+          {
             uxpVariant: 'cta',
             onclick(e) {
               // 出力できる状態かチェック
@@ -1435,10 +1452,11 @@ async function exportBaum2Command(selection, root) {
     let responsiveCheckArtboards = {}
 
     // 選択されているものがない場合 全てが変換対象
-    let searchItems = selection.items.length > 0 ? selection.items : root.children
+    let searchItems =
+      selection.items.length > 0 ? selection.items : root.children
 
     // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
-    let currentArtboard = null;
+    let currentArtboard = null
     let func = nodes => {
       nodes.forEach(node => {
         let nameOptions = parseNameOptions(node)
@@ -1447,16 +1465,16 @@ async function exportBaum2Command(selection, root) {
           isArtboard ||
           checkOptionSubPrefab(nameOptions.options) //
         ) {
-          if (isArtboard) currentArtboard = node;
+          if (isArtboard) currentArtboard = node
           if (optionCheckMarkedForExport && !node.markedForExport) {
             // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
           } else {
             // 同じ名前のものは上書きされる
             exports[nameOptions.name] = node
             if (isArtboard) {
-              responsiveCheckArtboards[nameOptions.name] = node;
+              responsiveCheckArtboards[nameOptions.name] = node
             } else {
-              responsiveCheckArtboards[currentArtboard.name] = currentArtboard;
+              responsiveCheckArtboards[currentArtboard.name] = currentArtboard
             }
           }
         }
@@ -1494,6 +1512,6 @@ async function exportPivotCommand(selection, root) {
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
-    baum2ExportCommand: exportBaum2Command
-  }
+    baum2ExportCommand: exportBaum2Command,
+  },
 }
