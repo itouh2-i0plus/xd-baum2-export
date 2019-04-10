@@ -31,8 +31,9 @@ var optionTextToTMP = true
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
 
+// オプション文字列　全て小文字
 const OPTION_COMMENTOUT = 'commentout'
-const OPTION_SUB_PREFAB = 'subPrefab'
+const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
@@ -42,6 +43,9 @@ const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
 const OPTION_LIST = 'list'
 const OPTION_SCROLLER = 'scroller'
+const OPTION_PIVOT = 'pivot'
+const OPTION_STRETCH_X = 'stretchx'
+const OPTION_STRETCH_Y = 'stretchy'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -210,6 +214,11 @@ function checkBoolean(r) {
   return r ? true : false
 }
 
+/**
+ * オプションにpivot､streachがあれば上書き
+ * @param {*} json
+ * @param {*} node
+ */
 function assignPivotAndStretch(json, node) {
   if (!optionNeedResponsiveParameter) {
     return null
@@ -480,14 +489,19 @@ async function nodeGroup(
 }
 
 /**
- *
+ * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
  * @param {*} beforeBounds
  * @param {*} afterBounds
  * @param {number} resizePlusWidth リサイズ時に増えた幅
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
-function getResponsiveParameter(node, hashBounds) {
+function getResponsiveParameter(node, hashBounds, options) {
   if (!node) return null
+  if (!options) {
+    // @Pivot @Stretchを取得するため
+    const nameOptions = parseNameOptions(node)
+    options = nameOptions.options
+  }
   const nodeBounds = hashBounds[node.guid]
   if (!nodeBounds || !nodeBounds['before'] || !nodeBounds['after']) return null
   const beforeBounds = nodeBounds['before']['bounds']
@@ -525,26 +539,46 @@ function getResponsiveParameter(node, hashBounds) {
 
   let ret = {}
 
+  // オプションからのパラメータを入れる
+  const pivotOption = options[OPTION_PIVOT]
+  if (pivotOption) {
+    ret['pivot'] = pivotOption
+  }
+
+  let stretchXOption = options[OPTION_STRETCH_X]
+  if (stretchXOption) {
+    ret['stretchx'] = checkBoolean(stretchXOption)
+  }
+
+  let stretchYOption = options[OPTION_STRETCH_Y]
+  if (stretchYOption) {
+    ret['stretchy'] = checkBoolean(stretchYOption)
+  }
+
   // 横ストレッチチェック
-  if (beforeBounds.width * 1.0001 < afterBounds.width) {
+  if (!stretchXOption && beforeBounds.width * 1.0001 < afterBounds.width) {
     // 1.0001 → ブレる分の余裕をもたせる
     horizontalFix = null // 横ストレッチがある場合､pivot情報を消す
     Object.assign(ret, {
       stretchx: true,
     })
+    stretchXOption = true
   }
 
   // 縦ストレッチチェック
-  if (beforeBounds.height * 1.0001 < afterBounds.height) {
+  if (!stretchYOption && beforeBounds.height * 1.0001 < afterBounds.height) {
     // 1.0001 → ブレる分の余裕をもたせる
     verticalFix = null // 縦ストレッチがある場合､pivot情報を消す
     Object.assign(ret, {
       stretchy: true,
     })
+    stretchYOption = true
   }
 
   // Pivot出力
-  if (horizontalFix != null || verticalFix != null) {
+  if (stretchXOption) horizontalFix = null
+  if (stretchYOption) verticalFix = null
+  if (pivotOption == null && (horizontalFix != null || verticalFix != null)) {
     Object.assign(ret, {
       pivot: (horizontalFix || '') + (verticalFix || ''),
     })
@@ -747,15 +781,6 @@ async function nodeText(
 }
 
 /**
- * レスポンシブパラメータの取得
- * @param {*} node
- */
-function getPivotAndStretch(node) {
-  let bounds = responsiveBounds[node.guid]
-  return bounds ? bounds['responsiveParameter'] : null
-}
-
-/**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json
  * @param {scenegraph} node
@@ -795,15 +820,16 @@ function parseNameOptions(node) {
   let name = null
   let options = {}
   let optionArray = str.split('@')
-  if (optionArray != null && options.length > 0) {
-    name = options[0].trim()
+  if (optionArray != null && optionArray.length > 0) {
+    name = optionArray[0].trim()
+    // 名前の部分を除去
     optionArray.shift()
     optionArray.forEach(option => {
       let args = option.split('=')
-      if (args > 1) {
-        options[args[0].trim()] = args[1].trim()
+      if (args.length > 1) {
+        options[args[0].trim().toLowerCase()] = args[1].trim().toLowerCase()
       } else {
-        options[option.trim()] = true
+        options[option.trim().toLowerCase()] = true
       }
     })
   } else {
