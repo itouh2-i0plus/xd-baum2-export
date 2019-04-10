@@ -46,6 +46,8 @@ const OPTION_SCROLLER = 'scroller'
 const OPTION_PIVOT = 'pivot'
 const OPTION_STRETCH_X = 'stretchx'
 const OPTION_STRETCH_Y = 'stretchy'
+const OPTION_STRETCH_XY = 'stretchxy'
+const OPTION_FIX = 'fix'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -238,7 +240,10 @@ function searchFileName(renditions, fileName) {
 
 async function assignImage(json, node, root, subFolder, renditions, name) {
   // 今回出力するためのユニークな名前をつける
-  let fileName = convertToFileName(node.parent.name + ' - ' + name, true)
+  let { name: parentName, options: parentOptions } = parseNameOptions(
+    node.parent,
+  )
+  let fileName = convertToFileName(parentName + ' - ' + name, true)
   // すでに同じものがあるか検索
   const found = searchFileName(renditions, fileName)
   if (found) {
@@ -540,17 +545,46 @@ function getResponsiveParameter(node, hashBounds, options) {
   let ret = {}
 
   // オプションからのパラメータを入れる
-  const pivotOption = options[OPTION_PIVOT]
+  let pivotOption = options[OPTION_PIVOT]
+  let stretchXOption = options[OPTION_STRETCH_X] || options[OPTION_STRETCH_XY]
+  let stretchYOption = options[OPTION_STRETCH_Y] || options[OPTION_STRETCH_XY]
+
+  let fixOption = options[OPTION_FIX]
+  if (fixOption) {
+    fixOption = fixOption.toLowerCase()
+    if (fixOption.indexOf('left') >= 0 && fixOption.indexOf('right') >= 0) {
+      stretchXOption = true
+      fixOption = fixOption
+        .split('left')
+        .join('')
+        .split('right')
+        .join('')
+    } else {
+      stretchXOption = false
+    }
+
+    if (fixOption.indexOf('top') >= 0 && fixOption.indexOf('bottom') >= 0) {
+      stretchYOption = true
+      fixOption = fixOption
+        .split('top')
+        .join('')
+        .split('bottom')
+        .join('')
+    } else {
+      stretchYOption = false
+    }
+
+    pivotOption = fixOption
+  }
+
   if (pivotOption) {
     ret['pivot'] = pivotOption
   }
 
-  let stretchXOption = options[OPTION_STRETCH_X]
   if (stretchXOption) {
     ret['stretchx'] = checkBoolean(stretchXOption)
   }
 
-  let stretchYOption = options[OPTION_STRETCH_Y]
   if (stretchYOption) {
     ret['stretchy'] = checkBoolean(stretchYOption)
   }
