@@ -26,7 +26,7 @@ var optionNeedResponsiveParameter = true
 var optionEnableSubPrefab = true
 
 // Textノードは強制的にTextMeshProに変換する
-var optionTextToTMP = true
+var optionTextToTextMP = false
 
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
@@ -48,6 +48,7 @@ const OPTION_STRETCH_X = 'stretchx'
 const OPTION_STRETCH_Y = 'stretchy'
 const OPTION_STRETCH_XY = 'stretchxy'
 const OPTION_FIX = 'fix'
+const OPTION_TEXTMP = 'textmp' // textmeshpro
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -75,6 +76,13 @@ function checkOptionImage(options) {
 
 function checkOptionText(options) {
   return checkBoolean(options[OPTION_TEXT])
+}
+
+function checkOptionTextMeshPro(options) {
+  return (
+    optionEnableExtended &&
+    (optionTextToTextMP || checkBoolean(options[OPTION_TEXTMP]))
+  )
 }
 
 function checkOptionInput(options) {
@@ -366,18 +374,18 @@ async function nodeGroup(
   }
 
   if (checkOptionScroller(options)) {
-    await funcForEachChild()
-    //
-    let areaElement = json.elements.find(element => {
-      return element.name == 'Area'
+    let areaNodes = node.children.filter(child => {
+      const { name, options } = parseNameOptions(child)
+      return name == 'Area'
     })
-    if (!areaElement) {
+
+    if (areaNodes.length == 0) {
       if (node.constructor.name == 'RepeatGrid') {
         /*
         Areaがなくて､リピートグリッドだけでもScrollerを作成する
         仕様:
         一番目のアイテムをテンプレートとして､Baum2にわたす(item0)
-        Itemはレスポンシブデザインにできない
+        Itemはレスポンシブ設定自動取得できない
           → RepeatGridは､サイズの変更で､アイテムの数が変わるもののため
           → そのため､RepeatGridの中のアイテムは固定サイズになる
         列が1つ → 縦スクロール
@@ -385,47 +393,45 @@ async function nodeGroup(
         それ以外 → Grid
         */
         var scrollDirection = 'vertical'
-        let itemJson
+        let item0Json
         if (node.numColumns == 1) {
           // vertical
-          itemJson = []
-          // ~Itemは無いか探す
-          // Scroller直下にはなく､名前対策してあるため､
-          // もう1段したの子供を検索する
-          json.elements[0].elements.forEach(elem => {
-            if (elem.name.endsWith('Item') || elem.name.endsWith('_item')) {
-              itemJson.push(elem)
-            }
-          })
-          if (itemJson.length == 0) {
-            itemJson = [json.elements[0]]
-          }
+          var scrollDirection = 'vertical'
+          // item0を一個だけコンバート
+          await funcForEachChild(1)
+          // アイテムの作成
+          // Scroller直下にはリピートグリッドで並べた分のitem0があり､
+          // もう1段したの子供がアイテムになる
+          item0Json = [json.elements[0]]
         } else if (node.numRows == 1) {
           // Horizontal
-          itemJson = [json.elements[0]]
           scrollDirection = 'horizontal'
+          // item0を一個だけコンバート
+          await funcForEachChild(1)
+          item0Json = [json.elements[0]]
         } else {
           // Grid
-          itemJson = [
+          item0Json = [
             {
               type: 'Group',
               name: 'item0',
               elements: [],
             },
           ]
+          // Column分のitem0をコンバートする
+          await funcForEachChild(numColumns)
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
             elem.name = 'item0-' + (node.numColumns - i - 1)
-            itemJson[0].elements.push(elem)
+            item0Json[0].elements.push(elem)
           }
         }
-        // itemの下のグループをlefttopにする
-        itemJson.forEach(item => {
-          item.elements.forEach(elem => {
-            elem['pivot'] = 'lefttop'
-          })
-        })
+
+        // item0のグループをlefttopにする
+        // item0Json.forEach(item => {
+        //     item['pivot'] = 'lefttop'
+        // })
 
         Object.assign(json, {
           type: 'Scroller',
@@ -442,17 +448,20 @@ async function nodeGroup(
             ? node.paddingY * scale
             : node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
-        const itemWidth =
-          cell.topLeftInParent.x * scale +
-          (cellWidth + node.paddingX * scale) * node.numColumns
-        const itemHeight =
-          cell.topLeftInParent.y * scale +
-          (cellHeight + node.paddingY * scale) * node.numRows
 
         const paddingLeft = cell.topLeftInParent.x * scale
         const paddingTop = cell.topLeftInParent.y * scale
-        const paddingRight =
-          itemWidth > drawBounds.width ? drawBounds.width - itemWidth : 0
+
+        const itemWidth =
+          paddingLeft + // 左のスペース
+          cellWidth * node.numColumns + // cellのサイズ*cellの個数
+          node.paddingX * scale * (node.numColumns - 1) // cellとcellの隙間*(cellの個数-1)
+        const itemHeight =
+          paddingTop + // 上のスペース
+          cellHeight * node.numRows + // cellのサイズ*cellの個数
+          node.paddingY * scale * (node.numRows - 1) // cellとcellの隙間*(cellの個数-1)
+
+        const paddingRight = drawBounds.width - itemWidth
 
         // リピートグリッドなら子供はすべてScrollerにいれるものになっている
         // 隙間のパラメータ
@@ -466,7 +475,7 @@ async function nodeGroup(
           w: drawBounds.width,
           h: drawBounds.height,
           opacity: 100,
-          elements: itemJson, // トップの一個だけ
+          elements: item0Json, // トップの一個だけ
         })
         assignPivotAndStretch(json, node)
       } else {
@@ -551,7 +560,7 @@ function getResponsiveParameter(node, hashBounds, options) {
   let stretchXOption = options[OPTION_STRETCH_X]
   let stretchYOption = options[OPTION_STRETCH_Y]
 
-  if( options[OPTION_STRETCH_XY] != null) {
+  if (options[OPTION_STRETCH_XY] != null) {
     stretchXOption = options[OPTION_STRETCH_XY]
     stretchYOption = options[OPTION_STRETCH_XY]
   }
@@ -801,7 +810,7 @@ async function nodeText(
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard)
 
   let type = 'Text'
-  if (optionTextToTMP) {
+  if (checkOptionTextMeshPro(options)) {
     type = 'TextMeshPro'
   }
   if (checkOptionInput(options)) {
@@ -859,15 +868,34 @@ async function nodeDrawing(
   options,
 ) {
   //
-  Object.assign(json, {
-    type: 'Image',
-    name: name,
-  })
-
-  //
-  assignPivotAndStretch(json, node)
-
-  await assignImage(json, node, artboard, subFolder, renditions, name)
+  if (checkOptionButton(options)) {
+    Object.assign(json, {
+      type: 'Button',
+      name: name,
+      elements: [
+        {
+          type: 'Image',
+          name: name + ' - image',
+        },
+      ],
+    })
+    assignPivotAndStretch(json, node)
+    await assignImage(
+      json.elements[0],
+      node,
+      artboard,
+      subFolder,
+      renditions,
+      name,
+    )
+  } else {
+    Object.assign(json, {
+      type: 'Image',
+      name: name,
+    })
+    assignPivotAndStretch(json, node)
+    await assignImage(json, node, artboard, subFolder, renditions, name)
+  }
 }
 
 /**
@@ -917,6 +945,20 @@ function parseNameOptions(node) {
   if (node.parent.constructor.name == 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようで
     // Buttonといった名前がつき､機能してしまうことを防ぐ
+    // item_button
+    // item_text
+    // 2つセットをリピートグリッド化した場合､以下のような構成になる
+    // リピートグリッド 1
+    //   - item0
+    //     - item_button
+    //     - item_text
+    //   - item0
+    //     - item_button
+    //     - item_text
+    //   - item0
+    //     - item_button
+    //     - item_text
+    // 以上のような構成になる
     name = 'item0'
   }
 
@@ -1071,8 +1113,13 @@ async function extractedRoot(renditions, folder, root) {
     }
 
     // 子Node処理関数
-    let forEachChild = async () => {
-      const numChildren = node.children.length
+    let funcForEachChild = async numChildren => {
+      const maxNumChildren = node.children.length
+      if (numChildren == null) {
+        numChildren = maxNumChildren
+      } else if (numChildren > maxNumChildren) {
+        numChildren = maxNumChildren
+      }
       if (numChildren > 0) {
         layoutJson.elements = []
         // 後ろから順番に処理をする
@@ -1097,7 +1144,7 @@ async function extractedRoot(renditions, folder, root) {
           artboard: true,
           elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
-        await forEachChild()
+        await funcForEachChild()
         break
       case 'BooleanGroup':
         {
@@ -1111,7 +1158,7 @@ async function extractedRoot(renditions, folder, root) {
             renditions,
             name,
             options,
-            forEachChild,
+            funcForEachChild,
             depth,
           )
         }
@@ -1128,7 +1175,7 @@ async function extractedRoot(renditions, folder, root) {
             renditions,
             name,
             options,
-            forEachChild,
+            funcForEachChild,
             depth,
           )
         }
@@ -1147,7 +1194,7 @@ async function extractedRoot(renditions, folder, root) {
           name,
           options,
         )
-        await forEachChild()
+        await funcForEachChild()
         break
       case 'Text':
         await nodeText(
@@ -1159,11 +1206,11 @@ async function extractedRoot(renditions, folder, root) {
           name,
           options,
         )
-        await forEachChild()
+        await funcForEachChild()
         break
       default:
         console.log('***error type:' + constructorName)
-        await forEachChild()
+        await funcForEachChild()
         break
     }
   }
@@ -1494,7 +1541,7 @@ async function exportBaum2Command(selection, root) {
               // サブPrefab
               optionEnableSubPrefab = checkEnableSubPrefab.checked
               //
-              optionTextToTMP = checkTextToTMP.checked
+              optionTextToTextMP = checkTextToTMP.checked
               //
               optionForceTextToImage = checkForceTextToImage.checked
               //
@@ -1521,7 +1568,7 @@ async function exportBaum2Command(selection, root) {
   checkEnableExtended.checked = optionEnableExtended
   checkGetResponsiveParameter.checked = optionNeedResponsiveParameter
   checkEnableSubPrefab.checked = optionEnableSubPrefab
-  checkTextToTMP.checked = optionTextToTMP
+  checkTextToTMP.checked = optionTextToTextMP
   checkForceTextToImage.checked = optionForceTextToImage
   checkCheckMarkedForExport.checked = optionCheckMarkedForExport
 
