@@ -422,7 +422,7 @@ async function nodeGroup(
             },
           ]
           // Column分のitem0をコンバートする
-          await funcForEachChild(numColumns)
+          await funcForEachChild(node.numColumns)
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
@@ -598,19 +598,19 @@ function getResponsiveParameter(node, hashBounds, options) {
       fixOptionWidth = 'width'
     }
     if (fixOption.indexOf('height') >= 0) {
-      fixOptionWidth = 'height'
+      fixOptionHeight = 'height'
     }
     if (fixOption.indexOf('top') >= 0) {
-      fixOptionWidth = 'top'
+      fixOptionTop = 'top'
     }
     if (fixOption.indexOf('bottom') >= 0) {
-      fixOptionWidth = 'bottom'
+      fixOptionBottom = 'bottom'
     }
     if (fixOption.indexOf('left') >= 0) {
-      fixOptionWidth = 'left'
+      fixOptionLeft = 'left'
     }
     if (fixOption.indexOf('right') >= 0) {
-      fixOptionWidth = 'right'
+      fixOptionRight = 'right'
     }
 
     if (fixOptionWidth != null) {
