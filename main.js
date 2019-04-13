@@ -47,6 +47,9 @@ const OPTION_PIVOT = 'pivot'
 const OPTION_STRETCH_X = 'stretchx'
 const OPTION_STRETCH_Y = 'stretchy'
 const OPTION_STRETCH_XY = 'stretchxy'
+const OPTION_STRETCH_W = 'stretchw'
+const OPTION_STRETCH_H = 'stretchh'
+const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 
@@ -557,44 +560,84 @@ function getResponsiveParameter(node, hashBounds, options) {
   // これらの値はオプションが定義されていなければNULLという判定が重要
   // NULLの場合、自動的にレスポンシブパラメータが付与される
   let pivotOption = options[OPTION_PIVOT]
-  let stretchXOption = options[OPTION_STRETCH_X]
-  let stretchYOption = options[OPTION_STRETCH_Y]
+  let stretchWOption = options[OPTION_STRETCH_X]
+  let stretchHOption = options[OPTION_STRETCH_Y]
 
   if (options[OPTION_STRETCH_XY] != null) {
-    stretchXOption = options[OPTION_STRETCH_XY]
-    stretchYOption = options[OPTION_STRETCH_XY]
+    stretchWOption = options[OPTION_STRETCH_XY]
+    stretchHOption = options[OPTION_STRETCH_XY]
+  }
+
+  if (options[OPTION_STRETCH_W] != null) {
+    stretchWOption = options[OPTION_STRETCH_W]
+  }
+
+  if (options[OPTION_STRETCH_H] != null) {
+    stretchWOption = options[OPTION_STRETCH_H]
+  }
+
+  if (options[OPTION_STRETCH_WH] != null) {
+    stretchWOption = options[OPTION_STRETCH_WH]
+    stretchHOption = options[OPTION_STRETCH_WH]
   }
 
   let fixOption = options[OPTION_FIX]
   if (fixOption) {
     fixOption = fixOption.toLowerCase()
 
+    let fixOptionWidth = null
+    let fixOptionHeight = null
+    let fixOptionTop = null
+    let fixOptionBottom = null
+    let fixOptionLeft = null
+    let fixOptionRight = null
+
+    fixOption.replace('-w-','-width-').replace('-h-','-height-').replace('-t-','-top-').replace('-b-','-bottom-').replace('-l-','-left-').replace('-r-','-right-')
+
     if (fixOption.indexOf('width') >= 0) {
-      stretchXOption = false
-      fixOption = fixOption.split('width').join('')
-    } else {
-      stretchXOption = true
+      fixOptionWidth = 'width'
     }
-
     if (fixOption.indexOf('height') >= 0) {
-      stretchYOption = false
-      fixOption = fixOption.split('height').join('')
+      fixOptionWidth = 'height'
+    }
+    if (fixOption.indexOf('top') >= 0) {
+      fixOptionWidth = 'top'
+    }
+    if (fixOption.indexOf('bottom') >= 0) {
+      fixOptionWidth = 'bottom'
+    }
+    if (fixOption.indexOf('left') >= 0) {
+      fixOptionWidth = 'left'
+    }
+    if (fixOption.indexOf('right') >= 0) {
+      fixOptionWidth = 'right'
+    }
+
+    if (fixOptionWidth != null) {
+      stretchWOption = false
+      fixOption = fixOption.split(fixOptionWidth).join('')
     } else {
-      console.log('********* stretchy ++++' + node.name)
-      stretchYOption = true
+      stretchWOption = true
     }
 
-    if (fixOption.indexOf('left') >= 0 && fixOption.indexOf('right') >= 0) {
-      stretchXOption = true
+    if (fixOptionHeight) {
+      stretchHOption = false
+      fixOption = fixOption.split(fixOptionHeight).join('')
+    } else {
+      stretchHOption = true
+    }
+
+    if (fixOptionLeft && fixOptionRight) {
+      stretchWOption = true
       fixOption = fixOption
-        .split('left')
+        .split(fixOptionLeft)
         .join('')
-        .split('right')
+        .split(fixOptionRight)
         .join('')
     }
 
-    if (fixOption.indexOf('top') >= 0 && fixOption.indexOf('bottom') >= 0) {
-      stretchYOption = true
+    if (fixOptionTop && fixOptionBottom) {
+      stretchHOption = true
       fixOption = fixOption
         .split('top')
         .join('')
@@ -609,17 +652,17 @@ function getResponsiveParameter(node, hashBounds, options) {
     ret['pivot'] = pivotOption
   }
 
-  if (stretchXOption != null) {
-    ret['stretchx'] = checkBoolean(stretchXOption)
+  if (stretchWOption != null) {
+    ret['stretchx'] = checkBoolean(stretchWOption)
   }
 
-  if (stretchYOption != null) {
-    ret['stretchy'] = checkBoolean(stretchYOption)
+  if (stretchHOption != null) {
+    ret['stretchy'] = checkBoolean(stretchHOption)
   }
 
   // 横ストレッチチェック
   if (
-    stretchXOption == null &&
+    stretchWOption == null &&
     beforeBounds.width * 1.0001 < afterBounds.width
   ) {
     // 1.0001 → ブレる分の余裕をもたせる
@@ -627,12 +670,12 @@ function getResponsiveParameter(node, hashBounds, options) {
     Object.assign(ret, {
       stretchx: true,
     })
-    stretchXOption = true
+    stretchWOption = true
   }
 
   // 縦ストレッチチェック
   if (
-    stretchYOption == null &&
+    stretchHOption == null &&
     beforeBounds.height * 1.0001 < afterBounds.height
   ) {
     // 1.0001 → ブレる分の余裕をもたせる
@@ -640,12 +683,12 @@ function getResponsiveParameter(node, hashBounds, options) {
     Object.assign(ret, {
       stretchy: true,
     })
-    stretchYOption = true
+    stretchHOption = true
   }
 
   // Pivot出力
-  if (stretchXOption) horizontalFix = null
-  if (stretchYOption) verticalFix = null
+  if (stretchWOption) horizontalFix = null
+  if (stretchHOption) verticalFix = null
   if (pivotOption == null && (horizontalFix != null || verticalFix != null)) {
     Object.assign(ret, {
       pivot: (horizontalFix || '') + (verticalFix || ''),
