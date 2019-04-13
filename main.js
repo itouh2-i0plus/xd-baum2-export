@@ -592,7 +592,13 @@ function getResponsiveParameter(node, hashBounds, options) {
     let fixOptionLeft = null
     let fixOptionRight = null
 
-    fixOption.replace('-w-','-width-').replace('-h-','-height-').replace('-t-','-top-').replace('-b-','-bottom-').replace('-l-','-left-').replace('-r-','-right-')
+    fixOption
+      .replace('-w-', '-width-')
+      .replace('-h-', '-height-')
+      .replace('-t-', '-top-')
+      .replace('-b-', '-bottom-')
+      .replace('-l-', '-left-')
+      .replace('-r-', '-right-')
 
     if (fixOption.indexOf('width') >= 0) {
       fixOptionWidth = 'width'
@@ -970,7 +976,6 @@ function parseNameOptions(node) {
   if (name.startsWith('#')) {
     options[OPTION_COMMENTOUT] = true
     name = name.substring(1)
-    return
   }
 
   // そのレイヤーをラスタライズする
@@ -1003,6 +1008,13 @@ function parseNameOptions(node) {
     //     - item_text
     // 以上のような構成になる
     name = 'item0'
+    // 自身のChildインデックスを名前に利用する
+    for (let i = 0; i < node.parent.children.length; i++) {
+      if (node.parent.children.at(i) == node) {
+        name = 'item' + i
+        break
+      }
+    }
   }
 
   if (name.endsWith('Image') || name.endsWith('_image') || name == 'image') {
@@ -1025,7 +1037,7 @@ function parseNameOptions(node) {
     options[OPTION_TEXT] = true
   }
 
-  if (name.endsWith('Toggle')) {
+  if (name.endsWith('Toggle') || name == 'toggle') {
     options[OPTION_TOGGLE] = true
   }
 
@@ -1635,6 +1647,7 @@ async function exportBaum2Command(selection, root) {
     let func = nodes => {
       nodes.forEach(node => {
         let nameOptions = parseNameOptions(node)
+        console.log(nameOptions)
         const isArtboard = node instanceof Artboard
         if (
           isArtboard ||
