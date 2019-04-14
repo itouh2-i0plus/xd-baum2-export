@@ -52,6 +52,7 @@ const OPTION_STRETCH_H = 'stretchh'
 const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
+const OPTION_GROUP = 'group'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -355,6 +356,11 @@ async function nodeGroup(
       type: type,
       name: name,
     })
+    if (options[OPTION_GROUP]) {
+      Object.assign(json, {
+        group: options[OPTION_GROUP],
+      })
+    }
     await funcForEachChild()
     return type
   }
@@ -514,6 +520,7 @@ async function nodeGroup(
  */
 function getResponsiveParameter(node, hashBounds, options) {
   if (!node) return null
+  if (node.parent == null) return null
   if (!options) {
     // @Pivot @Stretchを取得するため
     const nameOptions = parseNameOptions(node)
@@ -990,7 +997,7 @@ function parseNameOptions(node) {
     name = name.slice(0, -1)
   }
 
-  if (node.parent.constructor.name == 'RepeatGrid') {
+  if (node.parent != null && node.parent.constructor.name == 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようで
     // Buttonといった名前がつき､機能してしまうことを防ぐ
     // item_button
@@ -1037,7 +1044,7 @@ function parseNameOptions(node) {
     options[OPTION_TEXT] = true
   }
 
-  if (name.endsWith('Toggle') || name == 'toggle') {
+  if (name.endsWith('Toggle') || name.endsWith('_toggle') || name == 'toggle') {
     options[OPTION_TOGGLE] = true
   }
 
@@ -1647,7 +1654,6 @@ async function exportBaum2Command(selection, root) {
     let func = nodes => {
       nodes.forEach(node => {
         let nameOptions = parseNameOptions(node)
-        console.log(nameOptions)
         const isArtboard = node instanceof Artboard
         if (
           isArtboard ||
