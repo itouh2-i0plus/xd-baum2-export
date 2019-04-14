@@ -5,7 +5,7 @@ const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
-var scale = 1.0
+var scale = 2.0
 
 // レスポンシブパラメータを保存する
 var responsiveBounds = {}
@@ -53,6 +53,7 @@ const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_GROUP = 'group'
+const OPTION_VIEWPORT = 'viewport'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -103,6 +104,10 @@ function checkOptionList(options) {
 
 function checkOptionScroller(options) {
   return optionEnableExtended && checkBoolean(options[OPTION_SCROLLER])
+}
+
+function checkOptionViewport(options) {
+  return optionEnableExtended && checkBoolean(options[OPTION_VIEWPORT])
 }
 
 /**
@@ -448,7 +453,8 @@ async function nodeGroup(
           scroll: scrollDirection,
         })
 
-        const cell = node.children.at(0)
+        const child0 = node.children.at(0)
+        // cellのサイズはリピートグリッドの元になったもの全てのサイズ
         const cellWidth = node.cellSize.width * scale
         const cellHeight = node.cellSize.height * scale
 
@@ -458,8 +464,8 @@ async function nodeGroup(
             : node.paddingX * scale
         const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
 
-        const paddingLeft = cell.topLeftInParent.x * scale
-        const paddingTop = cell.topLeftInParent.y * scale
+        const paddingLeft = child0.topLeftInParent.x * scale
+        const paddingTop = child0.topLeftInParent.y * scale
 
         const itemWidth =
           paddingLeft + // 左のスペース
@@ -493,6 +499,46 @@ async function nodeGroup(
     }
     return 'Scroller'
   }
+
+  if (checkOptionViewport(options)) {
+    if (node.constructor.name == 'RepeatGrid') {
+      //以下縦スクロール専用でコーディング
+      var scrollDirection = 'vertical'
+
+      await funcForEachChild()
+      const viewportBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+
+      var child0 = node.children.at(0)
+      const child0Bounds = getDrawBoundsInBaseCenterMiddle(child0, node)
+
+      const cellWidth = node.cellSize.width * scale
+      // item0 がずれている分
+      const cellHeight = child0Bounds.y + node.cellSize.height * scale
+
+      console.log('*****************')
+      console.log(cellHeight)
+
+      Object.assign(json, {
+        type: 'Viewport',
+        name: name,
+        x: viewportBounds.x,
+        y: viewportBounds.y,
+        w: viewportBounds.width,
+        h: viewportBounds.height,
+        cellw: cellWidth,
+        cellh: cellHeight,
+        scroll: scrollDirection,
+      })
+
+      json.elements.forEach(item => {
+        item['pivot'] = 'lefttop'
+        item['stretchx'] = true // 縦スクロールの場合､item0は横ストレッチ可にする
+      })
+
+      assignPivotAndStretch(json, node)
+      return 'Viewport'
+    }
+  }
   // 他に"Mask"がある
 
   // 通常のグループ
@@ -509,6 +555,39 @@ async function nodeGroup(
   await funcForEachChild()
 
   return type
+}
+
+class CalcBounds {
+  constructor() {
+    this.sx = null
+    this.sy = null
+    this.ex = null
+    this.ey = null
+  }
+  addBounds(x, y, w, h) {
+    if (this.sx == null || this.sx < x) {
+      this.sx = x
+    }
+    if (this.sy == null || this.sy < y) {
+      this.sy = y
+    }
+    const ex = x + w
+    const ey = y + h
+    if (this.ex == null || this.ex < ex) {
+      this.ex = ex
+    }
+    if (this.ey == null || this.ey < ey) {
+      this.ey = y
+    }
+  }
+  get bounds() {
+    return {
+      x: this.sx,
+      y: this.sy,
+      width: this.ex - this.sx,
+      height: this.ey - this.sy,
+    }
+  }
 }
 
 /**
@@ -1064,6 +1143,14 @@ function parseNameOptions(node) {
       name == 'scroller'
     ) {
       options[OPTION_SCROLLER] = true
+    }
+
+    if (
+      name.endsWith('Viewport') ||
+      name.endsWith('_viewport') ||
+      name == 'viewport'
+    ) {
+      options[OPTION_VIEWPORT] = true
     }
   }
 
