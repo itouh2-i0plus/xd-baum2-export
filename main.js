@@ -54,6 +54,7 @@ const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_GROUP = 'group'
 const OPTION_VIEWPORT = 'viewport'
+const OPTION_CANVASGROUP = 'canvasgroup'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -234,6 +235,21 @@ function checkBoolean(r) {
 }
 
 /**
+ * CanvasGroupオプション
+ * @param {*} json 
+ * @param {*} node 
+ */
+function assignCanvasGroup(json,node,options)
+{
+  let canvasGroup = options[OPTION_CANVASGROUP]
+  if (canvasGroup != null) {
+    Object.assign(json, {
+      canvasgroup: {alpha:0}
+    })
+  }
+}
+
+/**
  * オプションにpivot､streachがあれば上書き
  * @param {*} json
  * @param {*} node
@@ -324,6 +340,7 @@ async function nodeGroup(
     await nodeDrawing(json, node, root, subFolder, renditions, name, options)
     return 'Image'
   }
+
   if (checkOptionButton(options)) {
     const type = 'Button'
     Object.assign(json, {
@@ -366,6 +383,7 @@ async function nodeGroup(
         group: options[OPTION_GROUP],
       })
     }
+    assignPivotAndStretch(json, node)
     await funcForEachChild()
     return type
   }
@@ -515,9 +533,6 @@ async function nodeGroup(
       // item0 がずれている分
       const cellHeight = child0Bounds.y + node.cellSize.height * scale
 
-      console.log('*****************')
-      console.log(cellHeight)
-
       Object.assign(json, {
         type: 'Viewport',
         name: name,
@@ -531,7 +546,7 @@ async function nodeGroup(
       })
 
       json.elements.forEach(item => {
-        item['pivot'] = 'lefttop'
+        item['pivot'] = 'topleft'
         item['stretchx'] = true // 縦スクロールの場合､item0は横ストレッチ可にする
       })
 
@@ -552,6 +567,7 @@ async function nodeGroup(
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
   assignPivotAndStretch(json, node)
+  assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
   return type
@@ -598,8 +614,7 @@ class CalcBounds {
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
 function getResponsiveParameter(node, hashBounds, options) {
-  if (!node) return null
-  if (node.parent == null) return null
+  if (!node || !node.parent) return null
   if (!options) {
     // @Pivot @Stretchを取得するため
     const nameOptions = parseNameOptions(node)
@@ -968,6 +983,7 @@ async function nodeText(
     text: node.text,
     textType: textType,
     font: node.fontFamily,
+    style: node.fontStyle,
     size: node.fontSize * scale,
     color: getRGB(node.fill.value),
     align: align,
@@ -1755,7 +1771,10 @@ async function exportBaum2Command(selection, root) {
             if (isArtboard) {
               responsiveCheckArtboards[nameOptions.name] = node
             } else {
-              responsiveCheckArtboards[currentArtboard.name] = currentArtboard
+              // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
+              if (currentArtboard != null) {
+                responsiveCheckArtboards[currentArtboard.name] = currentArtboard
+              }
             }
           }
         }
