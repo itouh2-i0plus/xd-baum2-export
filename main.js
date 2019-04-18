@@ -177,6 +177,7 @@ function getGlobalDrawBounds(node) {
  */
 function getGlobalBounds(node) {
   const bounds = node.globalBounds
+  // Artboardにあるスクロール領域のボーダー
   const viewPortHeight = node.viewportHeight
   if (viewPortHeight != null) bounds.height = viewPortHeight
   return {
@@ -188,6 +189,7 @@ function getGlobalBounds(node) {
 }
 
 /**
+ * Baum2用Boundsパラメータの取得
  * Artboard内でのDrawBoundsを取得する
  * x､yはCenterMiddleでの座標になる
  * @param {scenegraph} node
@@ -235,16 +237,41 @@ function checkBoolean(r) {
 }
 
 /**
- * CanvasGroupオプション
- * @param {*} json 
- * @param {*} node 
+ * 線分の衝突
+ * @param {number} as
+ * @param {number} ae
+ * @param {number} bs
+ * @param {number} be
  */
-function assignCanvasGroup(json,node,options)
-{
+function testLine(as, ae, bs, be) {
+  if (as >= bs) {
+    return as < be
+  }
+  return ae > bs
+}
+
+/**
+ * バウンディングボックスの衝突検知
+ * @param {*} a
+ * @param {*} b
+ */
+function testBounds(a, b) {
+  return (
+    testLine(a.x, a.x + a.width, b.x, b.x + b.width) &&
+    testLine(a.y, a.y + a.height, b.y, b.y + b.height)
+  )
+}
+
+/**
+ * CanvasGroupオプション
+ * @param {*} json
+ * @param {*} node
+ */
+function assignCanvasGroup(json, node, options) {
   let canvasGroup = options[OPTION_CANVASGROUP]
   if (canvasGroup != null) {
     Object.assign(json, {
-      canvasgroup: {alpha:0}
+      canvasgroup: { alpha: 0 },
     })
   }
 }
@@ -523,31 +550,53 @@ async function nodeGroup(
       //以下縦スクロール専用でコーディング
       var scrollDirection = 'vertical'
 
-      await funcForEachChild()
-      const viewportBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+      let contentBounds = new CalcBounds()
+
+      const viewport = getGlobalDrawBounds(node)
+      contentBounds.addBounds(viewport)
+      // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
+      // そういったものを省くための処理
+      // Contentの領域も計算する
+      await funcForEachChild(null, child => {
+        const nameOptions = parseNameOptions(child)
+        //if (index == 0) return
+        const bounds = getGlobalDrawBounds(child)
+        if (!testBounds(viewport, bounds)) {
+          console.log(nameOptions.name + 'はViewportにはいっていない')
+          return false
+        }
+        contentBounds.addBounds(bounds)
+        console.log(bounds)
+        return true
+      })
+      const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
 
       var child0 = node.children.at(0)
-      const child0Bounds = getDrawBoundsInBaseCenterMiddle(child0, node)
+      const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, node)
 
       const cellWidth = node.cellSize.width * scale
-      // item0 がずれている分
-      const cellHeight = child0Bounds.y + node.cellSize.height * scale
+      // item0 がY方向へ移動している分
+      const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
+
+      node.children.forEach((child, index) => {
+        child['pivot'] = 'topleft'
+        child['stretchx'] = true // 縦スクロールの場合､item0は横ストレッチ可にする
+      })
+
+      console.log(contentBounds.bounds)
 
       Object.assign(json, {
         type: 'Viewport',
         name: name,
-        x: viewportBounds.x,
-        y: viewportBounds.y,
-        w: viewportBounds.width,
-        h: viewportBounds.height,
-        cellw: cellWidth,
-        cellh: cellHeight,
+        x: viewportBoundsCM.x,
+        y: viewportBoundsCM.y,
+        w: viewportBoundsCM.width,
+        h: viewportBoundsCM.height,
+        //cellw: cellWidth,
+        cellw: contentBounds.bounds.width,
+        //cellh: cellHeight,
+        cellh: contentBounds.bounds.height,
         scroll: scrollDirection,
-      })
-
-      json.elements.forEach(item => {
-        item['pivot'] = 'topleft'
-        item['stretchx'] = true // 縦スクロールの場合､item0は横ストレッチ可にする
       })
 
       assignPivotAndStretch(json, node)
@@ -580,11 +629,11 @@ class CalcBounds {
     this.ex = null
     this.ey = null
   }
-  addBounds(x, y, w, h) {
-    if (this.sx == null || this.sx < x) {
+  addBoundsParam(x, y, w, h) {
+    if (this.sx == null || this.sx > x) {
       this.sx = x
     }
-    if (this.sy == null || this.sy < y) {
+    if (this.sy == null || this.sy > y) {
       this.sy = y
     }
     const ex = x + w
@@ -593,8 +642,15 @@ class CalcBounds {
       this.ex = ex
     }
     if (this.ey == null || this.ey < ey) {
-      this.ey = y
+      this.ey = ey
     }
+  }
+  addBounds(bounds) {
+    console.log("1+++++++++++++++++")
+    console.log(bounds)
+    this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
+    console.log("2+++++++++++++++++")
+    console.log(this.bounds)
   }
   get bounds() {
     return {
@@ -1278,7 +1334,7 @@ async function extractedRoot(renditions, folder, root) {
     }
 
     // 子Node処理関数
-    let funcForEachChild = async numChildren => {
+    let funcForEachChild = async (numChildren, funcFilter) => {
       const maxNumChildren = node.children.length
       if (numChildren == null) {
         numChildren = maxNumChildren
@@ -1290,8 +1346,13 @@ async function extractedRoot(renditions, folder, root) {
         // 後ろから順番に処理をする
         // 描画順に関わるので､非同期処理にしない
         for (let i = numChildren - 1; i >= 0; i--) {
+          let child = node.children.at(i)
+          if (funcFilter) {
+            // Filter関数を呼び出し､Falseならばスキップ
+            if (!funcFilter(child)) continue
+          }
           let childJson = {}
-          nodeStack.push(node.children.at(i))
+          nodeStack.push(child)
           await nodeWalker(nodeStack, childJson, depth + 1)
           nodeStack.pop()
           // なにも入っていない場合はelementsに追加しない
