@@ -31,7 +31,7 @@ var optionTextToTextMP = false
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
 
-// オプション文字列　全て小文字
+// オプション文字列　全て小文字 オプションは 大文字は小文字､-は消去し判定する
 const OPTION_COMMENTOUT = 'commentout'
 const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
@@ -52,9 +52,12 @@ const OPTION_STRETCH_H = 'stretchh'
 const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
-const OPTION_GROUP = 'group'
+const OPTION_VGROUP = 'vgroup'
 const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVASGROUP = 'canvasgroup'
+const OPTION_COMPONENT = 'component'
+const OPTION_VERTICAL_FIT = 'verticalfit'
+const OPTION_PREFERRED_HEIGHT = 'preferredheight'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -109,6 +112,19 @@ function checkOptionScroller(options) {
 
 function checkOptionViewport(options) {
   return optionEnableExtended && checkBoolean(options[OPTION_VIEWPORT])
+}
+
+/**
+ * 誤差範囲での差があるか
+ * @param {number} a
+ * @param {number} b
+ * @param {number} eps
+ */
+function approxEqual(a, b, eps) {
+  if (eps == null) {
+    eps = 0.00001
+  }
+  return Math.abs(a - b) < eps
 }
 
 /**
@@ -405,9 +421,9 @@ async function nodeGroup(
       type: type,
       name: name,
     })
-    if (options[OPTION_GROUP]) {
+    if (options[OPTION_VGROUP]) {
       Object.assign(json, {
-        group: options[OPTION_GROUP],
+        group: options[OPTION_VGROUP],
       })
     }
     assignPivotAndStretch(json, node)
@@ -443,7 +459,7 @@ async function nodeGroup(
         /*
         Areaがなくて､リピートグリッドだけでもScrollerを作成する
         仕様:
-        一番目のアイテムをテンプレートとして､Baum2にわたす(item0)
+        一番目のアイテムをテンプレートとして､Baum2にわたす(item[0])
         Itemはレスポンシブ設定自動取得できない
           → RepeatGridは､サイズの変更で､アイテムの数が変わるもののため
           → そのため､RepeatGridの中のアイテムは固定サイズになる
@@ -452,43 +468,43 @@ async function nodeGroup(
         それ以外 → Grid
         */
         var scrollDirection = 'vertical'
-        let item0Json
+        let items
         if (node.numColumns == 1) {
           // vertical
           var scrollDirection = 'vertical'
-          // item0を一個だけコンバート
+          // item[0]を一個だけコンバート
           await funcForEachChild(1)
           // アイテムの作成
-          // Scroller直下にはリピートグリッドで並べた分のitem0があり､
+          // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
           // もう1段したの子供がアイテムになる
-          item0Json = [json.elements[0]]
+          items = [json.elements[0]]
         } else if (node.numRows == 1) {
           // Horizontal
           scrollDirection = 'horizontal'
-          // item0を一個だけコンバート
+          // item[0]を一個だけコンバート
           await funcForEachChild(1)
-          item0Json = [json.elements[0]]
+          items = [json.elements[0]]
         } else {
           // Grid
-          item0Json = [
+          items = [
             {
               type: 'Group',
-              name: 'item0',
+              name: 'item[0]',
               elements: [],
             },
           ]
-          // Column分のitem0をコンバートする
+          // Column分のitem[0]をコンバートする
           await funcForEachChild(node.numColumns)
           // 一列はいっているitemを作成する
           for (let i = 0; i < node.numColumns; i++) {
             var elem = json.elements[i]
-            elem.name = 'item0-' + (node.numColumns - i - 1)
-            item0Json[0].elements.push(elem)
+            elem.name = 'item[0]-' + (node.numColumns - i - 1)
+            items[0].elements.push(elem)
           }
         }
 
-        // item0のグループをlefttopにする
-        // item0Json.forEach(item => {
+        // item[0]のグループをlefttopにする
+        // items.forEach(item => {
         //     item['pivot'] = 'lefttop'
         // })
 
@@ -535,7 +551,7 @@ async function nodeGroup(
           w: drawBounds.width,
           h: drawBounds.height,
           opacity: 100,
-          elements: item0Json, // トップの一個だけ
+          elements: items, // トップの一個だけ
         })
         assignPivotAndStretch(json, node)
       } else {
@@ -575,15 +591,13 @@ async function nodeGroup(
       const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, node)
 
       const cellWidth = node.cellSize.width * scale
-      // item0 がY方向へ移動している分
+      // item[0] がY方向へ移動している分
       const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
 
       node.children.forEach((child, index) => {
         child['pivot'] = 'topleft'
-        child['stretchx'] = true // 縦スクロールの場合､item0は横ストレッチ可にする
+        child['stretchx'] = true // 縦スクロールの場合､item[0]は横ストレッチ可にする
       })
-
-      console.log(contentBounds.bounds)
 
       Object.assign(json, {
         type: 'Viewport',
@@ -592,14 +606,18 @@ async function nodeGroup(
         y: viewportBoundsCM.y,
         w: viewportBoundsCM.width,
         h: viewportBoundsCM.height,
-        //cellw: cellWidth,
         cellw: contentBounds.bounds.width,
-        //cellh: cellHeight,
         cellh: contentBounds.bounds.height,
         scroll: scrollDirection,
       })
 
       assignPivotAndStretch(json, node)
+
+      //ViewportにVGROUPがついていた場合､その子供にVGROUPをつける
+      if (options[OPTION_VGROUP] != null) {
+        json.elements[0]['vgroup'] = {}
+      }
+
       return 'Viewport'
     }
   }
@@ -607,17 +625,116 @@ async function nodeGroup(
 
   // 通常のグループ
   const type = 'Group'
-  let bounds = getGlobalDrawBounds(node)
+  let drawBounds = getGlobalDrawBounds(node)
+  let boundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
   Object.assign(json, {
     type: type,
     name: name,
-    w: bounds.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
-    h: bounds.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
+    x: boundsCM.x, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
+    y: boundsCM.y, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
+    w: boundsCM.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
+    h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
   assignPivotAndStretch(json, node)
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
+
+  // assginVerticaFit
+  if (options[OPTION_VERTICAL_FIT] != null) {
+    Object.assign(json, {
+      vertical_fit: 'preferred', // デフォルトはpreferred
+    })
+  }
+
+  // assginPreferredHeight
+  if (options[OPTION_PREFERRED_HEIGHT] != null) {
+    Object.assign(json, {
+      preferred_height: json.h,
+    })
+  }
+
+  // assignVGroup
+  if (options[OPTION_VGROUP] != null) {
+    // 子供(コンポーネント化するものを省く)のリスト用ソート 上から順に並ぶように
+    json.elements.sort((a, b) => {
+      const a_y = a['component'] ? Number.MAX_VALUE : a['y']
+      const b_y = b['component'] ? Number.MAX_VALUE : b['y']
+      return b_y - a_y
+    })
+    // componentの無いelemリストを作成する
+    let elems = []
+    for (let i = json.elements.length - 1; i >= 0; i--) {
+      //後ろから追加していく
+      let element = json.elements[i]
+      if (element && element['component'] == null) {
+        elems.push(element)
+      }
+    }
+    // Paddingを取得するため､子供(コンポーネント化するものを除く)のサイズを取得する
+    var childrenCalcBounds = new CalcBounds()
+    node.children.forEach(child => {
+      const nameOptions = parseNameOptions(child)
+      if (nameOptions.options['component']) return
+      childrenCalcBounds.addBounds(getGlobalDrawBounds(child))
+    })
+    // Paddingの計算
+    const childrenBounds = childrenCalcBounds.bounds
+    const paddingLeft = childrenBounds.x - drawBounds.x
+    const paddingTop = childrenBounds.y - drawBounds.y
+    const paddingRight =
+      drawBounds.x +
+      drawBounds.width -
+      (childrenBounds.x + childrenBounds.width)
+    const paddingBottom =
+      drawBounds.y +
+      drawBounds.height -
+      (childrenBounds.y + childrenBounds.height)
+    Object.assign(json, {
+      vgroup: {
+        padding: {
+          left: paddingLeft,
+          right: paddingRight,
+          top: paddingTop,
+          bottom: paddingBottom,
+        },
+      },
+    })
+    // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
+    if (elems[0] && elems[1]) {
+      // spacingの計算 ソートした上で､items[0]とitem1で計算する
+      // 簡易的にやっている
+      const spacing = elems[1].y - (elems[0].y + elems[0].h)
+      Object.assign(json['vgroup'], {
+        spacing: spacing,
+      })
+      // left揃えか
+      if (approxEqual(elems[0].x, elems[1].x)) {
+        Object.assign(json['vgroup'], {
+          child_alignment: 'left',
+        })
+      } else if (
+        approxEqual(elems[0].x + elems[0].w, elems[1].x + elems[1].w)
+      ) {
+        Object.assign(json['vgroup'], {
+          child_alignment: 'right',
+        })
+      } else {
+        Object.assign(json['vgroup'], {
+          child_alignment: 'center',
+        })
+      }
+    }
+    // items全部が stretchx:true なら　ChildForceExpand.width = true
+    const foundNotStretchX = elems.forEach(elem => {
+      return elem['stretchx'] != true
+    })
+    if (!foundNotStretchX) {
+      Object.assign(json['vgroup'], {
+        child_force_expand_width: true,
+      })
+    }
+  }
 
   return type
 }
@@ -646,11 +763,7 @@ class CalcBounds {
     }
   }
   addBounds(bounds) {
-    console.log("1+++++++++++++++++")
-    console.log(bounds)
     this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
-    console.log("2+++++++++++++++++")
-    console.log(this.bounds)
   }
   get bounds() {
     return {
@@ -749,7 +862,7 @@ function getResponsiveParameter(node, hashBounds, options) {
     let fixOptionLeft = null
     let fixOptionRight = null
 
-    fixOption
+    fixOption = fixOption
       .replace('-w-', '-width-')
       .replace('-h-', '-height-')
       .replace('-t-', '-top-')
@@ -1059,7 +1172,7 @@ async function nodeText(
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json
  * @param {scenegraph} node
- * @param {artboard} artboard
+ * @param {artboard} root
  * @param {*} subFolder
  * @param {*} renditions
  * @param {string} name
@@ -1068,13 +1181,14 @@ async function nodeText(
 async function nodeDrawing(
   json,
   node,
-  artboard,
+  root,
   subFolder,
   renditions,
   name,
   options,
+  parentJson,
 ) {
-  //
+  // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
   if (checkOptionButton(options)) {
     Object.assign(json, {
       type: 'Button',
@@ -1087,21 +1201,20 @@ async function nodeDrawing(
       ],
     })
     assignPivotAndStretch(json, node)
-    await assignImage(
-      json.elements[0],
-      node,
-      artboard,
-      subFolder,
-      renditions,
-      name,
-    )
+    await assignImage(json.elements[0], node, root, subFolder, renditions, name)
   } else {
     Object.assign(json, {
       type: 'Image',
       name: name,
     })
     assignPivotAndStretch(json, node)
-    await assignImage(json, node, artboard, subFolder, renditions, name)
+    await assignImage(json, node, root, subFolder, renditions, name)
+    // assignComponent
+    if (options[OPTION_COMPONENT] != null) {
+      Object.assign(json, {
+        component: {},
+      })
+    }
   }
 }
 
@@ -1121,9 +1234,19 @@ function parseNameOptions(node) {
     optionArray.forEach(option => {
       let args = option.split('=')
       if (args.length > 1) {
-        options[args[0].trim().toLowerCase()] = args[1].trim().toLowerCase()
+        options[
+          args[0]
+            .trim()
+            .toLowerCase()
+            .replace('-', '')
+        ] = args[1].trim().toLowerCase()
       } else {
-        options[option.trim().toLowerCase()] = true
+        options[
+          option
+            .trim()
+            .toLowerCase()
+            .replace('-', '')
+        ] = true
       }
     })
   } else {
@@ -1142,6 +1265,11 @@ function parseNameOptions(node) {
     name = name.substring(1)
   }
 
+  if (name.startsWith('+')) {
+    options[OPTION_COMPONENT] = true
+    name = name.substring(1)
+  }
+
   // 名前の最後が/であれば､サブPrefabのオプションをONにする
   if (name.endsWith('/')) {
     options[OPTION_SUB_PREFAB] = true
@@ -1155,17 +1283,17 @@ function parseNameOptions(node) {
     // item_text
     // 2つセットをリピートグリッド化した場合､以下のような構成になる
     // リピートグリッド 1
-    //   - item0
+    //   - item[0]
     //     - item_button
     //     - item_text
-    //   - item0
+    //   - item[0]
     //     - item_button
     //     - item_text
-    //   - item0
+    //   - item[0]
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    name = 'item0'
+    name = 'item[0]'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < node.parent.children.length; i++) {
       if (node.parent.children.at(i) == node) {
@@ -1310,7 +1438,7 @@ async function extractedRoot(renditions, folder, root) {
 
   var layoutJson = makeLayoutJson(root)
 
-  let nodeWalker = async (nodeStack, layoutJson, depth) => {
+  let nodeWalker = async (nodeStack, layoutJson, depth, parentJson) => {
     var node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
@@ -1353,7 +1481,7 @@ async function extractedRoot(renditions, folder, root) {
           }
           let childJson = {}
           nodeStack.push(child)
-          await nodeWalker(nodeStack, childJson, depth + 1)
+          await nodeWalker(nodeStack, childJson, depth + 1, layoutJson)
           nodeStack.pop()
           // なにも入っていない場合はelementsに追加しない
           if (Object.keys(childJson).length > 0) {
@@ -1410,7 +1538,6 @@ async function extractedRoot(renditions, folder, root) {
       case 'Ellipse':
       case 'Rectangle':
       case 'Path':
-        nodeStack.forEach(node => {})
         await nodeDrawing(
           layoutJson,
           node,
@@ -1419,6 +1546,7 @@ async function extractedRoot(renditions, folder, root) {
           renditions,
           name,
           options,
+          parentJson,
         )
         await funcForEachChild()
         break
