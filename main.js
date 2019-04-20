@@ -1097,6 +1097,7 @@ function makeResponsiveParameter(root) {
   const artboardHeight = root.globalBounds.height
   const resizePlusWidth = 100
   const resizePlusHeight = 100
+
   // Artboardのリサイズ
   root.resize(
     artboardWidth + resizePlusWidth,
@@ -1504,7 +1505,7 @@ function makeLayoutJson(root) {
  * @param {*} folder
  * @param {artboard} root
  */
-async function extractedRoot(renditions, folder, root) {
+async function nodeRoot(renditions, folder, root) {
   let nameOptions = parseNameOptions(root)
 
   let subFolderName = nameOptions.name
@@ -1703,7 +1704,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // アートボード毎の処理
   for (var i in roots) {
     let root = roots[i]
-    await extractedRoot(renditions, outputFolder, root)
+    await nodeRoot(renditions, outputFolder, root)
   }
 
   if (renditions.length != 0) {
