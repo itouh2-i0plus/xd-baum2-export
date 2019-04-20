@@ -354,7 +354,7 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
   })
 }
 
-async function assginScroller(
+async function assignScroller(
   json,
   node,
   root,
@@ -476,7 +476,7 @@ async function assginScroller(
   return 'Scroller'
 }
 
-async function assginViewport(
+async function assignViewport(
   json,
   node,
   root,
@@ -500,15 +500,13 @@ async function assginViewport(
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
       const nameOptions = parseNameOptions(child)
-      //if (index == 0) return
       const bounds = getGlobalDrawBounds(child)
       if (!testBounds(viewport, bounds)) {
         console.log(nameOptions.name + 'はViewportにはいっていない')
-        return false
+        return false // 処理しない
       }
       contentBounds.addBounds(bounds)
-      console.log(bounds)
-      return true
+      return true // 処理する
     })
     const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
 
@@ -537,11 +535,6 @@ async function assginViewport(
     })
 
     assignPivotAndStretch(json, node)
-
-    //ViewportにVGROUPがついていた場合､その子供にVGROUPをつける
-    if (options[OPTION_VGROUP] != null) {
-      json.elements[0]['vgroup'] = {}
-    }
   }
 }
 
@@ -636,7 +629,7 @@ function assignVGroup(
   }
 }
 
-async function assginGroup(
+async function assignGroup(
   json,
   node,
   root,
@@ -662,14 +655,14 @@ async function assginGroup(
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
-  // assginVerticaFit
+  // assignVerticaFit
   if (options[OPTION_VERTICAL_FIT] != null) {
     Object.assign(json, {
       vertical_fit: 'preferred', // デフォルトはpreferred
     })
   }
 
-  // assginPreferredHeight
+  // assignPreferredHeight
   if (options[OPTION_PREFERRED_HEIGHT] != null) {
     Object.assign(json, {
       preferred_height: json.h,
@@ -789,7 +782,7 @@ async function nodeGroup(
   }
 
   if (checkOptionScroller(options)) {
-    return await assginScroller(
+    return await assignScroller(
       json,
       node,
       root,
@@ -802,7 +795,7 @@ async function nodeGroup(
   }
 
   if (checkOptionViewport(options)) {
-    return await assginViewport(
+    return await assignViewport(
       json,
       node,
       root,
@@ -816,7 +809,7 @@ async function nodeGroup(
   // 他に"Mask"がある
 
   // 通常のグループ
-  return await assginGroup(
+  return await assignGroup(
     json,
     node,
     root,
@@ -1305,18 +1298,63 @@ async function nodeDrawing(
         component: {},
       })
     }
+    // assginPreferredHeight
+    if (options[OPTION_PREFERRED_HEIGHT] != null) {
+      Object.assign(json, {
+        preferred_height: json.h, //assignImageでわりあてられている
+      })
+    }
   }
 }
 
 /**
- * .nameをパースしオプションに分解する
+ * node.nameをパースしオプションに分解する
+ * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
  * @param {*} str
  */
 function parseNameOptions(node) {
-  let str = node.name
   let name = null
   let options = {}
-  let optionArray = str.split('@')
+
+  let nameStr = node.name
+  let parent = node.parent
+  if (parent != null && parent.constructor.name == 'RepeatGrid') {
+    // 親がリピートグリッドの場合､名前が適当につけられるようです
+    // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
+    // item_button
+    // item_text
+    // 2つセットをリピートグリッド化した場合､以下のような構成になる
+    // リピートグリッド 1
+    //   - item0
+    //     - item_button
+    //     - item_text
+    //   - item1
+    //     - item_button
+    //     - item_text
+    //   - item2
+    //     - item_button
+    //     - item_text
+    // 以上のような構成になる
+    nameStr = 'item0'
+    // 自身のChildインデックスを名前に利用する
+    for (let i = 0; i < parent.children.length; i++) {
+      if (parent.children.at(i) == node) {
+        nameStr = 'item' + i
+        break
+      }
+    }
+    // 親の属性をみてオプションを定義する
+    const parentNameOptions = parseNameOptions(parent)
+    // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
+    // viewport　(Unityではここで､vgroupはもたない)
+    //   content +vgroup +content_size_fitter (これらはBaum2で付与される)
+    //     item0 +vgroup
+    if (parentNameOptions.options[OPTION_VGROUP] != null) {
+      options[OPTION_VGROUP] = true
+    }
+  }
+
+  let optionArray = nameStr.split('@')
   if (optionArray != null && optionArray.length > 0) {
     name = optionArray[0].trim()
     // 名前の部分を除去
@@ -1340,7 +1378,7 @@ function parseNameOptions(node) {
       }
     })
   } else {
-    name = str.trim()
+    name = nameStr.trim()
   }
 
   // 名前の最初1文字目が#ならコメントNode
@@ -1364,33 +1402,6 @@ function parseNameOptions(node) {
   if (name.endsWith('/')) {
     options[OPTION_SUB_PREFAB] = true
     name = name.slice(0, -1)
-  }
-
-  if (node.parent != null && node.parent.constructor.name == 'RepeatGrid') {
-    // 親がリピートグリッドの場合､名前が適当につけられるようで
-    // Buttonといった名前がつき､機能してしまうことを防ぐ
-    // item_button
-    // item_text
-    // 2つセットをリピートグリッド化した場合､以下のような構成になる
-    // リピートグリッド 1
-    //   - item[0]
-    //     - item_button
-    //     - item_text
-    //   - item[0]
-    //     - item_button
-    //     - item_text
-    //   - item[0]
-    //     - item_button
-    //     - item_text
-    // 以上のような構成になる
-    name = 'item[0]'
-    // 自身のChildインデックスを名前に利用する
-    for (let i = 0; i < node.parent.children.length; i++) {
-      if (node.parent.children.at(i) == node) {
-        name = 'item' + i
-        break
-      }
-    }
   }
 
   if (name.endsWith('Image') || name.endsWith('_image') || name == 'image') {
