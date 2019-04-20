@@ -52,6 +52,7 @@ const OPTION_STRETCH_H = 'stretchh'
 const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
+const OPTION_GROUP = 'group'
 const OPTION_VGROUP = 'vgroup'
 const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVASGROUP = 'canvasgroup'
@@ -334,7 +335,6 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
   })
 
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
-
   Object.assign(json, {
     image: fileName,
     x: drawBounds.x,
@@ -352,6 +352,345 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
     type: application.RenditionType.PNG,
     scale: scale,
   })
+}
+
+async function assginScroller(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  name,
+  options,
+  funcForEachChild,
+) {
+  let areaNodes = node.children.filter(child => {
+    const { name, options } = parseNameOptions(child)
+    return name == 'Area'
+  })
+
+  if (areaNodes.length == 0) {
+    if (node.constructor.name == 'RepeatGrid') {
+      /*
+      Areaがなくて､リピートグリッドだけでもScrollerを作成する
+      仕様:
+      一番目のアイテムをテンプレートとして､Baum2にわたす(item[0])
+      Itemはレスポンシブ設定自動取得できない
+        → RepeatGridは､サイズの変更で､アイテムの数が変わるもののため
+        → そのため､RepeatGridの中のアイテムは固定サイズになる
+      列が1つ → 縦スクロール
+      行が1つ → 横スクロール
+      それ以外 → Grid
+      */
+      var scrollDirection = 'vertical'
+      let items
+      if (node.numColumns == 1) {
+        // vertical
+        var scrollDirection = 'vertical'
+        // item[0]を一個だけコンバート
+        await funcForEachChild(1)
+        // アイテムの作成
+        // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
+        // もう1段したの子供がアイテムになる
+        items = [json.elements[0]]
+      } else if (node.numRows == 1) {
+        // Horizontal
+        scrollDirection = 'horizontal'
+        // item[0]を一個だけコンバート
+        await funcForEachChild(1)
+        items = [json.elements[0]]
+      } else {
+        // Grid
+        items = [
+          {
+            type: 'Group',
+            name: 'item0',
+            elements: [],
+          },
+        ]
+        // Column分のitem[0]をコンバートする
+        await funcForEachChild(node.numColumns)
+        // 一列はいっているitemを作成する
+        for (let i = 0; i < node.numColumns; i++) {
+          var elem = json.elements[i]
+          elem.name = 'item0-' + (node.numColumns - i - 1)
+          items[0].elements.push(elem)
+        }
+      }
+
+      // item[0]のグループをlefttopにする
+      // items.forEach(item => {
+      //     item['pivot'] = 'lefttop'
+      // })
+
+      Object.assign(json, {
+        type: 'Scroller',
+        name: name,
+        scroll: scrollDirection,
+      })
+
+      const child0 = node.children.at(0)
+      // cellのサイズはリピートグリッドの元になったもの全てのサイズ
+      const cellWidth = node.cellSize.width * scale
+      const cellHeight = node.cellSize.height * scale
+
+      const spacing =
+        scrollDirection == 'vertical'
+          ? node.paddingY * scale
+          : node.paddingX * scale
+      const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+
+      const paddingLeft = child0.topLeftInParent.x * scale
+      const paddingTop = child0.topLeftInParent.y * scale
+
+      const itemWidth =
+        paddingLeft + // 左のスペース
+        cellWidth * node.numColumns + // cellのサイズ*cellの個数
+        node.paddingX * scale * (node.numColumns - 1) // cellとcellの隙間*(cellの個数-1)
+      const itemHeight =
+        paddingTop + // 上のスペース
+        cellHeight * node.numRows + // cellのサイズ*cellの個数
+        node.paddingY * scale * (node.numRows - 1) // cellとcellの隙間*(cellの個数-1)
+
+      const paddingRight = drawBounds.width - itemWidth
+
+      // リピートグリッドなら子供はすべてScrollerにいれるものになっている
+      // 隙間のパラメータ
+      Object.assign(json, {
+        paddingLeft: paddingLeft,
+        paddingRight: paddingRight,
+        paddingTop: paddingTop,
+        spacing: spacing,
+        x: drawBounds.x,
+        y: drawBounds.y,
+        w: drawBounds.width,
+        h: drawBounds.height,
+        opacity: 100,
+        elements: items, // トップの一個だけ
+      })
+      assignPivotAndStretch(json, node)
+    } else {
+      console.log('***error not found Area')
+    }
+  }
+  return 'Scroller'
+}
+
+async function assginViewport(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  name,
+  options,
+  funcForEachChild,
+  depth,
+) {
+  if (node.constructor.name == 'RepeatGrid') {
+    //以下縦スクロール専用でコーディング
+    var scrollDirection = 'vertical'
+
+    let contentBounds = new CalcBounds()
+
+    const viewport = getGlobalDrawBounds(node)
+    contentBounds.addBounds(viewport)
+    // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
+    // そういったものを省くための処理
+    // Contentの領域も計算する
+    await funcForEachChild(null, child => {
+      const nameOptions = parseNameOptions(child)
+      //if (index == 0) return
+      const bounds = getGlobalDrawBounds(child)
+      if (!testBounds(viewport, bounds)) {
+        console.log(nameOptions.name + 'はViewportにはいっていない')
+        return false
+      }
+      contentBounds.addBounds(bounds)
+      console.log(bounds)
+      return true
+    })
+    const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
+
+    var child0 = node.children.at(0)
+    const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, node)
+
+    const cellWidth = node.cellSize.width * scale
+    // item[0] がY方向へ移動している分
+    const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
+
+    node.children.forEach((child, index) => {
+      child['pivot'] = 'topleft'
+      child['stretchx'] = true // 縦スクロールの場合､item[0]は横ストレッチ可にする
+    })
+
+    Object.assign(json, {
+      type: 'Viewport',
+      name: name,
+      x: viewportBoundsCM.x,
+      y: viewportBoundsCM.y,
+      w: viewportBoundsCM.width,
+      h: viewportBoundsCM.height,
+      cellw: contentBounds.bounds.width,
+      cellh: contentBounds.bounds.height,
+      scroll: scrollDirection,
+    })
+
+    assignPivotAndStretch(json, node)
+
+    //ViewportにVGROUPがついていた場合､その子供にVGROUPをつける
+    if (options[OPTION_VGROUP] != null) {
+      json.elements[0]['vgroup'] = {}
+    }
+  }
+}
+
+function assignVGroup(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  name,
+  options,
+  funcForEachChild,
+  depth,
+) {
+  // 子供(コンポーネント化するものを省く)のリスト用ソート 上から順に並ぶように
+  json.elements.sort((elemA, elemB) => {
+    const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
+    const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
+    return b_y - a_y
+  })
+  // componentの無いelemリストを作成する
+  let elems = []
+  for (let i = json.elements.length - 1; i >= 0; i--) {
+    //後ろから追加していく
+    let element = json.elements[i]
+    if (element && element['component'] == null) {
+      elems.push(element)
+    }
+  }
+  // Paddingを取得するため､子供(コンポーネント化するものを除く)のサイズを取得する
+  var childrenCalcBounds = new CalcBounds()
+  node.children.forEach(child => {
+    const nameOptions = parseNameOptions(child)
+    if (nameOptions.options['component']) return
+    childrenCalcBounds.addBounds(getGlobalDrawBounds(child))
+  })
+  //
+  Object.assign(json, {
+    vgroup: {},
+  })
+  let jsonVGroup = json['vgroup']
+  // Paddingの計算
+  let drawBounds = getGlobalDrawBounds(node)
+  const childrenBounds = childrenCalcBounds.bounds
+  const paddingLeft = childrenBounds.x - drawBounds.x
+  const paddingTop = childrenBounds.y - drawBounds.y
+  const paddingRight =
+    drawBounds.x + drawBounds.width - (childrenBounds.x + childrenBounds.width)
+  const paddingBottom =
+    drawBounds.y +
+    drawBounds.height -
+    (childrenBounds.y + childrenBounds.height)
+  Object.assign(jsonVGroup, {
+    padding: {
+      left: paddingLeft,
+      right: paddingRight,
+      top: paddingTop,
+      bottom: paddingBottom,
+    },
+  })
+  // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
+  if (elems[0] && elems[1]) {
+    // spacingの計算 ソートした上で､elems[0]とelems[1]で計算する
+    // 簡易的にやっている
+    const spacing = elems[1].y - (elems[0].y + elems[0].h)
+    Object.assign(jsonVGroup, {
+      spacing: spacing,
+    })
+    // left揃えか
+    if (approxEqual(elems[0].x, elems[1].x)) {
+      Object.assign(jsonVGroup, {
+        child_alignment: 'left',
+      })
+    } else if (approxEqual(elems[0].x + elems[0].w, elems[1].x + elems[1].w)) {
+      Object.assign(jsonVGroup, {
+        child_alignment: 'right',
+      })
+    } else {
+      Object.assign(jsonVGroup, {
+        child_alignment: 'center',
+      })
+    }
+  }
+  // items全部が stretchx:true なら　ChildForceExpand.width = true
+  const foundNotStretchX = elems.forEach(elem => {
+    return elem['stretchx'] != true
+  })
+  if (!foundNotStretchX) {
+    Object.assign(jsonVGroup, {
+      child_force_expand_width: true,
+    })
+  }
+}
+
+async function assginGroup(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  name,
+  options,
+  funcForEachChild,
+  depth,
+) {
+  const type = 'Group'
+  let boundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
+  Object.assign(json, {
+    type: type,
+    name: name,
+    x: boundsCM.x, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
+    y: boundsCM.y, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
+    w: boundsCM.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
+    h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
+    elements: [], // Groupは空でもelementsをもっていないといけない
+  })
+  assignPivotAndStretch(json, node)
+  assignCanvasGroup(json, node, options)
+  await funcForEachChild()
+
+  // assginVerticaFit
+  if (options[OPTION_VERTICAL_FIT] != null) {
+    Object.assign(json, {
+      vertical_fit: 'preferred', // デフォルトはpreferred
+    })
+  }
+
+  // assginPreferredHeight
+  if (options[OPTION_PREFERRED_HEIGHT] != null) {
+    Object.assign(json, {
+      preferred_height: json.h,
+    })
+  }
+
+  // assignVGroup
+  if (options[OPTION_VGROUP] != null) {
+    assignVGroup(
+      json,
+      node,
+      root,
+      subFolder,
+      renditions,
+      name,
+      options,
+      funcForEachChild,
+      depth,
+    )
+  }
+  return type
 }
 
 /**
@@ -421,9 +760,10 @@ async function nodeGroup(
       type: type,
       name: name,
     })
-    if (options[OPTION_VGROUP]) {
+    // Toggle group
+    if (options[OPTION_GROUP]) {
       Object.assign(json, {
-        group: options[OPTION_VGROUP],
+        group: options[OPTION_GROUP],
       })
     }
     assignPivotAndStretch(json, node)
@@ -449,294 +789,43 @@ async function nodeGroup(
   }
 
   if (checkOptionScroller(options)) {
-    let areaNodes = node.children.filter(child => {
-      const { name, options } = parseNameOptions(child)
-      return name == 'Area'
-    })
-
-    if (areaNodes.length == 0) {
-      if (node.constructor.name == 'RepeatGrid') {
-        /*
-        Areaがなくて､リピートグリッドだけでもScrollerを作成する
-        仕様:
-        一番目のアイテムをテンプレートとして､Baum2にわたす(item[0])
-        Itemはレスポンシブ設定自動取得できない
-          → RepeatGridは､サイズの変更で､アイテムの数が変わるもののため
-          → そのため､RepeatGridの中のアイテムは固定サイズになる
-        列が1つ → 縦スクロール
-        行が1つ → 横スクロール
-        それ以外 → Grid
-        */
-        var scrollDirection = 'vertical'
-        let items
-        if (node.numColumns == 1) {
-          // vertical
-          var scrollDirection = 'vertical'
-          // item[0]を一個だけコンバート
-          await funcForEachChild(1)
-          // アイテムの作成
-          // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
-          // もう1段したの子供がアイテムになる
-          items = [json.elements[0]]
-        } else if (node.numRows == 1) {
-          // Horizontal
-          scrollDirection = 'horizontal'
-          // item[0]を一個だけコンバート
-          await funcForEachChild(1)
-          items = [json.elements[0]]
-        } else {
-          // Grid
-          items = [
-            {
-              type: 'Group',
-              name: 'item[0]',
-              elements: [],
-            },
-          ]
-          // Column分のitem[0]をコンバートする
-          await funcForEachChild(node.numColumns)
-          // 一列はいっているitemを作成する
-          for (let i = 0; i < node.numColumns; i++) {
-            var elem = json.elements[i]
-            elem.name = 'item[0]-' + (node.numColumns - i - 1)
-            items[0].elements.push(elem)
-          }
-        }
-
-        // item[0]のグループをlefttopにする
-        // items.forEach(item => {
-        //     item['pivot'] = 'lefttop'
-        // })
-
-        Object.assign(json, {
-          type: 'Scroller',
-          name: name,
-          scroll: scrollDirection,
-        })
-
-        const child0 = node.children.at(0)
-        // cellのサイズはリピートグリッドの元になったもの全てのサイズ
-        const cellWidth = node.cellSize.width * scale
-        const cellHeight = node.cellSize.height * scale
-
-        const spacing =
-          scrollDirection == 'vertical'
-            ? node.paddingY * scale
-            : node.paddingX * scale
-        const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
-
-        const paddingLeft = child0.topLeftInParent.x * scale
-        const paddingTop = child0.topLeftInParent.y * scale
-
-        const itemWidth =
-          paddingLeft + // 左のスペース
-          cellWidth * node.numColumns + // cellのサイズ*cellの個数
-          node.paddingX * scale * (node.numColumns - 1) // cellとcellの隙間*(cellの個数-1)
-        const itemHeight =
-          paddingTop + // 上のスペース
-          cellHeight * node.numRows + // cellのサイズ*cellの個数
-          node.paddingY * scale * (node.numRows - 1) // cellとcellの隙間*(cellの個数-1)
-
-        const paddingRight = drawBounds.width - itemWidth
-
-        // リピートグリッドなら子供はすべてScrollerにいれるものになっている
-        // 隙間のパラメータ
-        Object.assign(json, {
-          paddingLeft: paddingLeft,
-          paddingRight: paddingRight,
-          paddingTop: paddingTop,
-          spacing: spacing,
-          x: drawBounds.x,
-          y: drawBounds.y,
-          w: drawBounds.width,
-          h: drawBounds.height,
-          opacity: 100,
-          elements: items, // トップの一個だけ
-        })
-        assignPivotAndStretch(json, node)
-      } else {
-        console.log('***error not found Area')
-      }
-    }
-    return 'Scroller'
+    return await assginScroller(
+      json,
+      node,
+      root,
+      subFolder,
+      renditions,
+      name,
+      options,
+      funcForEachChild,
+    )
   }
 
   if (checkOptionViewport(options)) {
-    if (node.constructor.name == 'RepeatGrid') {
-      //以下縦スクロール専用でコーディング
-      var scrollDirection = 'vertical'
-
-      let contentBounds = new CalcBounds()
-
-      const viewport = getGlobalDrawBounds(node)
-      contentBounds.addBounds(viewport)
-      // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
-      // そういったものを省くための処理
-      // Contentの領域も計算する
-      await funcForEachChild(null, child => {
-        const nameOptions = parseNameOptions(child)
-        //if (index == 0) return
-        const bounds = getGlobalDrawBounds(child)
-        if (!testBounds(viewport, bounds)) {
-          console.log(nameOptions.name + 'はViewportにはいっていない')
-          return false
-        }
-        contentBounds.addBounds(bounds)
-        console.log(bounds)
-        return true
-      })
-      const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
-
-      var child0 = node.children.at(0)
-      const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, node)
-
-      const cellWidth = node.cellSize.width * scale
-      // item[0] がY方向へ移動している分
-      const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
-
-      node.children.forEach((child, index) => {
-        child['pivot'] = 'topleft'
-        child['stretchx'] = true // 縦スクロールの場合､item[0]は横ストレッチ可にする
-      })
-
-      Object.assign(json, {
-        type: 'Viewport',
-        name: name,
-        x: viewportBoundsCM.x,
-        y: viewportBoundsCM.y,
-        w: viewportBoundsCM.width,
-        h: viewportBoundsCM.height,
-        cellw: contentBounds.bounds.width,
-        cellh: contentBounds.bounds.height,
-        scroll: scrollDirection,
-      })
-
-      assignPivotAndStretch(json, node)
-
-      //ViewportにVGROUPがついていた場合､その子供にVGROUPをつける
-      if (options[OPTION_VGROUP] != null) {
-        json.elements[0]['vgroup'] = {}
-      }
-
-      return 'Viewport'
-    }
+    return await assginViewport(
+      json,
+      node,
+      root,
+      subFolder,
+      renditions,
+      name,
+      options,
+      funcForEachChild,
+    )
   }
   // 他に"Mask"がある
 
   // 通常のグループ
-  const type = 'Group'
-  let drawBounds = getGlobalDrawBounds(node)
-  let boundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
-  Object.assign(json, {
-    type: type,
-    name: name,
-    x: boundsCM.x, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
-    y: boundsCM.y, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
-    w: boundsCM.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
-    h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
-    elements: [], // Groupは空でもelementsをもっていないといけない
-  })
-  assignPivotAndStretch(json, node)
-  assignCanvasGroup(json, node, options)
-  await funcForEachChild()
-
-  // assginVerticaFit
-  if (options[OPTION_VERTICAL_FIT] != null) {
-    Object.assign(json, {
-      vertical_fit: 'preferred', // デフォルトはpreferred
-    })
-  }
-
-  // assginPreferredHeight
-  if (options[OPTION_PREFERRED_HEIGHT] != null) {
-    Object.assign(json, {
-      preferred_height: json.h,
-    })
-  }
-
-  // assignVGroup
-  if (options[OPTION_VGROUP] != null) {
-    // 子供(コンポーネント化するものを省く)のリスト用ソート 上から順に並ぶように
-    json.elements.sort((a, b) => {
-      const a_y = a['component'] ? Number.MAX_VALUE : a['y']
-      const b_y = b['component'] ? Number.MAX_VALUE : b['y']
-      return b_y - a_y
-    })
-    // componentの無いelemリストを作成する
-    let elems = []
-    for (let i = json.elements.length - 1; i >= 0; i--) {
-      //後ろから追加していく
-      let element = json.elements[i]
-      if (element && element['component'] == null) {
-        elems.push(element)
-      }
-    }
-    // Paddingを取得するため､子供(コンポーネント化するものを除く)のサイズを取得する
-    var childrenCalcBounds = new CalcBounds()
-    node.children.forEach(child => {
-      const nameOptions = parseNameOptions(child)
-      if (nameOptions.options['component']) return
-      childrenCalcBounds.addBounds(getGlobalDrawBounds(child))
-    })
-    // Paddingの計算
-    const childrenBounds = childrenCalcBounds.bounds
-    const paddingLeft = childrenBounds.x - drawBounds.x
-    const paddingTop = childrenBounds.y - drawBounds.y
-    const paddingRight =
-      drawBounds.x +
-      drawBounds.width -
-      (childrenBounds.x + childrenBounds.width)
-    const paddingBottom =
-      drawBounds.y +
-      drawBounds.height -
-      (childrenBounds.y + childrenBounds.height)
-    Object.assign(json, {
-      vgroup: {
-        padding: {
-          left: paddingLeft,
-          right: paddingRight,
-          top: paddingTop,
-          bottom: paddingBottom,
-        },
-      },
-    })
-    // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
-    if (elems[0] && elems[1]) {
-      // spacingの計算 ソートした上で､items[0]とitem1で計算する
-      // 簡易的にやっている
-      const spacing = elems[1].y - (elems[0].y + elems[0].h)
-      Object.assign(json['vgroup'], {
-        spacing: spacing,
-      })
-      // left揃えか
-      if (approxEqual(elems[0].x, elems[1].x)) {
-        Object.assign(json['vgroup'], {
-          child_alignment: 'left',
-        })
-      } else if (
-        approxEqual(elems[0].x + elems[0].w, elems[1].x + elems[1].w)
-      ) {
-        Object.assign(json['vgroup'], {
-          child_alignment: 'right',
-        })
-      } else {
-        Object.assign(json['vgroup'], {
-          child_alignment: 'center',
-        })
-      }
-    }
-    // items全部が stretchx:true なら　ChildForceExpand.width = true
-    const foundNotStretchX = elems.forEach(elem => {
-      return elem['stretchx'] != true
-    })
-    if (!foundNotStretchX) {
-      Object.assign(json['vgroup'], {
-        child_force_expand_width: true,
-      })
-    }
-  }
-
-  return type
+  return await assginGroup(
+    json,
+    node,
+    root,
+    subFolder,
+    renditions,
+    name,
+    options,
+    funcForEachChild,
+  )
 }
 
 class CalcBounds {
@@ -1238,14 +1327,14 @@ function parseNameOptions(node) {
           args[0]
             .trim()
             .toLowerCase()
-            .replace('-', '')
+            .replace(/[-|_]/g, '')
         ] = args[1].trim().toLowerCase()
       } else {
         options[
           option
             .trim()
             .toLowerCase()
-            .replace('-', '')
+            .replace(/[-|_]/g, '')
         ] = true
       }
     })
