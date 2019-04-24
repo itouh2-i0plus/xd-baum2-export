@@ -123,7 +123,7 @@ function checkOptionViewport(options) {
  */
 function approxEqual(a, b, eps) {
   if (eps == null) {
-    eps = 0.00001
+    eps = 0.000001
   }
   return Math.abs(a - b) < eps
 }
@@ -180,6 +180,8 @@ function getRGB(color) {
  */
 function getGlobalDrawBounds(node) {
   const bounds = node.globalDrawBounds
+  const viewPortHeight = node.viewportHeight
+  if (viewPortHeight != null) bounds.height = viewPortHeight
   return {
     x: bounds.x * scale,
     y: bounds.y * scale,
@@ -344,6 +346,8 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
     opacity: 100,
   })
 
+  assignPivotAndStretch(json, node)
+
   // 画像出力登録
   renditions.push({
     fileName: fileName,
@@ -416,6 +420,14 @@ async function assignScroller(
           elem.name = 'item0-' + (node.numColumns - i - 1)
           items[0].elements.push(elem)
         }
+        let item0_0 = items[0].elements[0]
+        // item0のRecttransform 縦スクロールは横にピッチリ　縦はitem0_0サイズ
+        Object.assign(items[0], {
+          anchor_min: { x: 0, y: 1 },
+          anchor_max: { x: 1, y: 1 },
+          offset_min: { x: 0, y: -item0_0.h },
+          offset_max: { x: 0, y: 0 },
+        })
       }
 
       // item[0]のグループをlefttopにする
@@ -491,10 +503,10 @@ async function assignViewport(
     //以下縦スクロール専用でコーディング
     var scrollDirection = 'vertical'
 
-    let contentBounds = new CalcBounds()
+    let calcContentBounds = new CalcBounds()
 
     const viewport = getGlobalDrawBounds(node)
-    contentBounds.addBounds(viewport)
+    calcContentBounds.addBounds(viewport)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
     // そういったものを省くための処理
     // Contentの領域も計算する
@@ -505,7 +517,7 @@ async function assignViewport(
         console.log(nameOptions.name + 'はViewportにはいっていない')
         return false // 処理しない
       }
-      contentBounds.addBounds(bounds)
+      calcContentBounds.addBounds(bounds)
       return true // 処理する
     })
     const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
@@ -517,11 +529,6 @@ async function assignViewport(
     // item[0] がY方向へ移動している分
     const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
 
-    node.children.forEach((child, index) => {
-      child['pivot'] = 'topleft'
-      child['stretchx'] = true // 縦スクロールの場合､item[0]は横ストレッチ可にする
-    })
-
     Object.assign(json, {
       type: 'Viewport',
       name: name,
@@ -529,8 +536,9 @@ async function assignViewport(
       y: viewportBoundsCM.y,
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
-      cellw: contentBounds.bounds.width,
-      cellh: contentBounds.bounds.height,
+      content_w: calcContentBounds.bounds.width,
+      content_h: calcContentBounds.bounds.height,
+      content_vgroup: options[OPTION_VGROUP] ? true : false,
       scroll: scrollDirection,
     })
 
@@ -857,6 +865,11 @@ class CalcBounds {
   }
 }
 
+function assignExEyFromBounds(bounds) {
+  bounds['ex'] = bounds.x + bounds.width
+  bounds['ey'] = bounds.y + bounds.height
+}
+
 /**
  * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
  * @param {*} beforeBounds
@@ -864,193 +877,327 @@ class CalcBounds {
  * @param {number} resizePlusWidth リサイズ時に増えた幅
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
-function getResponsiveParameter(node, hashBounds, options) {
+function getResponsiveParameter(node, hashBounds, options, root) {
   if (!node || !node.parent) return null
   if (!options) {
     // @Pivot @Stretchを取得するため
     const nameOptions = parseNameOptions(node)
     options = nameOptions.options
   }
-  const nodeBounds = hashBounds[node.guid]
-  if (!nodeBounds || !nodeBounds['before'] || !nodeBounds['after']) return null
-  const beforeBounds = nodeBounds['before']['bounds']
-  const afterBounds = nodeBounds['after']['bounds']
+  console.log('----------------------' + node.name + '----------------------')
+  console.log(getGlobalDrawBounds(node))
+  let fixOptionWidth = null
+  let fixOptionHeight = null
+  let fixOptionTop = null
+  let fixOptionBottom = null
+  let fixOptionLeft = null
+  let fixOptionRight = null
+
+  const rootBeforeBounds = hashBounds[root.guid]['before']['bounds']
+
+  const bounds = hashBounds[node.guid]
+  if (!bounds || !bounds['before'] || !bounds['after']) return null
+  let beforeBounds = bounds['before']['bounds']
+  const afterBounds = bounds['after']['bounds']
   const parentBounds = hashBounds[node.parent.guid]
   if (!parentBounds || !parentBounds['before'] || !parentBounds['after'])
     return null
-  const resizePlusWidth =
-    parentBounds['after']['bounds'].width -
-    parentBounds['before']['bounds'].width
-  const resizePlusHeight =
-    parentBounds['after']['bounds'].height -
-    parentBounds['before']['bounds'].height
 
-  let horizontalFix = null // left center right
-  let verticalFix = null // top middle bottom
+  let parentBeforeBounds = parentBounds['before']['bounds']
+  const parentAfterBounds = parentBounds['after']['bounds']
 
-  // 横のレスポンシブパラメータを取得する
-  if (beforeBounds.x == afterBounds.x) {
-    horizontalFix = 'left'
+  assignExEyFromBounds(beforeBounds)
+  assignExEyFromBounds(afterBounds)
+  assignExEyFromBounds(parentBeforeBounds)
+  assignExEyFromBounds(parentAfterBounds)
+
+  const hasFixOption = options[OPTION_FIX] != null
+
+  // X座標
+  if (
+    !hasFixOption &&
+    approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
+  ) {
+    fixOptionWidth = true
+  }
+  if (
+    !hasFixOption &&
+    approxEqual(
+      beforeBounds.x - parentBeforeBounds.x,
+      afterBounds.x - parentAfterBounds.x,
+    )
+  ) {
+    // ロックされている
+    fixOptionLeft = true
   } else {
-    const subx = afterBounds.x - beforeBounds.x
-    horizontalFix =
-      subx > 0 && subx <= resizePlusWidth * 0.6 ? 'center' : 'right' // 0.6 → 0.5より多めにとる
-  }
+    // 親のX座標･Widthをもとに､Left座標がきまる
+    const beforeFixOptionLeft =
+      (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
+    const afterFixOptionLeft =
+      (afterBounds.x - parentAfterBounds.x) / parentAfterBounds.width
 
-  // 縦のレスポンシブパラメータを取得する
-  if (beforeBounds.y == afterBounds.y) {
-    verticalFix = 'top'
-  } else {
-    const suby = afterBounds.y - beforeBounds.y
-    verticalFix =
-      suby > 0 && suby <= resizePlusHeight * 0.6 ? 'middle' : 'bottom'
-  }
+    console.log('********left*********')
+    console.log(beforeFixOptionLeft)
+    console.log(afterFixOptionLeft)
 
-  let ret = {}
-
-  // オプションからのパラメータを入れる
-  // これらの値はオプションが定義されていなければNULLという判定が重要
-  // NULLの場合、自動的にレスポンシブパラメータが付与される
-  let pivotOption = options[OPTION_PIVOT]
-  let stretchWOption = options[OPTION_STRETCH_X]
-  let stretchHOption = options[OPTION_STRETCH_Y]
-
-  if (options[OPTION_STRETCH_XY] != null) {
-    stretchWOption = options[OPTION_STRETCH_XY]
-    stretchHOption = options[OPTION_STRETCH_XY]
-  }
-
-  if (options[OPTION_STRETCH_W] != null) {
-    stretchWOption = options[OPTION_STRETCH_W]
-  }
-
-  if (options[OPTION_STRETCH_H] != null) {
-    stretchWOption = options[OPTION_STRETCH_H]
-  }
-
-  if (options[OPTION_STRETCH_WH] != null) {
-    stretchWOption = options[OPTION_STRETCH_WH]
-    stretchHOption = options[OPTION_STRETCH_WH]
-  }
-
-  let fixOption = options[OPTION_FIX]
-  if (fixOption) {
-    fixOption = fixOption.toLowerCase()
-
-    let fixOptionWidth = null
-    let fixOptionHeight = null
-    let fixOptionTop = null
-    let fixOptionBottom = null
-    let fixOptionLeft = null
-    let fixOptionRight = null
-
-    fixOption = fixOption
-      .replace('-w-', '-width-')
-      .replace('-h-', '-height-')
-      .replace('-t-', '-top-')
-      .replace('-b-', '-bottom-')
-      .replace('-l-', '-left-')
-      .replace('-r-', '-right-')
-
-    if (fixOption.indexOf('width') >= 0) {
-      fixOptionWidth = 'width'
+    if (approxEqual(afterFixOptionLeft, beforeFixOptionLeft, 0.02)) {
+      fixOptionLeft = beforeFixOptionLeft
     }
-    if (fixOption.indexOf('height') >= 0) {
-      fixOptionHeight = 'height'
+
+    fixOptionLeft = beforeFixOptionLeft
+  }
+
+  const beforeRight =
+    parentBeforeBounds.x +
+    parentBeforeBounds.width -
+    (beforeBounds.x + beforeBounds.width)
+  const afterRight =
+    parentAfterBounds.x +
+    parentAfterBounds.width -
+    (afterBounds.x + afterBounds.width)
+
+  if (!hasFixOption && approxEqual(beforeRight, afterRight, 0.001)) {
+    // ロックされている 0.001以下の誤差が起きることを確認した
+    fixOptionRight = true
+  } else {
+    // 親のX座標･Widthをもとに､割合でRight座標がきまる
+    const beforeFixOptionRight =
+      (beforeBounds.ex - parentBeforeBounds.x) / parentBeforeBounds.width
+    const afterFixOptionRight =
+      (afterBounds.ex - parentAfterBounds.x) / parentAfterBounds.width
+    console.log('********right*********')
+    console.log(beforeFixOptionRight)
+    console.log(afterFixOptionRight)
+
+    if (approxEqual(beforeFixOptionRight, afterFixOptionRight, 0.013)) {
+      fixOptionRight = beforeFixOptionRight
+    }
+
+    fixOptionRight = beforeFixOptionRight
+  }
+
+  // Y座標
+  if (
+    !hasFixOption &&
+    approxEqual(beforeBounds.height, afterBounds.height, 0.0005)
+  ) {
+    fixOptionHeight = true
+  }
+  if (
+    !hasFixOption &&
+    approxEqual(
+      beforeBounds.y - parentBeforeBounds.y,
+      afterBounds.y - parentAfterBounds.y,
+    )
+  ) {
+    fixOptionTop = true
+  } else {
+    // 親のY座標･heightをもとに､Top座標がきまる
+    const beforeFixOptionTop =
+      (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
+    const afterFixOptionTop =
+      (afterBounds.y - parentAfterBounds.y) / parentAfterBounds.height
+
+    console.log('********top*********')
+    console.log(beforeFixOptionTop)
+    console.log(afterFixOptionTop)
+
+    if (approxEqual(beforeFixOptionTop, afterFixOptionTop, 0.013)) {
+      fixOptionTop = beforeFixOptionTop
+    }
+
+    fixOptionTop = beforeFixOptionTop
+  }
+  const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
+  const afterBottom = parentAfterBounds.ey - afterBounds.ey
+  if (!hasFixOption && approxEqual(beforeBottom, afterBottom, 0.0005)) {
+    fixOptionBottom = true
+  } else {
+    // 親のY座標･Heightをもとに､Bottom座標がきまる
+    const beforeFixOptionBottom =
+      1 - (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+    const afterFixOptionBottom =
+      1 - (parentAfterBounds.ey - afterBounds.ey) / parentAfterBounds.height
+    console.log('********bottom*********')
+    console.log(beforeFixOptionBottom)
+    console.log(afterFixOptionBottom)
+    if (approxEqual(beforeFixOptionBottom, afterFixOptionBottom, 0.013)) {
+      fixOptionBottom = beforeFixOptionBottom
+    }
+    fixOptionBottom = beforeFixOptionBottom
+  }
+
+  if (hasFixOption) {
+    // オプションが指定してあれば､上書きする
+    let fixOption = options[OPTION_FIX].toLowerCase()
+
+    if (fixOption.indexOf('width') >= 0 || fixOption.indexOf('size') >= 0) {
+      fixOptionWidth = true
+    }
+    if (fixOption.indexOf('height') >= 0 || fixOption.indexOf('size') >= 0) {
+      fixOptionHeight = true
     }
     if (fixOption.indexOf('top') >= 0) {
-      fixOptionTop = 'top'
+      fixOptionTop = true
     }
     if (fixOption.indexOf('bottom') >= 0) {
-      fixOptionBottom = 'bottom'
+      fixOptionBottom = true
     }
     if (fixOption.indexOf('left') >= 0) {
-      fixOptionLeft = 'left'
+      fixOptionLeft = true
     }
     if (fixOption.indexOf('right') >= 0) {
-      fixOptionRight = 'right'
+      fixOptionRight = true
     }
 
-    if (fixOptionWidth != null) {
-      stretchWOption = false
-      fixOption = fixOption.split(fixOptionWidth).join('')
-    } else {
-      stretchWOption = true
+    if (fixOption.indexOf('xy') >= 0) {
+      fixOptionTop = true
+      fixOptionBottom = true
+      fixOptionLeft = true
+      fixOptionRight = true
     }
-
-    if (fixOptionHeight) {
-      stretchHOption = false
-      fixOption = fixOption.split(fixOptionHeight).join('')
-    } else {
-      stretchHOption = true
+    if (
+      fixOption == 'x' ||
+      fixOption.indexOf('-x-') >= 0 ||
+      fixOption.endsWith('-x')
+    ) {
+      fixOptionLeft = true
+      fixOptionRight = true
     }
-
-    if (fixOptionLeft && fixOptionRight) {
-      stretchWOption = true
-      fixOption = fixOption
-        .split(fixOptionLeft)
-        .join('')
-        .split(fixOptionRight)
-        .join('')
+    if (
+      fixOption == 'y' ||
+      fixOption.indexOf('-y-') >= 0 ||
+      fixOption.endsWith('-y')
+    ) {
+      fixOptionTop = true
+      fixOptionBottom = true
     }
+  }
 
-    if (fixOptionTop && fixOptionBottom) {
-      stretchHOption = true
-      fixOption = fixOption
-        .split('top')
-        .join('')
-        .split('bottom')
-        .join('')
+  console.log('***parentBefore')
+  console.log(parentBeforeBounds)
+  console.log('***parentAfter')
+  console.log(parentAfterBounds)
+  console.log('***before')
+  console.log(beforeBounds)
+  console.log('***after')
+  console.log(afterBounds)
+
+  console.log('*******************')
+  console.log('left:' + fixOptionLeft, 'right:' + fixOptionRight)
+  console.log('top:' + fixOptionTop, 'bottom:' + fixOptionBottom)
+  console.log('width:' + fixOptionWidth, 'height:' + fixOptionHeight)
+
+  const parentBaseLeft = -beforeBounds.x + parentBeforeBounds.width / 2
+  let offsetMin = {
+    x: null,
+    y: null,
+  } // left(x), bottom(h)
+  let offsetMax = {
+    x: null,
+    y: null,
+  } // right(w), top(y)
+  let anchorMin = { x: null, y: null } // left, bottom
+  let anchorMax = { x: null, y: null } // right, top
+
+  // fixOptionXXX
+  // null 定義されていない widthかheightが固定されている
+  // number 親に対しての割合 anchorに割合をいれ､offsetを0
+  // true 固定されている anchorを0か1にし､offsetをピクセルで指定
+
+  if (fixOptionLeft === true) {
+    // 親のX座標から､X座標が固定値できまる
+    anchorMin.x = 0
+    offsetMin.x = beforeBounds.x - parentBeforeBounds.x
+  } else if (fixOptionLeft != null) {
+    anchorMin.x = fixOptionLeft
+    offsetMin.x = 0
+  }
+  if (fixOptionRight === true) {
+    // 親のX座標から､X座標が固定値できまる
+    anchorMax.x = 1
+    offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
+  } else if (fixOptionRight != null) {
+    anchorMax.x = fixOptionRight
+    offsetMax.x = 0
+  }
+
+  if (fixOptionWidth) {
+    console.log('++++++++++++++fixOptionWidth')
+    if (fixOptionLeft === true /*&& fixOptionRight !== true*/) {
+      anchorMax.x = anchorMin.x
+      offsetMax.x = offsetMin.x + beforeBounds.width
+    } else if (fixOptionLeft !== true && fixOptionRight === true) {
+      console.log('++++++++++++++右')
+      anchorMin.x = anchorMax.x
+      offsetMin.x = offsetMax.x - beforeBounds.width
     }
-
-    pivotOption = fixOption
+    if (fixOptionLeft !== true && fixOptionRight !== true) {
+      console.log('++++++++++++++横')
+      //両方共ロックされていない
+      anchorMin.x = anchorMax.x = (fixOptionLeft + fixOptionRight) / 2
+      offsetMin.x = -beforeBounds.width / 2
+      offsetMax.x = beforeBounds.width / 2
+    }
   }
 
-  if (pivotOption) {
-    ret['pivot'] = pivotOption
+  // AdobeXD と　Unity2D　でY軸の向きがことなるため､Top→Max　Bottom→Min
+  if (fixOptionTop === true) {
+    // 親のY座標から､Y座標が固定値できまる
+    anchorMax.y = 1
+    offsetMax.y = -(beforeBounds.y - parentBeforeBounds.y)
+  } else if (fixOptionTop != null) {
+    anchorMax.y = 1 - fixOptionTop
+    offsetMax.y = 0
+  }
+  if (fixOptionBottom === true) {
+    // 親のY座標から､Y座標が固定値できまる
+    anchorMin.y = 0
+    offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
+  } else if (fixOptionBottom != null) {
+    anchorMin.y = 1 - fixOptionBottom
+    offsetMin.y = 0
   }
 
-  if (stretchWOption != null) {
-    ret['stretchx'] = checkBoolean(stretchWOption)
+  if (fixOptionHeight) {
+    if (fixOptionTop === true /*&& fixOptionBottom !== true*/) {
+      anchorMin.y = anchorMax.y
+      offsetMin.y = offsetMax.y - beforeBounds.height
+    } else if (fixOptionTop !== true && fixOptionBottom === true) {
+      anchorMax.y = anchorMin.y
+      offsetMax.y = offsetMin.y + beforeBounds.height
+    } else if (fixOptionTop !== true && fixOptionBottom !== true) {
+      console.log('++++++++++++++縦')
+      //両方共ロックされていない
+      anchorMin.y = anchorMax.y = (fixOptionTop + fixOptionBottom) / 2
+      offsetMin.y = -beforeBounds.height / 2
+      offsetMax.y = beforeBounds.height / 2
+    }
   }
 
-  if (stretchHOption != null) {
-    ret['stretchy'] = checkBoolean(stretchHOption)
+  if (options[OPTION_FIX] == 'bg') {
+    anchorMin.x = 0.5
+    anchorMin.y = 0.5
+    anchorMax.x = 0.5
+    anchorMax.y = 0.5
+
+    const centerX = beforeBounds.x + beforeBounds.width / 2
+    const centerY = beforeBounds.y + beforeBounds.height / 2
+
+    const parentCenterX = parentBeforeBounds.x + parentBeforeBounds.width / 2
+    const parentCenterY = parentBeforeBounds.y + parentBeforeBounds.height / 2
+
+    offsetMin.x = (centerX - parentCenterX) - beforeBounds.width / 2
+    offsetMin.y = -(centerY - parentCenterY) - beforeBounds.height / 2
+    offsetMax.x = (centerX - parentCenterX) + beforeBounds.width / 2
+    offsetMax.y = -(centerY - parentCenterY) + beforeBounds.height / 2
   }
 
-  // 横ストレッチチェック
-  if (
-    stretchWOption == null &&
-    beforeBounds.width * 1.0001 < afterBounds.width
-  ) {
-    // 1.0001 → ブレる分の余裕をもたせる
-    horizontalFix = null // 横ストレッチがある場合､pivot情報を消す
-    Object.assign(ret, {
-      stretchx: true,
-    })
-    stretchWOption = true
-  }
-
-  // 縦ストレッチチェック
-  if (
-    stretchHOption == null &&
-    beforeBounds.height * 1.0001 < afterBounds.height
-  ) {
-    // 1.0001 → ブレる分の余裕をもたせる
-    verticalFix = null // 縦ストレッチがある場合､pivot情報を消す
-    Object.assign(ret, {
-      stretchy: true,
-    })
-    stretchHOption = true
-  }
-
-  // Pivot出力
-  if (stretchWOption) horizontalFix = null
-  if (stretchHOption) verticalFix = null
-  if (pivotOption == null && (horizontalFix != null || verticalFix != null)) {
-    Object.assign(ret, {
-      pivot: (horizontalFix || '') + (verticalFix || ''),
-    })
+  let ret = {
+    anchor_min: anchorMin,
+    anchor_max: anchorMax,
+    offset_min: offsetMin,
+    offset_max: offsetMax,
   }
 
   return ret
@@ -1081,7 +1228,7 @@ function makeResponsiveParameter(root) {
     hashBounds[node.guid] = {
       node: node,
       before: {
-        bounds: getGlobalBounds(node),
+        bounds: getGlobalDrawBounds(node),
       },
     }
   })
@@ -1096,22 +1243,30 @@ function makeResponsiveParameter(root) {
     artboardWidth + resizePlusWidth,
     artboardHeight + resizePlusHeight,
   )
+  const viewportHeight = root.viewportHeight
+  if (root.viewportHeight != null) {
+    root.viewportHeight = viewportHeight + resizePlusHeight
+    console.log(
+      '*************************************************************チェンジ',
+    )
+  }
 
   // 変更されたboundsを取得する
   nodeWalker(root, node => {
     var hash = hashBounds[node.guid] || (hashBounds[node.guid] = {})
     hash['after'] = {
-      bounds: getGlobalBounds(node),
+      bounds: getGlobalDrawBounds(node),
     }
   })
 
   // Artboardのサイズを元に戻す
   root.resize(artboardWidth, artboardHeight)
+  if (root.viewportHeight != null) root.viewportHeight = viewportHeight
 
   // 元に戻ったときのbounds
   nodeWalker(root, node => {
     hashBounds[node.guid]['restore'] = {
-      bounds: getGlobalBounds(node),
+      bounds: getGlobalDrawBounds(node),
     }
   })
 
@@ -1121,6 +1276,8 @@ function makeResponsiveParameter(root) {
     value['responsiveParameter'] = getResponsiveParameter(
       value['node'],
       hashBounds,
+      null,
+      root,
     )
   }
 
@@ -1139,10 +1296,10 @@ function checkBounds(hashBounds) {
       var beforeBounds = value['before']['bounds']
       var restoreBounds = value['restore']['bounds']
       if (
-        beforeBounds.x != restoreBounds.x ||
-        beforeBounds.y != restoreBounds.y ||
-        beforeBounds.width != restoreBounds.width ||
-        beforeBounds.height != restoreBounds.height
+        !approxEqual(beforeBounds.x, restoreBounds.x) ||
+        !approxEqual(beforeBounds.y, restoreBounds.y) ||
+        !approxEqual(beforeBounds.width, restoreBounds.width) ||
+        !approxEqual(beforeBounds.height, restoreBounds.height)
       ) {
         // 変わってしまった
         console.log('***error bounds changed:')
@@ -1285,6 +1442,14 @@ async function nodeDrawing(
     })
     assignPivotAndStretch(json, node)
     await assignImage(json.elements[0], node, root, subFolder, renditions, name)
+    //ボタン画像はボタンとぴったりサイズをあわせる
+    let imageJson = json['elements'][0]
+    Object.assign(imageJson, {
+      anchor_min: { x: 0, y: 0 },
+      anchor_max: { x: 1, y: 1 },
+      offset_min: { x: 0, y: 0 },
+      offset_max: { x: 0, y: 0 },
+    })
   } else {
     Object.assign(json, {
       type: 'Image',
@@ -1343,6 +1508,7 @@ function parseNameOptions(node) {
         break
       }
     }
+
     // 親の属性をみてオプションを定義する
     const parentNameOptions = parseNameOptions(parent)
     // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
