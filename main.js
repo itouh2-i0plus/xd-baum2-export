@@ -44,12 +44,6 @@ const OPTION_TOGGLE = 'toggle'
 const OPTION_LIST = 'list'
 const OPTION_SCROLLER = 'scroller'
 const OPTION_PIVOT = 'pivot'
-const OPTION_STRETCH_X = 'stretchx'
-const OPTION_STRETCH_Y = 'stretchy'
-const OPTION_STRETCH_XY = 'stretchxy'
-const OPTION_STRETCH_W = 'stretchw'
-const OPTION_STRETCH_H = 'stretchh'
-const OPTION_STRETCH_WH = 'stretchwh'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_GROUP = 'group'
@@ -59,6 +53,7 @@ const OPTION_CANVASGROUP = 'canvasgroup'
 const OPTION_COMPONENT = 'component'
 const OPTION_VERTICAL_FIT = 'verticalfit'
 const OPTION_PREFERRED_HEIGHT = 'preferredheight'
+const OPTION_PRESERVE_ASPECT = 'preserveaspect'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -317,18 +312,92 @@ function searchFileName(renditions, fileName) {
   return found
 }
 
-async function assignImage(json, node, root, subFolder, renditions, name) {
+async function symbolImage(json, node, root, subFolder, renditions, name) {
+  console.log('symbol----------------------')
+  printAllProperties(node)
+
+  let symbolId = node.symbolId
+
   // 今回出力するためのユニークな名前をつける
-  let { name: parentName, options: parentOptions } = parseNameOptions(
+  const { name: parentName, options: parentOptions } = parseNameOptions(
     node.parent,
   )
+  const nameOptions = parseNameOptions(node)
+
+  let fileName = convertToFileName(symbolId, true)
+  const found = searchFileName(renditions, '../symbol/' + fileName)
+  if (!found) {
+    console.log('add rendition')
+    // 出力画像ファイル
+    const file = await symbolSubFolder.createFile(fileName + '.png', {
+      overwrite: true,
+    })
+
+    // 画像出力登録
+    renditions.push({
+      fileName: '../symbol/' + fileName,
+      node: node,
+      outputFile: file,
+      type: application.RenditionType.PNG,
+      scale: scale,
+    })
+  }
+
+  const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+  Object.assign(json, {
+    image: '../symbol/' + fileName,
+    x: drawBounds.x,
+    y: drawBounds.y,
+    w: drawBounds.width,
+    h: drawBounds.height,
+    opacity: 100,
+  })
+
+  assignPivotAndStretch(json, node)
+
+  if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
+    Object.assign(json, {
+      preserve_aspect: true,
+    })
+  }
+}
+
+async function assignImage(json, node, root, subFolder, renditions, name) {
+  let current = node
+
+  // シンボルであれば､画像を再利用できるようにしたが､以下の理由でコメントアウト 2019/04/25
+  // ･APIでSymbolのオーバーライドをしているか否かがわからない
+  // ･Component待ち
+  //　ーーーーここからーーーー
+  // // 親がSymbolでないか調査する
+  // while (current != null) {
+  //   if (current.symbolId != null) {
+  //     // 親にシンボルがいた
+  //     await symbolImage(json, node, root, subFolder, renditions, name)
+  //     return
+  //   }
+  //   current = current.parent
+  // }
+  //　ーーーーここまでーーーー
+
+  // 今回出力するためのユニークな名前をつける
+  const { name: parentName, options: parentOptions } = parseNameOptions(
+    node.parent,
+  )
+  const nameOptions = parseNameOptions(node)
+
+  let length = 5
   let fileName = convertToFileName(parentName + ' - ' + name, true)
-  // すでに同じものがあるか検索
-  const found = searchFileName(renditions, fileName)
-  if (found) {
-    // 見つかった場合は､guidから文字列を付与しユニークとする
-    const guid5 = '_' + node.guid.slice(0, 5)
-    fileName += guid5
+  while (true) {
+    const guidStr = '_' + node.guid.slice(0, length)
+    // すでに同じものがあるか検索
+    const found = searchFileName(renditions, fileName + guidStr)
+    if (!found) {
+      // みつからなかった場合完了
+      fileName += guidStr
+      break
+    }
+    length++
   }
 
   // 出力画像ファイル
@@ -347,6 +416,12 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
   })
 
   assignPivotAndStretch(json, node)
+
+  if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
+    Object.assign(json, {
+      preserve_aspect: true,
+    })
+  }
 
   // 画像出力登録
   renditions.push({
@@ -871,6 +946,23 @@ function assignExEyFromBounds(bounds) {
 }
 
 /**
+ * 文字列の中に所定のパラメータ文字列がるかチェックする
+ * option = x
+ * option = -x-
+ * option = -x
+ * @param {*} optionStr
+ * @param {*} paramStr
+ */
+function hasOptionParam(optionStr, paramStr) {
+  if (optionStr == null || paramStr == null) return null
+  if (optionStr == paramStr) return true
+  if (optionStr.startsWith(`${paramStr}-`)) return true
+  if (optionStr.indexOf(`-${paramStr}-`) >= 0) return true
+  if (optionStr.endsWith(`-${paramStr}`)) return true
+  return false
+}
+
+/**
  * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
  * @param {*} beforeBounds
  * @param {*} afterBounds
@@ -884,8 +976,7 @@ function getResponsiveParameter(node, hashBounds, options, root) {
     const nameOptions = parseNameOptions(node)
     options = nameOptions.options
   }
-  console.log('----------------------' + node.name + '----------------------')
-  console.log(getGlobalDrawBounds(node))
+  console.log(`----------------------${node.name}----------------------`)
   let fixOptionWidth = null
   let fixOptionHeight = null
   let fixOptionTop = null
@@ -911,17 +1002,17 @@ function getResponsiveParameter(node, hashBounds, options, root) {
   assignExEyFromBounds(parentBeforeBounds)
   assignExEyFromBounds(parentAfterBounds)
 
-  const hasFixOption = options[OPTION_FIX] != null
+  const optionFix = options[OPTION_FIX]
 
   // X座標
   if (
-    !hasFixOption &&
+    optionFix == null &&
     approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
   ) {
     fixOptionWidth = true
   }
   if (
-    !hasFixOption &&
+    optionFix == null &&
     approxEqual(
       beforeBounds.x - parentBeforeBounds.x,
       afterBounds.x - parentAfterBounds.x,
@@ -933,17 +1024,6 @@ function getResponsiveParameter(node, hashBounds, options, root) {
     // 親のX座標･Widthをもとに､Left座標がきまる
     const beforeFixOptionLeft =
       (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
-    const afterFixOptionLeft =
-      (afterBounds.x - parentAfterBounds.x) / parentAfterBounds.width
-
-    console.log('********left*********')
-    console.log(beforeFixOptionLeft)
-    console.log(afterFixOptionLeft)
-
-    if (approxEqual(afterFixOptionLeft, beforeFixOptionLeft, 0.02)) {
-      fixOptionLeft = beforeFixOptionLeft
-    }
-
     fixOptionLeft = beforeFixOptionLeft
   }
 
@@ -956,35 +1036,25 @@ function getResponsiveParameter(node, hashBounds, options, root) {
     parentAfterBounds.width -
     (afterBounds.x + afterBounds.width)
 
-  if (!hasFixOption && approxEqual(beforeRight, afterRight, 0.001)) {
+  if (optionFix == null && approxEqual(beforeRight, afterRight, 0.001)) {
     // ロックされている 0.001以下の誤差が起きることを確認した
     fixOptionRight = true
   } else {
     // 親のX座標･Widthをもとに､割合でRight座標がきまる
     const beforeFixOptionRight =
       (beforeBounds.ex - parentBeforeBounds.x) / parentBeforeBounds.width
-    const afterFixOptionRight =
-      (afterBounds.ex - parentAfterBounds.x) / parentAfterBounds.width
-    console.log('********right*********')
-    console.log(beforeFixOptionRight)
-    console.log(afterFixOptionRight)
-
-    if (approxEqual(beforeFixOptionRight, afterFixOptionRight, 0.013)) {
-      fixOptionRight = beforeFixOptionRight
-    }
-
     fixOptionRight = beforeFixOptionRight
   }
 
   // Y座標
   if (
-    !hasFixOption &&
+    optionFix == null &&
     approxEqual(beforeBounds.height, afterBounds.height, 0.0005)
   ) {
     fixOptionHeight = true
   }
   if (
-    !hasFixOption &&
+    optionFix == null &&
     approxEqual(
       beforeBounds.y - parentBeforeBounds.y,
       afterBounds.y - parentAfterBounds.y,
@@ -995,100 +1065,64 @@ function getResponsiveParameter(node, hashBounds, options, root) {
     // 親のY座標･heightをもとに､Top座標がきまる
     const beforeFixOptionTop =
       (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
-    const afterFixOptionTop =
-      (afterBounds.y - parentAfterBounds.y) / parentAfterBounds.height
-
-    console.log('********top*********')
-    console.log(beforeFixOptionTop)
-    console.log(afterFixOptionTop)
-
-    if (approxEqual(beforeFixOptionTop, afterFixOptionTop, 0.013)) {
-      fixOptionTop = beforeFixOptionTop
-    }
-
     fixOptionTop = beforeFixOptionTop
   }
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
   const afterBottom = parentAfterBounds.ey - afterBounds.ey
-  if (!hasFixOption && approxEqual(beforeBottom, afterBottom, 0.0005)) {
+  if (optionFix == null && approxEqual(beforeBottom, afterBottom, 0.0005)) {
     fixOptionBottom = true
   } else {
     // 親のY座標･Heightをもとに､Bottom座標がきまる
     const beforeFixOptionBottom =
       1 - (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
-    const afterFixOptionBottom =
-      1 - (parentAfterBounds.ey - afterBounds.ey) / parentAfterBounds.height
-    console.log('********bottom*********')
-    console.log(beforeFixOptionBottom)
-    console.log(afterFixOptionBottom)
-    if (approxEqual(beforeFixOptionBottom, afterFixOptionBottom, 0.013)) {
-      fixOptionBottom = beforeFixOptionBottom
-    }
     fixOptionBottom = beforeFixOptionBottom
   }
 
-  if (hasFixOption) {
+  if (optionFix != null) {
     // オプションが指定してあれば､上書きする
-    let fixOption = options[OPTION_FIX].toLowerCase()
+    let fixOption = optionFix.toLowerCase()
 
-    if (fixOption.indexOf('width') >= 0 || fixOption.indexOf('size') >= 0) {
+    if (
+      hasOptionParam(fixOption, 'w') ||
+      fixOption.indexOf('width') >= 0 ||
+      fixOption.indexOf('size') >= 0
+    ) {
       fixOptionWidth = true
     }
-    if (fixOption.indexOf('height') >= 0 || fixOption.indexOf('size') >= 0) {
+    if (
+      hasOptionParam(fixOption, 'h') ||
+      fixOption.indexOf('height') >= 0 ||
+      fixOption.indexOf('size') >= 0
+    ) {
       fixOptionHeight = true
     }
-    if (fixOption.indexOf('top') >= 0) {
+    if (hasOptionParam(fixOption, 't') || fixOption.indexOf('top') >= 0) {
       fixOptionTop = true
     }
-    if (fixOption.indexOf('bottom') >= 0) {
+    if (hasOptionParam(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
       fixOptionBottom = true
     }
-    if (fixOption.indexOf('left') >= 0) {
+    if (hasOptionParam(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
       fixOptionLeft = true
     }
-    if (fixOption.indexOf('right') >= 0) {
+    if (hasOptionParam(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
       fixOptionRight = true
     }
 
-    if (fixOption.indexOf('xy') >= 0) {
-      fixOptionTop = true
-      fixOptionBottom = true
+    if (hasOptionParam(fixOption, 'x')) {
       fixOptionLeft = true
       fixOptionRight = true
     }
-    if (
-      fixOption == 'x' ||
-      fixOption.indexOf('-x-') >= 0 ||
-      fixOption.endsWith('-x')
-    ) {
-      fixOptionLeft = true
-      fixOptionRight = true
-    }
-    if (
-      fixOption == 'y' ||
-      fixOption.indexOf('-y-') >= 0 ||
-      fixOption.endsWith('-y')
-    ) {
+    if (hasOptionParam(fixOption, 'y')) {
       fixOptionTop = true
       fixOptionBottom = true
     }
   }
 
-  console.log('***parentBefore')
-  console.log(parentBeforeBounds)
-  console.log('***parentAfter')
-  console.log(parentAfterBounds)
-  console.log('***before')
-  console.log(beforeBounds)
-  console.log('***after')
-  console.log(afterBounds)
-
-  console.log('*******************')
   console.log('left:' + fixOptionLeft, 'right:' + fixOptionRight)
   console.log('top:' + fixOptionTop, 'bottom:' + fixOptionBottom)
   console.log('width:' + fixOptionWidth, 'height:' + fixOptionHeight)
 
-  const parentBaseLeft = -beforeBounds.x + parentBeforeBounds.width / 2
   let offsetMin = {
     x: null,
     y: null,
@@ -1123,17 +1157,14 @@ function getResponsiveParameter(node, hashBounds, options, root) {
   }
 
   if (fixOptionWidth) {
-    console.log('++++++++++++++fixOptionWidth')
     if (fixOptionLeft === true /*&& fixOptionRight !== true*/) {
       anchorMax.x = anchorMin.x
       offsetMax.x = offsetMin.x + beforeBounds.width
     } else if (fixOptionLeft !== true && fixOptionRight === true) {
-      console.log('++++++++++++++右')
       anchorMin.x = anchorMax.x
       offsetMin.x = offsetMax.x - beforeBounds.width
     }
     if (fixOptionLeft !== true && fixOptionRight !== true) {
-      console.log('++++++++++++++横')
       //両方共ロックされていない
       anchorMin.x = anchorMax.x = (fixOptionLeft + fixOptionRight) / 2
       offsetMin.x = -beforeBounds.width / 2
@@ -1167,30 +1198,35 @@ function getResponsiveParameter(node, hashBounds, options, root) {
       anchorMax.y = anchorMin.y
       offsetMax.y = offsetMin.y + beforeBounds.height
     } else if (fixOptionTop !== true && fixOptionBottom !== true) {
-      console.log('++++++++++++++縦')
       //両方共ロックされていない
-      anchorMin.y = anchorMax.y = (fixOptionTop + fixOptionBottom) / 2
+      anchorMin.y = anchorMax.y = 1 - (fixOptionTop + fixOptionBottom) / 2
       offsetMin.y = -beforeBounds.height / 2
       offsetMax.y = beforeBounds.height / 2
     }
   }
 
-  if (options[OPTION_FIX] == 'bg') {
+  if (
+    optionFix != null &&
+    (hasOptionParam(optionFix, 'c') || optionFix.indexOf('center') >= 0)
+  ) {
     anchorMin.x = 0.5
-    anchorMin.y = 0.5
     anchorMax.x = 0.5
+    const center = beforeBounds.x + beforeBounds.width / 2
+    const parentCenter = parentBeforeBounds.x + parentBeforeBounds.width / 2
+    offsetMin.x = center - parentCenter - beforeBounds.width / 2
+    offsetMax.x = center - parentCenter + beforeBounds.width / 2
+  }
+
+  if (
+    optionFix != null &&
+    (hasOptionParam(optionFix, 'm') || optionFix.indexOf('middle') >= 0)
+  ) {
+    anchorMin.y = 0.5
     anchorMax.y = 0.5
-
-    const centerX = beforeBounds.x + beforeBounds.width / 2
-    const centerY = beforeBounds.y + beforeBounds.height / 2
-
-    const parentCenterX = parentBeforeBounds.x + parentBeforeBounds.width / 2
-    const parentCenterY = parentBeforeBounds.y + parentBeforeBounds.height / 2
-
-    offsetMin.x = (centerX - parentCenterX) - beforeBounds.width / 2
-    offsetMin.y = -(centerY - parentCenterY) - beforeBounds.height / 2
-    offsetMax.x = (centerX - parentCenterX) + beforeBounds.width / 2
-    offsetMax.y = -(centerY - parentCenterY) + beforeBounds.height / 2
+    const middle = beforeBounds.y + beforeBounds.height / 2
+    const parentMiddle = parentBeforeBounds.y + parentBeforeBounds.height / 2
+    offsetMin.y = -(middle - parentMiddle) - beforeBounds.height / 2
+    offsetMax.y = -(middle - parentMiddle) + beforeBounds.height / 2
   }
 
   let ret = {
@@ -1246,9 +1282,6 @@ function makeResponsiveParameter(root) {
   const viewportHeight = root.viewportHeight
   if (root.viewportHeight != null) {
     root.viewportHeight = viewportHeight + resizePlusHeight
-    console.log(
-      '*************************************************************チェンジ',
-    )
   }
 
   // 変更されたboundsを取得する
@@ -1679,10 +1712,10 @@ function makeLayoutJson(root) {
 /**
  * アートボードの処理
  * @param {*} renditions
- * @param {*} folder
+ * @param {*} outputFolder
  * @param {artboard} root
  */
-async function nodeRoot(renditions, folder, root) {
+async function nodeRoot(renditions, outputFolder, root) {
   let nameOptions = parseNameOptions(root)
 
   let subFolderName = nameOptions.name
@@ -1693,13 +1726,13 @@ async function nodeRoot(renditions, folder, root) {
   // アートボード毎にフォルダを作成する
   // TODO:他にやりかたはないだろうか
   try {
-    var subFolder = await folder.getEntry(subFolderName)
+    var subFolder = await outputFolder.getEntry(subFolderName)
   } catch (e) {
-    subFolder = await folder.createFolder(subFolderName)
+    subFolder = await outputFolder.createFolder(subFolderName)
   }
 
   const layoutFileName = subFolderName + '.layout.txt'
-  const layoutFile = await folder.createFile(layoutFileName, {
+  const layoutFile = await outputFolder.createFile(layoutFileName, {
     overwrite: true,
   })
 
@@ -1864,6 +1897,9 @@ async function nodeRoot(renditions, folder, root) {
   console.log(layoutFileName)
 }
 
+// シンボル出力用サブフォルダ　未使用
+let symbolSubFolder
+
 // Baum2 export
 async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // ラスタライズする要素を入れる
@@ -1878,6 +1914,13 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     }
   }
 
+  // シンボル用サブフォルダの作成
+  // try {
+  //   symbolSubFolder = await outputFolder.getEntry('symbol')
+  // } catch (e) {
+  //   symbolSubFolder = await outputFolder.createFolder('symbol')
+  // }
+
   // アートボード毎の処理
   for (var i in roots) {
     let root = roots[i]
@@ -1886,7 +1929,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
 
   if (renditions.length != 0) {
     // 一括画像ファイル出力
-    application
+    await application
       .createRenditions(renditions)
       .then(results => {
         console.log(`saved ${renditions.length} files`)
