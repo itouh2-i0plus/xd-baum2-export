@@ -10,9 +10,16 @@
     "uiEntryPoints": [{
         "type": "menu",
         "label": "baum2 export",
-        "commandId": "baum2ExportCommand",
+        "commandId": "exportBaum2Command",
         "shortcut": {
             "win": "Ctrl+Shift+Alt+p"
+        }
+    },{
+        "type": "menu",
+        "label": "@fix",
+        "commandId": "addFixCommand",
+        "shortcut": {
+            "win": "Ctrl+Shift+Alt+f"
         }
     }]
 }

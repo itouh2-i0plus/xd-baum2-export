@@ -969,22 +969,20 @@ function hasOptionParam(optionStr, paramStr) {
  * @param {number} resizePlusWidth リサイズ時に増えた幅
  * @param {number} resizePlusHeight リサイズ時に増えた高さ
  */
-function getResponsiveParameter(node, hashBounds, options, root) {
+function getResponsiveParameter(node, hashBounds, options) {
   if (!node || !node.parent) return null
   if (!options) {
     // @Pivot @Stretchを取得するため
     const nameOptions = parseNameOptions(node)
     options = nameOptions.options
   }
-  console.log(`----------------------${node.name}----------------------`)
+  //console.log(`----------------------${node.name}----------------------`)
   let fixOptionWidth = null
   let fixOptionHeight = null
   let fixOptionTop = null
   let fixOptionBottom = null
   let fixOptionLeft = null
   let fixOptionRight = null
-
-  const rootBeforeBounds = hashBounds[root.guid]['before']['bounds']
 
   const bounds = hashBounds[node.guid]
   if (!bounds || !bounds['before'] || !bounds['after']) return null
@@ -1119,9 +1117,9 @@ function getResponsiveParameter(node, hashBounds, options, root) {
     }
   }
 
-  console.log('left:' + fixOptionLeft, 'right:' + fixOptionRight)
-  console.log('top:' + fixOptionTop, 'bottom:' + fixOptionBottom)
-  console.log('width:' + fixOptionWidth, 'height:' + fixOptionHeight)
+  // console.log('left:' + fixOptionLeft, 'right:' + fixOptionRight)
+  // console.log('top:' + fixOptionTop, 'bottom:' + fixOptionBottom)
+  // console.log('width:' + fixOptionWidth, 'height:' + fixOptionHeight)
 
   let offsetMin = {
     x: null,
@@ -1230,6 +1228,14 @@ function getResponsiveParameter(node, hashBounds, options, root) {
   }
 
   let ret = {
+    fix: {
+      left: fixOptionLeft,
+      right: fixOptionRight,
+      top: fixOptionTop,
+      bottom: fixOptionBottom,
+      width: fixOptionWidth,
+      height: fixOptionHeight,
+    },
     anchor_min: anchorMin,
     anchor_max: anchorMax,
     offset_min: offsetMin,
@@ -1269,15 +1275,15 @@ function makeResponsiveParameter(root) {
     }
   })
 
-  const artboardWidth = root.globalBounds.width
-  const artboardHeight = root.globalBounds.height
+  const rootWidth = root.globalBounds.width
+  const rootHeight = root.globalBounds.height
   const resizePlusWidth = 100
   const resizePlusHeight = 100
 
   // Artboardのリサイズ
   root.resize(
-    artboardWidth + resizePlusWidth,
-    artboardHeight + resizePlusHeight,
+    rootWidth + resizePlusWidth,
+    rootHeight + resizePlusHeight,
   )
   const viewportHeight = root.viewportHeight
   if (root.viewportHeight != null) {
@@ -1293,7 +1299,7 @@ function makeResponsiveParameter(root) {
   })
 
   // Artboardのサイズを元に戻す
-  root.resize(artboardWidth, artboardHeight)
+  root.resize(rootWidth, rootHeight)
   if (root.viewportHeight != null) root.viewportHeight = viewportHeight
 
   // 元に戻ったときのbounds
@@ -1310,7 +1316,6 @@ function makeResponsiveParameter(root) {
       value['node'],
       hashBounds,
       null,
-      root,
     )
   }
 
@@ -1336,7 +1341,11 @@ function checkBounds(hashBounds) {
       ) {
         // 変わってしまった
         console.log('***error bounds changed:')
-        console.log(value['node'])
+        console.log(value['node'].name)
+        console.log('before:')
+        console.log(beforeBounds)
+        console.log('restore:')
+        console.log(restoreBounds)
         return false
       }
     }
@@ -2294,23 +2303,56 @@ async function exportBaum2Command(selection, root) {
   }
 }
 
-async function exportPivotCommand(selection, root) {
-  console.log('pivot')
-  var artboard = selection.items[0]
+async function addFixCommand(selection, root) {
+  let items = selection.items
+  // レスポンシブパラメータの作成
+  responsiveBounds = {}
+  items.forEach(item => {
+    // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
+    Object.assign(responsiveBounds, makeResponsiveParameter(item))
+    let func = node => {
+      if (node.symbolId != null) return
+      const param = getResponsiveParameter(node, responsiveBounds, {})
+      if (param != null) {
+        let fixOptions = []
+        for (let key in param.fix) {
+          if (param.fix[key] === true) {
+            fixOptions.push(key[0])
+          }
+        }
+        if (fixOptions.length > 0) {
+          let name = node.name.replace(/ +@fix=[a-z_\-]+/, '')
+          let optionStr = fixOptions
+            .join('-')
+            .replace('l-r', 'x') // 左右固定
+            .replace('t-b', 'y') // 上下固定
+            .replace('w-h', 'size') // サイズ固定
+            .replace('x-y-size', 'size') // グループのresizeをやったところ､topleftも動いてしまったケース sizeのみにする
+          try {
+            const newName = name + ' @fix=' + optionStr
+            console.log(newName)
+            node.name = newName
+          } catch (e) {}
+        }
+      }
+      node.children.forEach(child => {
+        func(child)
+      })
+    }
+    func(item)
+  })
 
-  if (artboard == null || !(artboard instanceof Artboard)) {
-    alert('select artboard')
-    return
+  console.log('done')
+
+  if (!checkBounds(responsiveBounds)) {
+    alert('bounds is changed. Please execute UNDO.')
   }
-
-  makeResponsiveParameter(artboard)
-
-  return
 }
 
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
-    baum2ExportCommand: exportBaum2Command,
+    exportBaum2Command: exportBaum2Command,
+    addFixCommand: addFixCommand,
   },
 }
