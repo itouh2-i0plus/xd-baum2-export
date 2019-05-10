@@ -21,5 +21,12 @@
         "shortcut": {
             "win": "Ctrl+Shift+Alt+f"
         }
+    },{
+        "type": "menu",
+        "label": "baum2 image size fixer",
+        "commandId": "addImageSizeFix",
+        "shortcut": {
+            "win": "Ctrl+Shift+Alt+L"
+        }
     }]
 }

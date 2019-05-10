@@ -1,5 +1,5 @@
 // XD拡張APIのクラスをインポート
-const { Artboard, Text, Color, ImageFill } = require('scenegraph')
+const { Artboard, Text, Color, ImageFill, Line } = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -1281,10 +1281,7 @@ function makeResponsiveParameter(root) {
   const resizePlusHeight = 100
 
   // Artboardのリサイズ
-  root.resize(
-    rootWidth + resizePlusWidth,
-    rootHeight + resizePlusHeight,
-  )
+  root.resize(rootWidth + resizePlusWidth, rootHeight + resizePlusHeight)
   const viewportHeight = root.viewportHeight
   if (root.viewportHeight != null) {
     root.viewportHeight = viewportHeight + resizePlusHeight
@@ -2304,10 +2301,10 @@ async function exportBaum2Command(selection, root) {
 }
 
 async function addFixCommand(selection, root) {
-  let items = selection.items
+  let selectionItems = selection.items
   // レスポンシブパラメータの作成
   responsiveBounds = {}
-  items.forEach(item => {
+  selectionItems.forEach(item => {
     // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
     Object.assign(responsiveBounds, makeResponsiveParameter(item))
     let func = node => {
@@ -2349,10 +2346,69 @@ async function addFixCommand(selection, root) {
   }
 }
 
+function getArtboard(node) {
+  let parent = node
+  while (parent != null) {
+    if (parent.constructor.name == 'Artboard') {
+      return parent
+    }
+    parent = parent.parent
+  }
+  return null
+}
+
+async function addImageSizeFix(selection, root) {
+  const sizeFixerName = 'BAUM-SIZE-FIXER'
+  let artboard
+  let groups = []
+  selection.items.forEach(item => {
+    if (item.isContainer) {
+      let sizeFixers = item.children.filter(child => {
+        return child.name == sizeFixerName
+      })
+      sizeFixers.forEach(item => {
+        item.removeFromParent()
+      })
+      if (artboard == null) {
+        artboard = getArtboard(item)
+      } else {
+        const myArtboard = getArtboard(item)
+        if (artboard != myArtboard) {
+          throw error('failed')
+        }
+      }
+      groups.push(item)
+    }
+  })
+  let calcFixBounds = new CalcBounds()
+  groups.forEach(group => {
+    calcFixBounds.addBounds(group.globalDrawBounds)
+  })
+  const fixBounds = calcFixBounds.bounds
+  console.log('--- global fix bounds ---')
+  console.log(fixBounds)
+  groups.forEach(group => {
+    const groupBounds = group.globalDrawBounds
+    //const groupBounds = group.translation
+    //const translation = group.transform
+    let line = new Line()
+    line.name = sizeFixerName
+    group.addChild(line)
+    line.setStartEnd(0, 0, fixBounds.width, fixBounds.height)
+    const lineBounds = line.globalBounds
+    line.moveInParentCoordinates(
+      fixBounds.x - lineBounds.x,
+      fixBounds.y - lineBounds.y,
+    )
+  })
+  alert('done')
+}
+
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
     exportBaum2Command: exportBaum2Command,
     addFixCommand: addFixCommand,
+    addImageSizeFix: addImageSizeFix,
   },
 }
