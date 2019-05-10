@@ -1,5 +1,12 @@
 // XD拡張APIのクラスをインポート
-const { Artboard, Text, Color, ImageFill, Line } = require('scenegraph')
+const {
+  Artboard,
+  Text,
+  Color,
+  ImageFill,
+  Line,
+  Rectangle,
+} = require('scenegraph')
 const scenegraph = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
@@ -167,6 +174,20 @@ function printAllProperties(obj) {
 function getRGB(color) {
   const c = ('000000' + color.toString(16)).substr(-6)
   return c
+}
+
+/**
+ * 親をさかのぼり､Artboardを探し出す
+ */
+function getArtboard(node) {
+  let parent = node
+  while (parent != null) {
+    if (parent.constructor.name == 'Artboard') {
+      return parent
+    }
+    parent = parent.parent
+  }
+  return null
 }
 
 /**
@@ -2346,62 +2367,68 @@ async function addFixCommand(selection, root) {
   }
 }
 
-function getArtboard(node) {
-  let parent = node
-  while (parent != null) {
-    if (parent.constructor.name == 'Artboard') {
-      return parent
-    }
-    parent = parent.parent
-  }
-  return null
-}
-
+/**
+ * 選択した複数のグループのDrawBoundsのサイズをそろえるため､ダミーの描画オブジェクトを作成する
+ * 現在は､同一Artboardであることを求める
+ * @param {*} selection
+ * @param {*} root
+ */
 async function addImageSizeFix(selection, root) {
-  const sizeFixerName = 'BAUM-SIZE-FIXER'
+  const sizeFixerName = '#SIZE-FIXER'
   let artboard
   let groups = []
+  // 選択されたものの検証　グループのものかどうかを探す
   selection.items.forEach(item => {
-    if (item.isContainer) {
-      let sizeFixers = item.children.filter(child => {
-        return child.name == sizeFixerName
-      })
-      sizeFixers.forEach(item => {
-        item.removeFromParent()
-      })
-      if (artboard == null) {
-        artboard = getArtboard(item)
-      } else {
-        const myArtboard = getArtboard(item)
-        if (artboard != myArtboard) {
-          throw error('failed')
-        }
-      }
-      groups.push(item)
+    if (!item.isContainer) {
+      throw error('failed')
     }
+
+    // すでにあるSizeFixerを削除する
+    let sizeFixers = item.children.filter(child => {
+      return child.name == sizeFixerName
+    })
+    sizeFixers.forEach(item => {
+      item.removeFromParent()
+    })
+
+    if (artboard == null) {
+      // 最初のアートボード登録
+      artboard = getArtboard(item)
+    } else {
+      const myArtboard = getArtboard(item)
+      // 同じアートボードであるか
+      if (artboard != myArtboard) {
+        throw error('failed')
+      }
+    }
+    groups.push(item)
   })
+
+  // 選択されたグループの描画範囲を取得する
   let calcFixBounds = new CalcBounds()
   groups.forEach(group => {
     calcFixBounds.addBounds(group.globalDrawBounds)
   })
+
+  // サイズ固定のためのダミー透明描画オブジェクトを作成する
   const fixBounds = calcFixBounds.bounds
-  console.log('--- global fix bounds ---')
-  console.log(fixBounds)
   groups.forEach(group => {
-    const groupBounds = group.globalDrawBounds
-    //const groupBounds = group.translation
-    //const translation = group.transform
-    let line = new Line()
-    line.name = sizeFixerName
-    group.addChild(line)
-    line.setStartEnd(0, 0, fixBounds.width, fixBounds.height)
-    const lineBounds = line.globalBounds
-    line.moveInParentCoordinates(
+    let fixerGpraphic = new Rectangle()
+    fixerGpraphic.name = sizeFixerName
+    fixerGpraphic.width = fixBounds.width
+    fixerGpraphic.height = fixBounds.height
+    fixerGpraphic.fillEnabled = false
+    fixerGpraphic.strokeEnabled = false
+    // まずは追加し
+    group.addChild(fixerGpraphic)
+    // ズレを計算､移動する
+    const lineBounds = fixerGpraphic.globalBounds
+    fixerGpraphic.moveInParentCoordinates(
       fixBounds.x - lineBounds.x,
       fixBounds.y - lineBounds.y,
     )
   })
-  alert('done')
+  alert('size fixer done')
 }
 
 module.exports = {
