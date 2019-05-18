@@ -61,6 +61,7 @@ const OPTION_COMPONENT = 'component'
 const OPTION_VERTICAL_FIT = 'verticalfit'
 const OPTION_PREFERRED_HEIGHT = 'preferredheight'
 const OPTION_PRESERVE_ASPECT = 'preserveaspect'
+const OPTION_BLANK = 'blank'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -383,7 +384,15 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
   }
 }
 
-async function assignImage(json, node, root, subFolder, renditions, name) {
+async function assignImage(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  name,
+  options,
+) {
   let current = node
 
   // シンボルであれば､画像を再利用できるようにしたが､以下の理由でコメントアウト 2019/04/25
@@ -428,13 +437,21 @@ async function assignImage(json, node, root, subFolder, renditions, name) {
 
   const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
   Object.assign(json, {
-    image: fileName,
     x: drawBounds.x,
     y: drawBounds.y,
     w: drawBounds.width,
     h: drawBounds.height,
     opacity: 100,
   })
+
+  console.log('---------------------')
+  console.log(options[OPTION_BLANK])
+
+  if (!checkBoolean(options[OPTION_BLANK])) {
+    Object.assign(json, {
+      image: fileName,
+    })
+  }
 
   assignPivotAndStretch(json, node)
 
@@ -1501,7 +1518,15 @@ async function nodeDrawing(
       ],
     })
     assignPivotAndStretch(json, node)
-    await assignImage(json.elements[0], node, root, subFolder, renditions, name)
+    await assignImage(
+      json.elements[0],
+      node,
+      root,
+      subFolder,
+      renditions,
+      name,
+      options,
+    )
     //ボタン画像はボタンとぴったりサイズをあわせる
     let imageJson = json['elements'][0]
     Object.assign(imageJson, {
@@ -1516,7 +1541,7 @@ async function nodeDrawing(
       name: name,
     })
     assignPivotAndStretch(json, node)
-    await assignImage(json, node, root, subFolder, renditions, name)
+    await assignImage(json, node, root, subFolder, renditions, name, options)
     // assignComponent
     if (options[OPTION_COMPONENT] != null) {
       Object.assign(json, {
