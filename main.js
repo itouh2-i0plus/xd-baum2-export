@@ -444,9 +444,6 @@ async function assignImage(
     opacity: 100,
   })
 
-  console.log('---------------------')
-  console.log(options[OPTION_BLANK])
-
   if (!checkBoolean(options[OPTION_BLANK])) {
     Object.assign(json, {
       image: fileName,
@@ -2034,7 +2031,10 @@ function h(tag, props, ...children) {
  * alertの表示
  * @param {string} message
  */
-async function alert(message) {
+async function alert(message, title) {
+  if(title == null) {
+    title = 'XD Baum2 Export'
+  }
   let dialog = h(
     'dialog',
     h(
@@ -2045,7 +2045,7 @@ async function alert(message) {
           width: 400,
         },
       },
-      h('h1', 'XD Baum2 Export'),
+      h('h1', title),
       h('hr'),
       h('span', message),
       h(
@@ -2373,7 +2373,6 @@ async function addFixCommand(selection, root) {
             .replace('x-y-size', 'size') // グループのresizeをやったところ､topleftも動いてしまったケース sizeのみにする
           try {
             const newName = name + ' @fix=' + optionStr
-            console.log(newName)
             node.name = newName
           } catch (e) {}
         }
@@ -2385,10 +2384,10 @@ async function addFixCommand(selection, root) {
     func(item)
   })
 
-  console.log('done')
+  console.log('@fix:done')
 
   if (!checkBounds(responsiveBounds)) {
-    alert('bounds is changed. Please execute UNDO.')
+    alert('bounds is changed. Please execute UNDO.',"@fix")
   }
 }
 
@@ -2453,7 +2452,7 @@ async function addImageSizeFix(selection, root) {
       fixBounds.y - lineBounds.y,
     )
   })
-  alert('size fixer done')
+  alert('done', 'Size Fixer')
 }
 
 module.exports = {
