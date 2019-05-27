@@ -196,15 +196,26 @@ function getArtboard(node) {
  * @param {scenegraph} node
  */
 function getGlobalDrawBounds(node) {
-  const bounds = node.globalDrawBounds
-  const viewPortHeight = node.viewportHeight
-  if (viewPortHeight != null) bounds.height = viewPortHeight
-  return {
-    x: bounds.x * scale,
-    y: bounds.y * scale,
-    width: bounds.width * scale,
-    height: bounds.height * scale,
+  // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
+  // それを利用するようにする
+  const hashBounds = responsiveBounds
+  let bounds = null
+  if (hashBounds != null) {
+    const hbounds = hashBounds[node.guid]
+    if (hbounds != null && hbounds['before'] != null) {
+      bounds = hbounds['before']['bounds']
+    }
   }
+  if (bounds == null) {
+    bounds = node.globalDrawBounds
+    bounds.x = bounds.x * scale
+    bounds.y = bounds.y * scale
+    bounds.width = bounds.width * scale
+    bounds.height = bounds.height * scale
+  }
+  const viewPortHeight = node.viewportHeight
+  if (viewPortHeight != null) bounds.height = viewPortHeight * scale
+  return bounds
 }
 
 /**
@@ -233,7 +244,7 @@ function getGlobalBounds(node) {
  */
 function getDrawBoundsInBaseCenterMiddle(node, base) {
   const nodeDrawBounds = getGlobalDrawBounds(node)
-  const baseBounds = getGlobalBounds(base)
+  const baseBounds = getGlobalDrawBounds(base)
   return {
     x: nodeDrawBounds.x - (baseBounds.x + baseBounds.width / 2),
     y: nodeDrawBounds.y - (baseBounds.y + baseBounds.height / 2),
@@ -317,7 +328,7 @@ function assignCanvasGroup(json, node, options) {
  * @param {*} json
  * @param {*} node
  */
-function assignPivotAndStretch(json, node) {
+function assignResponsiveParameter(json, node) {
   if (!optionNeedResponsiveParameter) {
     return null
   }
@@ -375,7 +386,7 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
     opacity: 100,
   })
 
-  assignPivotAndStretch(json, node)
+  assignResponsiveParameter(json, node)
 
   if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
     Object.assign(json, {
@@ -450,7 +461,7 @@ async function assignImage(
     })
   }
 
-  assignPivotAndStretch(json, node)
+  assignResponsiveParameter(json, node)
 
   if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
     Object.assign(json, {
@@ -590,7 +601,7 @@ async function assignScroller(
         opacity: 100,
         elements: items, // トップの一個だけ
       })
-      assignPivotAndStretch(json, node)
+      assignResponsiveParameter(json, node)
     } else {
       console.log('***error not found Area')
     }
@@ -652,7 +663,7 @@ async function assignViewport(
       scroll: scrollDirection,
     })
 
-    assignPivotAndStretch(json, node)
+    assignResponsiveParameter(json, node)
   }
 }
 
@@ -769,7 +780,7 @@ async function assignGroup(
     h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
-  assignPivotAndStretch(json, node)
+  assignResponsiveParameter(json, node)
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
@@ -840,7 +851,7 @@ async function nodeGroup(
       type: type,
       name: name,
     })
-    assignPivotAndStretch(json, node)
+    assignResponsiveParameter(json, node)
     await funcForEachChild()
     return type
   }
@@ -877,7 +888,7 @@ async function nodeGroup(
         group: options[OPTION_GROUP],
       })
     }
-    assignPivotAndStretch(json, node)
+    assignResponsiveParameter(json, node)
     await funcForEachChild()
     return type
   }
@@ -1479,7 +1490,7 @@ async function nodeText(
   })
 
   //
-  assignPivotAndStretch(json, node)
+  assignResponsiveParameter(json, node)
 }
 
 /**
@@ -1514,7 +1525,7 @@ async function nodeDrawing(
         },
       ],
     })
-    assignPivotAndStretch(json, node)
+    assignResponsiveParameter(json, node)
     await assignImage(
       json.elements[0],
       node,
@@ -1537,7 +1548,7 @@ async function nodeDrawing(
       type: 'Image',
       name: name,
     })
-    assignPivotAndStretch(json, node)
+    assignResponsiveParameter(json, node)
     await assignImage(json, node, root, subFolder, renditions, name, options)
     // assignComponent
     if (options[OPTION_COMPONENT] != null) {
@@ -2032,7 +2043,7 @@ function h(tag, props, ...children) {
  * @param {string} message
  */
 async function alert(message, title) {
-  if(title == null) {
+  if (title == null) {
     title = 'XD Baum2 Export'
   }
   let dialog = h(
@@ -2387,7 +2398,7 @@ async function addFixCommand(selection, root) {
   console.log('@fix:done')
 
   if (!checkBounds(responsiveBounds)) {
-    alert('bounds is changed. Please execute UNDO.',"@fix")
+    alert('bounds is changed. Please execute UNDO.', '@fix')
   }
 }
 
