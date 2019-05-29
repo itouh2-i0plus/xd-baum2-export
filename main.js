@@ -62,6 +62,7 @@ const OPTION_VERTICAL_FIT = 'verticalfit'
 const OPTION_PREFERRED_HEIGHT = 'preferredheight'
 const OPTION_PRESERVE_ASPECT = 'preserveaspect'
 const OPTION_BLANK = 'blank'
+const OPTION_ALIGN = 'align'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -455,12 +456,6 @@ async function assignImage(
     opacity: 100,
   })
 
-  if (!checkBoolean(options[OPTION_BLANK])) {
-    Object.assign(json, {
-      image: fileName,
-    })
-  }
-
   assignResponsiveParameter(json, node)
 
   if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
@@ -469,14 +464,19 @@ async function assignImage(
     })
   }
 
-  // 画像出力登録
-  renditions.push({
-    fileName: fileName,
-    node: node,
-    outputFile: file,
-    type: application.RenditionType.PNG,
-    scale: scale,
-  })
+  if (!checkBoolean(options[OPTION_BLANK])) {
+    Object.assign(json, {
+      image: fileName,
+    })
+    // 画像出力登録
+    renditions.push({
+      fileName: fileName,
+      node: node,
+      outputFile: file,
+      type: application.RenditionType.PNG,
+      scale: scale,
+    })
+  }
 }
 
 async function assignScroller(
@@ -1292,6 +1292,18 @@ function getResponsiveParameter(node, hashBounds, options) {
 }
 
 /**
+ * func : node => {}  nodeを引数とした関数
+ * @param {*} node
+ * @param {*} func
+ */
+function nodeWalker(node, func) {
+  func(node)
+  node.children.forEach(child => {
+    nodeWalker(child, func)
+  })
+}
+
+/**
  * root以下のノードのレスポンシブパラメータ作成
  * {
  *  "node":{},
@@ -1303,19 +1315,13 @@ function getResponsiveParameter(node, hashBounds, options) {
  * @param {*} root
  */
 function makeResponsiveParameter(root) {
-  let nodeWalker = (node, func) => {
-    func(node)
-    node.children.forEach(child => {
-      nodeWalker(child, func)
-    })
-  }
-
   let hashBounds = {}
   // 現在のboundsを取得する
   nodeWalker(root, node => {
     hashBounds[node.guid] = {
       node: node,
       before: {
+        visible: node.visible,
         bounds: getGlobalDrawBounds(node),
       },
     }
@@ -1365,35 +1371,56 @@ function makeResponsiveParameter(root) {
   return hashBounds
 }
 
+function checkBounds(beforeBounds, restoreBounds) {
+  return (
+    approxEqual(beforeBounds.x, restoreBounds.x) &&
+    approxEqual(beforeBounds.y, restoreBounds.y) &&
+    approxEqual(beforeBounds.width, restoreBounds.width) &&
+    approxEqual(beforeBounds.height, restoreBounds.height)
+  )
+}
+
 /**
  * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
  * 元通りのサイズに戻ったかどうかのチェック
  * @param {*} hashBounds
  */
-function checkBounds(hashBounds) {
+function checkHashBounds(hashBounds) {
+  var result = true
   for (var key in hashBounds) {
     var value = hashBounds[key]
     if (value['before'] && value['restore']) {
       var beforeBounds = value['before']['bounds']
       var restoreBounds = value['restore']['bounds']
-      if (
-        !approxEqual(beforeBounds.x, restoreBounds.x) ||
-        !approxEqual(beforeBounds.y, restoreBounds.y) ||
-        !approxEqual(beforeBounds.width, restoreBounds.width) ||
-        !approxEqual(beforeBounds.height, restoreBounds.height)
-      ) {
+      if (!checkBounds(beforeBounds, restoreBounds)) {
         // 変わってしまった
+        let node = value['node']
         console.log('***error bounds changed:')
-        console.log(value['node'].name)
+        console.log(node.name)
         console.log('before:')
         console.log(beforeBounds)
         console.log('restore:')
         console.log(restoreBounds)
         return false
+        /*
+        var dx = restoreBounds.x - beforeBounds.x
+        var dy = restoreBounds.y - beforeBounds.y
+        try {
+          node.moveInParentCoordinates(dx, dy)
+          node.resize(beforeBounds.width, beforeBounds.height)
+        } catch(e) {
+
+        }
+        console.log("---------------------fixed----------------------")
+        //
+        if (!checkBounds2(beforeBounds, getGlobalDrawBounds(node))) {
+          result = false
+        }
+        */
       }
     }
   }
-  return true
+  return result
 }
 
 /**
@@ -1468,6 +1495,12 @@ async function nodeText(
     textType = 'paragraph'
     // 上揃え
     align += 'upper'
+  }
+
+  // @ALIGN オプションがあった場合､上書きする
+  const optionAlign = options[OPTION_ALIGN]
+  if (optionAlign != null) {
+    align = optionAlign
   }
 
   // text.styleRangesの適応をしていない
@@ -1987,6 +2020,16 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     await nodeRoot(renditions, outputFolder, root)
   }
 
+  for (var i in roots) {
+    let root = roots[i]
+    nodeWalker(root, node => {
+      try {
+        node.visible = true
+      } catch(e) {
+      }
+    })
+  }
+
   if (renditions.length != 0) {
     // 一括画像ファイル出力
     await application
@@ -2002,8 +2045,12 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     // alert('no outputs')
   }
 
-  if (!checkBounds(responsiveBounds)) {
-    alert('bounds is changed. Please execute UNDO.')
+  // データをもとに戻すため､意図的にエラーをスローする
+  if (!checkHashBounds(responsiveBounds)) {
+    alert('bounds is changed. throwed error for UNDO')
+    throw 'throw error for UNDO'
+  } else {
+    throw 'throw error for UNDO'
   }
 }
 
@@ -2078,7 +2125,26 @@ async function alert(message, title) {
   return await dialog.showModal()
 }
 
+function getExportRootNodes(selection, root) {
+  // 選択されているものがない場合 全てが変換対象
+  // return selection.items.length > 0 ? selection.items : root.children
+  if (selection.items.length != 1) {
+    alert('出力アートボート直下のノードを1つ選択してください')
+    throw 'not selected immediate child.'
+  }
+  var node = selection.items[0]
+  const parentIsArtboard = node.parent instanceof Artboard
+  if (!parentIsArtboard) {
+    alert('出力アートボート直下のノードを1つ選択してください')
+    throw 'not selected immediate child.'
+  }
+
+  return [selection.items[0].parent]
+}
+
 async function exportBaum2Command(selection, root) {
+  let exportRootNodes = getExportRootNodes(selection, root)
+
   let inputFolder
   let inputScale
   let errorLabel
@@ -2310,13 +2376,9 @@ async function exportBaum2Command(selection, root) {
     // レスポンシブパラメータを取得するため､操作を行うアートボード
     let responsiveCheckArtboards = {}
 
-    // 選択されているものがない場合 全てが変換対象
-    let searchItems =
-      selection.items.length > 0 ? selection.items : root.children
-
     // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
     let currentArtboard = null
-    let func = nodes => {
+    let funcForEach = nodes => {
       nodes.forEach(node => {
         let nameOptions = parseNameOptions(node)
         const isArtboard = node instanceof Artboard
@@ -2341,11 +2403,11 @@ async function exportBaum2Command(selection, root) {
           }
         }
         var children = node.children
-        if (children) func(children)
+        if (children) funcForEach(children)
       })
     }
 
-    func(searchItems)
+    funcForEach(exportRootNodes)
 
     if (exports.length == 0) {
       // 出力するものが見つからなかった
@@ -2397,8 +2459,12 @@ async function addFixCommand(selection, root) {
 
   console.log('@fix:done')
 
-  if (!checkBounds(responsiveBounds)) {
-    alert('bounds is changed. Please execute UNDO.', '@fix')
+  // データをもとに戻すため､意図的にエラーをスローする
+  if (!checkHashBounds(responsiveBounds)) {
+    alert('bounds is changed. throwed error for UNDO', '@fix')
+    throw 'throw error for UNDO'
+  } else {
+    throw 'throw error for UNDO'
   }
 }
 
