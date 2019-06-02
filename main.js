@@ -669,15 +669,26 @@ async function assignViewport(
     Object.assign(json, {
       type: 'Viewport',
       name: name,
+      scroll: scrollDirection,
       x: viewportBoundsCM.x,
       y: viewportBoundsCM.y,
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
+      // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
-      content_vlayout: options[OPTION_VLAYOUT] ? true : false, // スクロールする中身がVLAYOUTを使う(縦に可変)
-      scroll: scrollDirection,
+      // content_vlayout: options[OPTION_VLAYOUT] ? true : false, // スクロールする中身がVLAYOUTを使う(縦に可変)
     })
+
+    if (options[OPTION_VLAYOUT]) {
+      let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
+      // 縦スクロールの場合のpadding.bottomは必要ない
+      vlayoutJson['padding']['bottom'] = 0
+      Object.assign(json, {
+        content_vlayout: vlayoutJson,
+      })
+    }
+
     assignResponsiveParameter(json, node)
   } else if (node.constructor.name == 'RepeatGrid') {
     // リピートグリッドでスクロールエリアを作成する
@@ -711,14 +722,15 @@ async function assignViewport(
     Object.assign(json, {
       type: 'Viewport',
       name: name,
+      scroll: scrollDirection,
       x: viewportBoundsCM.x,
       y: viewportBoundsCM.y,
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
+      // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
       content_vlayout: options[OPTION_VLAYOUT] ? true : false,
-      scroll: scrollDirection,
     })
 
     assignResponsiveParameter(json, node)
@@ -747,7 +759,7 @@ function sortElementsByY(jsonElements) {
  * @param {*} json
  * @param {*} areaNode
  */
-function getVLayout(json, areaNode, children) {
+function getVLayout(json, areaNode, nodeChildren) {
   // componentの無いelemリストを作成する
   let elems = []
   for (let i = json.elements.length - 1; i >= 0; i--) {
@@ -761,7 +773,7 @@ function getVLayout(json, areaNode, children) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   var childrenCalcBounds = new CalcBounds()
-  children.forEach(child => {
+  nodeChildren.forEach(child => {
     const nameOptions = parseNameOptions(child)
     // コンポーネントにする場合は除く
     if (nameOptions.options['component']) return
