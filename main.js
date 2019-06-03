@@ -645,9 +645,22 @@ async function assignViewport(
     // Areaを探し､AreaはDrawBounds情報のみ取得して処理しないようにする
     var viewportAreaNode = null
     let calcContentBounds = new CalcBounds()
+
+    // マスクが利用されたViewportである場合､マスクを取得する
+    if (node.mask) {
+      viewportAreaNode = node.mask
+    }
     await funcForEachChild(null, child => {
+      if (child == viewportAreaNode) {
+        // ViewportAreaNodeはElement処理をしない
+        return false
+      }
       const nameOptions = parseNameOptions(child)
-      if (nameOptions.name.toLowerCase() == 'area') {
+      // まだAreaが確定していない場合､areaという名前の子供を探す
+      if (
+        viewportAreaNode == null &&
+        nameOptions.name.toLowerCase() == 'area'
+      ) {
         viewportAreaNode = child
         return false
       }
@@ -806,19 +819,21 @@ function getVLayout(json, areaNode, nodeChildren) {
   // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
   // そのため､json.elementsは予めソートしておくことが必要
   // childrenでは､ソートされていないため､使用できない
-  if (elems[0] && elems[1]) {
-    // spacingの計算 ソートした上で､elems[0]とelems[1]で計算する
+  const elem0 = elems[0]
+  const elem1 = elems[1]
+  if (elem0 && elem1) {
+    // spacingの計算 ソートした上で､elem0とelem1で計算する
     // 簡易的にやっている
-    const spacing = elems[1].y - (elems[0].y + elems[0].h)
+    const spacing = elem1.y - (elem0.y + elem0.h)
     Object.assign(jsonVLayout, {
       spacing: spacing,
     })
     // left揃えか
-    if (approxEqual(elems[0].x, elems[1].x)) {
+    if (approxEqual(elem0.x, elem1.x)) {
       Object.assign(jsonVLayout, {
         child_alignment: 'left',
       })
-    } else if (approxEqual(elems[0].x + elems[0].w, elems[1].x + elems[1].w)) {
+    } else if (approxEqual(elem0.x + elem0.w, elem1.x + elem1.w)) {
       Object.assign(jsonVLayout, {
         child_alignment: 'right',
       })
@@ -950,6 +965,7 @@ async function nodeGroup(
       type: type,
       name: name,
     })
+    assignResponsiveParameter(json, node)
     await funcForEachChild()
     return type
   }
@@ -960,6 +976,7 @@ async function nodeGroup(
       type: type,
       name: name,
     })
+    assignResponsiveParameter(json, node)
     await funcForEachChild()
     return type
   }
@@ -1843,7 +1860,7 @@ function parseNameOptions(node) {
     options[OPTION_BUTTON] = true
   }
 
-  if (name.endsWith('Slider')) {
+  if (name.endsWith('Slider') || name.endsWith('_slider') || name == 'slider') {
     options[OPTION_SLIDER] = true
   }
 
@@ -1963,7 +1980,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     subFolder = await outputFolder.createFolder(subFolderName)
   }
 
-  const layoutFileName = subFolderName + '.layout.txt'
+  const layoutFileName = subFolderName + '.layout.json'
   const layoutFile = await outputFolder.createFile(layoutFileName, {
     overwrite: true,
   })
@@ -2027,7 +2044,22 @@ async function nodeRoot(renditions, outputFolder, root) {
     switch (constructorName) {
       case 'Artboard':
         Object.assign(layoutJson, {
-          artboard: true,
+          anchor_min: {
+            x: 0,
+            y: 0,
+          },
+          anchor_max: {
+            x: 1,
+            y: 1,
+          },
+          offset_min: {
+            x: 0,
+            y: 0,
+          },
+          offset_max: {
+            x: 0,
+            y: 0,
+          },
           elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
         await funcForEachChild()
@@ -2124,7 +2156,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     }
   }
 
-  // layout.txtの出力
+  // レイアウトファイルの出力
   layoutFile.write(JSON.stringify(layoutJson, null, '  '))
   console.log(layoutFileName)
 }
