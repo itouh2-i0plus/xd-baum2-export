@@ -2311,8 +2311,6 @@ function getExportRootNodes(selection, root) {
 }
 
 async function exportBaum2Command(selection, root) {
-  let exportRootNodes = getExportRootNodes(selection, root)
-
   let inputFolder
   let inputScale
   let errorLabel
@@ -2322,6 +2320,7 @@ async function exportBaum2Command(selection, root) {
   let checkTextToTMP
   let checkForceTextToImage
   let checkCheckMarkedForExport
+  let checkAllArtboard
   let dialog = h(
     'dialog',
     h(
@@ -2376,6 +2375,19 @@ async function exportBaum2Command(selection, root) {
         (inputScale = h('input', {
           value: '4.0',
         })),
+      ),
+      h(
+        'label',
+        {
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+          },
+        },
+        (checkAllArtboard = h('input', {
+          type: 'checkbox',
+        })),
+        h('span', '全てのアートボードを対象とする'),
       ),
       h(
         'label',
@@ -2517,6 +2529,8 @@ async function exportBaum2Command(selection, root) {
     ),
   )
 
+  let exportRootNodes = getExportRootNodes(selection, root)
+
   // 出力前にセッションデータをダイアログに反映する
   // Scale
   inputScale.value = scale
@@ -2536,6 +2550,11 @@ async function exportBaum2Command(selection, root) {
   // Dialog表示
   document.body.appendChild(dialog)
   let result = await dialog.showModal()
+
+  // 全てのアートボードが出力対象になっているか確認
+  if( checkAllArtboard.checked ) {
+    exportRootNodes = root.children
+  }
 
   // Dialogの結果チェック
   if (result == 'export') {
