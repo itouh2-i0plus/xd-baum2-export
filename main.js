@@ -65,6 +65,7 @@ const OPTION_PRESERVE_ASPECT = 'preserveaspect'
 const OPTION_BLANK = 'blank'
 const OPTION_ALIGN = 'align'
 const OPTION_RAYCAST_TARGET = 'raycasttarget'
+const OPTION_PADDING_BOTTOM = 'paddingbottom'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -528,7 +529,7 @@ async function assignScroller(
       それ以外 → Grid
       */
       var scrollDirection = 'vertical'
-      let items
+      let item0
       if (node.numColumns == 1) {
         // vertical
         var scrollDirection = 'vertical'
@@ -537,7 +538,7 @@ async function assignScroller(
         // アイテムの作成
         // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
         // もう1段したの子供がアイテムになる
-        items = [json.elements[0]]
+        item0 = json.elements[0]
       } else if (node.numRows == 1) {
         // Horizontal
         scrollDirection = 'horizontal'
@@ -546,24 +547,22 @@ async function assignScroller(
         items = [json.elements[0]]
       } else {
         // Grid
-        items = [
-          {
-            type: 'Group',
-            name: 'item0',
-            elements: [],
-          },
-        ]
-        // Column分のitem[0]をコンバートする
-        await funcForEachChild(node.numColumns)
+        ;(item0 = {
+          type: 'Group',
+          name: 'item0',
+          elements: [],
+        }),
+          // Column分のitem[0]をコンバートする
+          await funcForEachChild(node.numColumns)
         // 一列はいっているitemを作成する
         for (let i = 0; i < node.numColumns; i++) {
           var elem = json.elements[i]
           elem.name = 'item0-' + (node.numColumns - i - 1)
-          items[0].elements.push(elem)
+          item0.elements.push(elem)
         }
-        let item0_0 = items[0].elements[0]
+        let item0_0 = item0.elements[0]
         // item0のRecttransform 縦スクロールは横にピッチリ　縦はitem0_0サイズ
-        Object.assign(items[0], {
+        Object.assign(item0, {
           anchor_min: { x: 0, y: 1 },
           anchor_max: { x: 1, y: 1 },
           offset_min: { x: 0, y: -item0_0.h },
@@ -593,6 +592,7 @@ async function assignScroller(
           : node.paddingX * scale
       const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
 
+      // Paddingの計算
       const paddingLeft = child0.topLeftInParent.x * scale
       const paddingTop = child0.topLeftInParent.y * scale
 
@@ -606,20 +606,28 @@ async function assignScroller(
         node.paddingY * scale * (node.numRows - 1) // cellとcellの隙間*(cellの個数-1)
 
       const paddingRight = drawBounds.width - itemWidth
+      let paddingBottom = null
+      if (options[OPTION_PADDING_BOTTOM] != null)
+        paddingBottom = parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
 
       // リピートグリッドなら子供はすべてScrollerにいれるものになっている
       // 隙間のパラメータ
       Object.assign(json, {
-        paddingLeft: paddingLeft,
-        paddingRight: paddingRight,
-        paddingTop: paddingTop,
-        spacing: spacing,
+        vlayout: {
+          padding: {
+            left: paddingLeft,
+            right: paddingRight,
+            top: paddingTop,
+            bottom: paddingBottom,
+          },
+          spacing: spacing,
+        },
         x: drawBounds.x,
         y: drawBounds.y,
         w: drawBounds.width,
         h: drawBounds.height,
         opacity: 100,
-        elements: items, // トップの一個だけ
+        elements: [item0], // トップの一個だけ
       })
       assignResponsiveParameter(json, node)
     } else {
@@ -662,7 +670,7 @@ async function assignViewport(
         nameOptions.name.toLowerCase() == 'area'
       ) {
         viewportAreaNode = child
-        return false
+        return false //処理しない(Elementに含まれない)
       }
       calcContentBounds.addBounds(getGlobalBounds(child))
       return true // 処理する
@@ -690,15 +698,20 @@ async function assignViewport(
       // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
-      // content_vlayout: options[OPTION_VLAYOUT] ? true : false, // スクロールする中身がVLAYOUTを使う(縦に可変)
     })
 
     if (options[OPTION_VLAYOUT]) {
       let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
-      // 縦スクロールの場合のpadding.bottomは必要ない
+      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
       vlayoutJson['padding']['bottom'] = 0
+
+      if (options[OPTION_PADDING_BOTTOM] != null) {
+        vlayoutJson['padding']['bottom'] =
+          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+      }
+
       Object.assign(json, {
-        content_vlayout: vlayoutJson,
+        vlayout: vlayoutJson,
       })
     }
 
@@ -743,7 +756,7 @@ async function assignViewport(
       // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
-      content_vlayout: options[OPTION_VLAYOUT] ? true : false,
+      vlayout: options[OPTION_VLAYOUT] ? true : null,
     })
 
     assignResponsiveParameter(json, node)
@@ -2552,7 +2565,7 @@ async function exportBaum2Command(selection, root) {
   let result = await dialog.showModal()
 
   // 全てのアートボードが出力対象になっているか確認
-  if( checkAllArtboard.checked ) {
+  if (checkAllArtboard.checked) {
     exportRootNodes = root.children
   }
 
