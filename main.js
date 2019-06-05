@@ -547,17 +547,28 @@ async function assignScroller(
         items = [json.elements[0]]
       } else {
         // Grid
-        ;(item0 = {
+        item0 = {
           type: 'Group',
           name: 'item0',
+          layout: {
+            method: 'horizontal',
+            padding: {
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+            },
+            spacing: 0,
+          },
           elements: [],
-        }),
-          // Column分のitem[0]をコンバートする
-          await funcForEachChild(node.numColumns)
+        }
+        // Column分のitem[0]をコンバートする
+        await funcForEachChild(node.numColumns)
         // 一列はいっているitemを作成する
-        for (let i = 0; i < node.numColumns; i++) {
+        for (let i = 0; i < 1; i++) {
           var elem = json.elements[i]
-          elem.name = 'item0-' + (node.numColumns - i - 1)
+          //elem.name = 'item0-' + (node.numColumns - i - 1)
+          elem.name = 'item0-' + i
           item0.elements.push(elem)
         }
         let item0_0 = item0.elements[0]
@@ -613,7 +624,7 @@ async function assignScroller(
       // リピートグリッドなら子供はすべてScrollerにいれるものになっている
       // 隙間のパラメータ
       Object.assign(json, {
-        vlayout: {
+        layout: {
           padding: {
             left: paddingLeft,
             right: paddingRight,
@@ -711,7 +722,7 @@ async function assignViewport(
       }
 
       Object.assign(json, {
-        vlayout: vlayoutJson,
+        layout: vlayoutJson,
       })
     }
 
@@ -756,7 +767,7 @@ async function assignViewport(
       // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
-      vlayout: options[OPTION_VLAYOUT] ? true : null,
+      layout: options[OPTION_VLAYOUT] ? true : null,
     })
 
     assignResponsiveParameter(json, node)
@@ -821,6 +832,7 @@ function getVLayout(json, areaNode, nodeChildren) {
     areaBounds.height -
     (childrenBounds.y + childrenBounds.height)
   Object.assign(jsonVLayout, {
+    method: 'vertical',
     padding: {
       left: paddingLeft,
       right: paddingRight,
@@ -874,7 +886,7 @@ function assignVLayout(json, node) {
   sortElementsByY(json.elements)
   var jsonVLayout = getVLayout(json, node, node.children)
   Object.assign(json, {
-    vlayout: jsonVLayout,
+    layout: jsonVLayout,
   })
 }
 
