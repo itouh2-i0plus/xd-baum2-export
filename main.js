@@ -55,6 +55,8 @@ const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_GROUP = 'group'
 const OPTION_VLAYOUT = 'vlayout'
+const OPTION_HLAYOUT = 'hlayout'
+const OPTION_GLAYOUT = 'glayout'
 const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVASGROUP = 'canvasgroup'
 const OPTION_COMPONENT = 'component'
@@ -352,6 +354,22 @@ function assignResponsiveParameter(json, node) {
   }
 }
 
+/**
+ * BAUM2では使わないケースもあるが､
+ * CenterMiddle座標と､サイズをアサインする
+ * XY座標によるElementsソートなどに使われる
+ * @param {*} json
+ * @param {*} node
+ */
+function assignBoundsCM(json, boundsCM) {
+  Object.assign(json, {
+    x: boundsCM.x,
+    y: boundsCM.y,
+    w: boundsCM.width,
+    h: boundsCM.height,
+  })
+}
+
 function searchFileName(renditions, fileName) {
   const found = renditions.find(entry => {
     return entry.fileName == fileName
@@ -390,13 +408,13 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
     })
   }
 
-  const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+  const drawBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
   Object.assign(json, {
     image: '../symbol/' + fileName,
-    x: drawBounds.x,
-    y: drawBounds.y,
-    w: drawBounds.width,
-    h: drawBounds.height,
+    x: drawBoundsCM.x,
+    y: drawBoundsCM.y,
+    w: drawBoundsCM.width,
+    h: drawBoundsCM.height,
     opacity: 100,
   })
 
@@ -688,7 +706,7 @@ async function assignViewport(
     })
 
     // 縦の並び順を正常にするため､Yでソートする
-    sortElementsByY(json.elements)
+    sortElementsByPositionAsc(json.elements)
 
     // 以下縦スクロール専用でコーディング
     var scrollDirection = 'vertical'
@@ -723,6 +741,22 @@ async function assignViewport(
 
       Object.assign(json, {
         layout: vlayoutJson,
+      })
+    }
+
+    if (options[OPTION_GLAYOUT]) {
+      let glayoutJson = getVLayout(json, viewportAreaNode, node.children)
+      glayout['method'] = 'grid'
+      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
+      glayoutJson['padding']['bottom'] = 0
+
+      if (options[OPTION_PADDING_BOTTOM] != null) {
+        glayoutJson['padding']['bottom'] =
+          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+      }
+
+      Object.assign(json, {
+        layout: glayoutJson,
       })
     }
 
@@ -778,12 +812,31 @@ async function assignViewport(
  * Viewportの子供の整理をする
  * ･Y順に並べる
  */
-function sortElementsByY(jsonElements) {
+function sortElementsByPositionAsc(jsonElements) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   jsonElements.sort((elemA, elemB) => {
     const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
     const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
+    if (a_y == b_y) {
+      const a_x = elemA['component'] ? Number.MAX_VALUE : elemA['x']
+      const b_x = elemB['component'] ? Number.MAX_VALUE : elemB['x']
+      return b_x - a_x
+    }
     return b_y - a_y
+  })
+}
+
+function sortElementsByPositionDesc(jsonElements) {
+  // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
+  jsonElements.sort((elemA, elemB) => {
+    const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
+    const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
+    if (b_y == a_y) {
+      const a_x = elemA['component'] ? Number.MAX_VALUE : elemA['x']
+      const b_x = elemB['component'] ? Number.MAX_VALUE : elemB['x']
+      return a_x - b_x
+    }
+    return a_y - b_y
   })
 }
 
@@ -810,13 +863,16 @@ function getVLayout(json, areaNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   var childrenCalcBounds = new CalcBounds()
+  var childrenMinMaxSize = new MinMaxSize()
   nodeChildren.forEach(child => {
     const nameOptions = parseNameOptions(child)
     // コンポーネントにする場合は除く
     if (nameOptions.options['component']) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
     if (child == areaNode) return
-    childrenCalcBounds.addBounds(getGlobalDrawBounds(child))
+    const childBounds = getGlobalDrawBounds(child)
+    childrenCalcBounds.addBounds(childBounds)
+    childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
   })
   //
   let jsonVLayout = {}
@@ -839,26 +895,38 @@ function getVLayout(json, areaNode, nodeChildren) {
       top: paddingTop,
       bottom: paddingBottom,
     },
+    cell_max_width: childrenMinMaxSize.maxWidth,
+    cell_max_height: childrenMinMaxSize.maxHeight,
   })
 
   // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
   // そのため､json.elementsは予めソートしておくことが必要
   // childrenでは､ソートされていないため､使用できない
   const elem0 = elems[0]
-  const elem1 = elems[1]
+  let elem1 = null
+
+  // 縦にそこそこ離れているELEMを探す
+  for (let i = 1; i < elems.length; i++) {
+    if (Math.abs(elem0.y - elems[i].y) > (elem0.h / 2) * 0.6) {
+      elem1 = elems[i]
+      break
+    }
+  }
   if (elem0 && elem1) {
     // spacingの計算 ソートした上で､elem0とelem1で計算する
     // 簡易的にやっている
     const spacing = elem1.y - (elem0.y + elem0.h)
-    Object.assign(jsonVLayout, {
-      spacing: spacing,
-    })
+    if (Number.isFinite(spacing)) {
+      Object.assign(jsonVLayout, {
+        spacing: spacing,
+      })
+    }
     // left揃えか
     if (approxEqual(elem0.x, elem1.x)) {
       Object.assign(jsonVLayout, {
         child_alignment: 'left',
       })
-    } else if (approxEqual(elem0.x + elem0.w, elem1.x + elem1.w)) {
+    } else if (approxEqual(elem0.x + elem0.w / 2, elem1.x + elem1.w / 2)) {
       Object.assign(jsonVLayout, {
         child_alignment: 'right',
       })
@@ -883,8 +951,18 @@ function getVLayout(json, areaNode, nodeChildren) {
 
 function assignVLayout(json, node) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
-  sortElementsByY(json.elements)
+  sortElementsByPositionAsc(json.elements)
   var jsonVLayout = getVLayout(json, node, node.children)
+  Object.assign(json, {
+    layout: jsonVLayout,
+  })
+}
+
+function assignGLayout(json, node) {
+  // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
+  sortElementsByPositionAsc(json.elements)
+  var jsonVLayout = getVLayout(json, node, node.children)
+  jsonVLayout['method'] = 'grid'
   Object.assign(json, {
     layout: jsonVLayout,
   })
@@ -940,6 +1018,11 @@ async function assignGroup(
   if (options[OPTION_VLAYOUT] != null) {
     assignVLayout(json, node)
   }
+
+  if (options[OPTION_GLAYOUT] != null) {
+    assignGLayout(json, node)
+  }
+
   return type
 }
 
@@ -980,6 +1063,7 @@ async function nodeGroup(
       name: name,
     })
     assignResponsiveParameter(json, node)
+    assignBoundsCM(json, getDrawBoundsInBaseCenterMiddle(node, root))
     await funcForEachChild()
     return type
   }
@@ -1019,6 +1103,7 @@ async function nodeGroup(
       })
     }
     assignResponsiveParameter(json, node)
+    assignBoundsCM(json, getDrawBoundsInBaseCenterMiddle(node, root))
     await funcForEachChild()
     return type
   }
@@ -1078,6 +1163,29 @@ async function nodeGroup(
     options,
     funcForEachChild,
   )
+}
+
+class MinMaxSize {
+  constructor() {
+    this.minWidth = null
+    this.minHeight = null
+    this.maxWidth = null
+    this.maxHeight = null
+  }
+  addSize(w, h) {
+    if (this.minWidth == null || this.minWidth > w) {
+      this.minWidth = w
+    }
+    if (this.maxWidth == null || this.maxWidth < w) {
+      this.maxWidth = w
+    }
+    if (this.minHeight == null || this.minHeight > h) {
+      this.minHeight = h
+    }
+    if (this.maxHeight == null || this.maxHeight < h) {
+      this.maxHeight = h
+    }
+  }
 }
 
 class CalcBounds {
@@ -1653,7 +1761,7 @@ async function nodeText(
     return
   }
 
-  const drawBounds = getDrawBoundsInBaseCenterMiddle(node, artboard)
+  const drawBoundsCM = getDrawBoundsInBaseCenterMiddle(node, artboard)
 
   let type = 'Text'
   if (checkOptionTextMeshPro(options)) {
@@ -1689,11 +1797,11 @@ async function nodeText(
     size: node.fontSize * scale,
     color: getRGB(node.fill.value),
     align: align,
-    x: drawBounds.x,
-    y: drawBounds.y,
-    w: drawBounds.width,
-    h: drawBounds.height,
-    vh: drawBounds.height,
+    x: drawBoundsCM.x,
+    y: drawBoundsCM.y,
+    w: drawBoundsCM.width,
+    h: drawBoundsCM.height,
+    vh: drawBoundsCM.height,
     opacity: 100,
   })
 
