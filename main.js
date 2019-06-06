@@ -48,8 +48,7 @@ const OPTION_IMAGE = 'image'
 const OPTION_TEXT = 'text'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
-const OPTION_LIST = 'list'
-const OPTION_SCROLLER = 'scroller'
+const OPTION_LIST = 'scroller'
 const OPTION_PIVOT = 'pivot'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
@@ -112,12 +111,8 @@ function checkOptionToggle(options) {
   return checkBoolean(options[OPTION_TOGGLE])
 }
 
-function checkOptionList(options) {
-  return checkBoolean(options[OPTION_LIST])
-}
-
 function checkOptionScroller(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_SCROLLER])
+  return optionEnableExtended && checkBoolean(options[OPTION_LIST])
 }
 
 function checkOptionViewport(options) {
@@ -605,7 +600,7 @@ async function assignScroller(
       // })
 
       Object.assign(json, {
-        type: 'Scroller',
+        type: 'List',
         name: name,
         scroll: scrollDirection,
       })
@@ -775,7 +770,8 @@ async function assignViewport(
     // 以下縦スクロール専用でコーディング
     var scrollDirection = 'vertical'
     let calcContentBounds = new CalcBounds()
-    const viewportAreaBounds = getGlobalDrawBounds(node)
+    let viewportAreaNode = node;
+    const viewportAreaBounds = getGlobalDrawBounds(viewportAreaNode)
     calcContentBounds.addBounds(viewportAreaBounds)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
     // そういったものを省くための処理
@@ -790,14 +786,14 @@ async function assignViewport(
       calcContentBounds.addBounds(bounds)
       return true // 処理する
     })
-    const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
+    const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(viewportAreaNode, root)
 
-    var child0 = node.children.at(0)
-    const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, node)
+    var child0 = viewportAreaNode.children.at(0)
+    const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, viewportAreaNode)
 
-    const cellWidth = node.cellSize.width * scale
+    const cellWidth = viewportAreaNode.cellSize.width * scale
     // item[0] がY方向へ移動している分
-    const cellHeight = child0BoundsCM.y + node.cellSize.height * scale
+    const cellHeight = child0BoundsCM.y + viewportAreaNode.cellSize.height * scale
 
     Object.assign(json, {
       type: 'Viewport',
@@ -810,8 +806,31 @@ async function assignViewport(
       // Contentグループ情報
       content_w: calcContentBounds.bounds.width,
       content_h: calcContentBounds.bounds.height,
-      layout: options[OPTION_VLAYOUT] ? true : null,
     })
+
+    if( options[OPTION_VLAYOUT] != null) {
+      let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
+      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
+      vlayoutJson['padding']['bottom'] = 0
+
+      if (options[OPTION_PADDING_BOTTOM] != null) {
+        vlayoutJson['padding']['bottom'] =
+          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+      }
+
+      Object.assign(json, {
+        layout: vlayoutJson,
+      })
+
+      forEachReverseElements(json.elements, elementJson => {
+        if (!hasHeightLayouter(elementJson)) {
+          // preferred-heightをつける
+          Object.assign(elementJson, {
+            preferred_height: elementJson.h,
+          })
+        }
+      })
+    }
 
     assignResponsiveParameter(json, node)
   }
@@ -1159,23 +1178,6 @@ async function nodeGroup(
     assignResponsiveParameter(json, node)
     assignBoundsCM(json, getDrawBoundsInBaseCenterMiddle(node, root))
     await funcForEachChild()
-    return type
-  }
-
-  if (checkOptionList(options)) {
-    const type = 'List'
-    Object.assign(json, {
-      type: type,
-      name: name,
-      scroll: 'vertical', // TODO:オプションを取得するようにする
-    })
-    await funcForEachChild()
-    let areaElement = json.elements.find(element => {
-      return element.name == 'Area'
-    })
-    if (!areaElement) {
-      console.log('***error not found Area')
-    }
     return type
   }
 
@@ -2063,22 +2065,14 @@ function parseNameOptions(node) {
     options[OPTION_TOGGLE] = true
   }
 
-  if (name.endsWith('List')) {
-    options[OPTION_LIST] = true
-  }
-
   // 拡張モード有効時のみ
   if (optionEnableExtended) {
-    if (name.endsWith('Input')) {
+    if (name.endsWith('Input') || name.endsWith('_input') || name == 'input') {
       options[OPTION_INPUT] = true
     }
 
-    if (
-      name.endsWith('Scroller') ||
-      name.endsWith('_scroller') ||
-      name == 'scroller'
-    ) {
-      options[OPTION_SCROLLER] = true
+    if (name.endsWith('List') || name.endsWith('_list') || name == 'list') {
+      options[OPTION_LIST] = true
     }
 
     if (
