@@ -731,7 +731,7 @@ async function assignViewport(
 
     if (options[OPTION_VLAYOUT]) {
       let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
-      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
+      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
       vlayoutJson['padding']['bottom'] = 0
 
       if (options[OPTION_PADDING_BOTTOM] != null) {
@@ -741,6 +741,15 @@ async function assignViewport(
 
       Object.assign(json, {
         layout: vlayoutJson,
+      })
+
+      forEachReverseElements(json.elements, elementJson => {
+        if (!hasHeightLayouter(elementJson)) {
+          // preferred-heightをつける
+          Object.assign(elementJson, {
+            preferred_height: elementJson.h,
+          })
+        }
       })
     }
 
@@ -842,6 +851,7 @@ function sortElementsByPositionDesc(jsonElements) {
 
 /**
  * VLayoutパラメータを生成する
+ * ※List､LayoutGroup､Viewport共通
  * AreaNode　と　json.elementsの子供情報から
  * Spacing､Padding､Alignment情報を生成する
  * 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
@@ -850,16 +860,6 @@ function sortElementsByPositionDesc(jsonElements) {
  * @param {*} areaNode
  */
 function getVLayout(json, areaNode, nodeChildren) {
-  // componentの無いelemリストを作成する
-  let elems = []
-  for (let i = json.elements.length - 1; i >= 0; i--) {
-    //後ろから追加していく
-    let element = json.elements[i]
-    if (element && element['component'] == null) {
-      elems.push(element)
-    }
-  }
-
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   var childrenCalcBounds = new CalcBounds()
@@ -899,6 +899,15 @@ function getVLayout(json, areaNode, nodeChildren) {
     cell_max_height: childrenMinMaxSize.maxHeight,
   })
 
+  // componentの無いelemリストを作成する
+  let elems = []
+  forEachReverseElements(json.elements, element => {
+    //後ろから追加していく
+    if (element && element['component'] == null) {
+      elems.push(element)
+    }
+  })
+
   // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
   // そのため､json.elementsは予めソートしておくことが必要
   // childrenでは､ソートされていないため､使用できない
@@ -907,7 +916,8 @@ function getVLayout(json, areaNode, nodeChildren) {
 
   // 縦にそこそこ離れているELEMを探す
   for (let i = 1; i < elems.length; i++) {
-    if (Math.abs(elem0.y - elems[i].y) > (elem0.h / 2) * 0.6) {
+    // そこそこ離れている判定 少々のズレに目をつぶる
+    if (Math.abs(elem0.y - elems[i].y) > (elem0.h / 2) * 0.3 + 2) {
       elem1 = elems[i]
       break
     }
@@ -968,6 +978,39 @@ function assignGLayout(json, node) {
   })
 }
 
+/**
+ * Heightレイアウトするための情報をもっているElementか
+ * @param {*} elementJson
+ */
+function hasHeightLayouter(elementJson) {
+  const type = elementJson['type']
+  if (type == 'Text') {
+    return true
+  }
+  if (elementJson['layout'] && elementJson['layout']['method'] == 'vertical') {
+    return true
+  }
+  if (elementJson['preferred_height']) {
+    return true
+  }
+  return false
+}
+
+/**
+ * 逆順にForEach　コンポーネント化するものを省く
+ * @param {*} elements
+ * @param {*} func
+ */
+function forEachReverseElements(elements, func) {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    //後ろから追加していく
+    let elementJson = elements[i]
+    if (elementJson && elementJson['component'] == null) {
+      func(elementJson)
+    }
+  }
+}
+
 async function assignGroup(
   json,
   node,
@@ -1017,6 +1060,17 @@ async function assignGroup(
   // assignVGroup
   if (options[OPTION_VLAYOUT] != null) {
     assignVLayout(json, node)
+    Object.assign(json, {
+      size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
+    })
+    forEachReverseElements(json.elements, elementJson => {
+      if (!hasHeightLayouter(elementJson)) {
+        // preferred-heightをつける
+        Object.assign(elementJson, {
+          preferred_height: elementJson.h,
+        })
+      }
+    })
   }
 
   if (options[OPTION_GLAYOUT] != null) {
