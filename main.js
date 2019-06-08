@@ -194,6 +194,7 @@ function getArtboard(node) {
 
 /**
  * グローバル座標とサイズを取得する
+ * responsiveBoundsの中の値は壊れないようにする
  * @param {scenegraph} node
  */
 function getGlobalDrawBounds(node) {
@@ -204,18 +205,22 @@ function getGlobalDrawBounds(node) {
   if (hashBounds != null) {
     const hbounds = hashBounds[node.guid]
     if (hbounds != null && hbounds['before'] != null) {
-      bounds = hbounds['before']['bounds']
+      bounds = Object.assign({}, hbounds['before']['bounds'])
     }
   }
   if (bounds == null) {
-    bounds = node.globalDrawBounds
-    bounds.x = bounds.x * scale
-    bounds.y = bounds.y * scale
-    bounds.width = bounds.width * scale
-    bounds.height = bounds.height * scale
+    const bd = node.globalDrawBounds
+    const viewPortHeight = node.viewportHeight
+    if (viewPortHeight != null) bd.height = viewPortHeight
+    bounds = {
+      x: bd.x * scale,
+      y: bd.y * scale,
+      width: bd.width * scale,
+      height: bd.height * scale,
+      ex: (bd.x + bd.width) * scale,
+      ey: (bd.y + bd.height) * scale,
+    }
   }
-  const viewPortHeight = node.viewportHeight
-  if (viewPortHeight != null) bounds.height = viewPortHeight * scale
   return bounds
 }
 
@@ -243,36 +248,14 @@ function getGlobalBounds(node) {
  * @param {scenegraph} node
  * @param {artboard} base
  */
-function getDrawBoundsInBaseCenterMiddle(node, base) {
+function getBoundsCMInBase(node, base) {
   const nodeDrawBounds = getGlobalDrawBounds(node)
   const baseBounds = getGlobalDrawBounds(base)
   return {
-    x: nodeDrawBounds.x - (baseBounds.x + baseBounds.width / 2),
-    y: nodeDrawBounds.y - (baseBounds.y + baseBounds.height / 2),
+    x: nodeDrawBounds.x - baseBounds.x + nodeDrawBounds.width / 2,
+    y: nodeDrawBounds.y - baseBounds.y + nodeDrawBounds.height / 2,
     width: nodeDrawBounds.width,
     height: nodeDrawBounds.height,
-  }
-}
-
-/**
- * Base内での x､yはCenterMiddleでの座標, WidhtHeightを取得する
- * @param {scenegraph} node
- * @param {artboard} base
- */
-function getCMWHInBase(node, base) {
-  const nodeBounds = getGlobalBounds(node)
-  const baseBounds = getGlobalBounds(base)
-  return {
-    x:
-      nodeBounds.x +
-      nodeBounds.width / 2 -
-      (baseBounds.x + baseBounds.width / 2),
-    y:
-      nodeBounds.y +
-      nodeBounds.height / 2 -
-      (baseBounds.y + baseBounds.height / 2),
-    width: nodeBounds.width,
-    height: nodeBounds.height,
   }
 }
 
@@ -403,7 +386,7 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
     })
   }
 
-  const drawBoundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
+  const drawBoundsCM = getBoundsCMInBase(node, root)
   Object.assign(json, {
     image: '../symbol/' + fileName,
     x: drawBoundsCM.x,
@@ -473,7 +456,7 @@ async function assignImage(
     overwrite: true,
   })
 
-  const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+  const drawBounds = getBoundsCMInBase(node, root)
   Object.assign(json, {
     x: drawBounds.x,
     y: drawBounds.y,
@@ -614,7 +597,7 @@ async function assignScroller(
         scrollDirection == 'vertical'
           ? node.paddingY * scale
           : node.paddingX * scale
-      const drawBounds = getDrawBoundsInBaseCenterMiddle(node, root)
+      const drawBounds = getBoundsCMInBase(node, root)
 
       // Paddingの計算
       const paddingLeft = child0.topLeftInParent.x * scale
@@ -681,6 +664,11 @@ async function assignViewport(
     // マスクが利用されたViewportである場合､マスクを取得する
     if (node.mask) {
       viewportAreaNode = node.mask
+    } else {
+      // コンテンツグループと同じところにマスク(area)がある場合､
+      // 意図通りサイズが可変されない
+      // マスクはコンテンツグループと同列かつアートボード直下にある必要がでてくる
+      console.log('***error viewport:マスクがみつかりませんでした')
     }
     await funcForEachChild(null, child => {
       if (child == viewportAreaNode) {
@@ -696,7 +684,8 @@ async function assignViewport(
         viewportAreaNode = child
         return false //処理しない(Elementに含まれない)
       }
-      calcContentBounds.addBounds(getGlobalBounds(child))
+      const childBounds = getGlobalDrawBounds(child)
+      calcContentBounds.addBounds(childBounds)
       return true // 処理する
     })
 
@@ -706,10 +695,7 @@ async function assignViewport(
     // 以下縦スクロール専用でコーディング
     var scrollDirection = 'vertical'
 
-    const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(
-      viewportAreaNode,
-      root,
-    )
+    const viewportBoundsCM = getBoundsCMInBase(viewportAreaNode, root)
 
     Object.assign(json, {
       type: 'Viewport',
@@ -746,6 +732,11 @@ async function assignViewport(
           })
         }
       })
+    } else {
+      // VLAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
+      const padding_top =
+        calcContentBounds.bounds.y - getGlobalDrawBounds(viewportAreaNode).y
+      json['content_h'] += padding_top
     }
 
     if (options[OPTION_GLAYOUT]) {
@@ -770,7 +761,7 @@ async function assignViewport(
     // 以下縦スクロール専用でコーディング
     var scrollDirection = 'vertical'
     let calcContentBounds = new CalcBounds()
-    let viewportAreaNode = node;
+    let viewportAreaNode = node
     const viewportAreaBounds = getGlobalDrawBounds(viewportAreaNode)
     calcContentBounds.addBounds(viewportAreaBounds)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
@@ -786,14 +777,15 @@ async function assignViewport(
       calcContentBounds.addBounds(bounds)
       return true // 処理する
     })
-    const viewportBoundsCM = getDrawBoundsInBaseCenterMiddle(viewportAreaNode, root)
+    const viewportBoundsCM = getBoundsCMInBase(viewportAreaNode, root)
 
     var child0 = viewportAreaNode.children.at(0)
-    const child0BoundsCM = getDrawBoundsInBaseCenterMiddle(child0, viewportAreaNode)
+    const child0BoundsCM = getBoundsCMInBase(child0, viewportAreaNode)
 
     const cellWidth = viewportAreaNode.cellSize.width * scale
     // item[0] がY方向へ移動している分
-    const cellHeight = child0BoundsCM.y + viewportAreaNode.cellSize.height * scale
+    const cellHeight =
+      child0BoundsCM.y + viewportAreaNode.cellSize.height * scale
 
     Object.assign(json, {
       type: 'Viewport',
@@ -808,7 +800,7 @@ async function assignViewport(
       content_h: calcContentBounds.bounds.height,
     })
 
-    if( options[OPTION_VLAYOUT] != null) {
+    if (options[OPTION_VLAYOUT] != null) {
       let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
       vlayoutJson['padding']['bottom'] = 0
@@ -882,6 +874,7 @@ function getVLayout(json, areaNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   var childrenCalcBounds = new CalcBounds()
+  // セルサイズを決めるため最大サイズを取得する
   var childrenMinMaxSize = new MinMaxSize()
   nodeChildren.forEach(child => {
     const nameOptions = parseNameOptions(child)
@@ -1042,7 +1035,7 @@ async function assignGroup(
   depth,
 ) {
   const type = 'Group'
-  let boundsCM = getDrawBoundsInBaseCenterMiddle(node, root)
+  let boundsCM = getBoundsCMInBase(node, root)
   Object.assign(json, {
     type: type,
     name: name,
@@ -1136,7 +1129,7 @@ async function nodeGroup(
       name: name,
     })
     assignResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsInBaseCenterMiddle(node, root))
+    assignBoundsCM(json, getBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1176,7 +1169,7 @@ async function nodeGroup(
       })
     }
     assignResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsInBaseCenterMiddle(node, root))
+    assignBoundsCM(json, getBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1280,11 +1273,6 @@ class CalcBounds {
   }
 }
 
-function assignExEyFromBounds(bounds) {
-  bounds['ex'] = bounds.x + bounds.width
-  bounds['ey'] = bounds.y + bounds.height
-}
-
 /**
  * 文字列の中に所定のパラメータ文字列がるかチェックする
  * option = x
@@ -1339,23 +1327,23 @@ function calcResponsiveParameter(node, hashBounds, options) {
 
   const bounds = hashBounds[node.guid]
   if (!bounds || !bounds['before'] || !bounds['after']) return null
-  let beforeBounds = bounds['before']['bounds']
+  const beforeBounds = bounds['before']['bounds']
   const afterBounds = bounds['after']['bounds']
   const parentBounds = hashBounds[node.parent.guid]
   if (!parentBounds || !parentBounds['before'] || !parentBounds['after'])
     return null
 
-  let parentBeforeBounds = parentBounds['before']['bounds']
+  const parentBeforeBounds = parentBounds['before']['bounds']
   const parentAfterBounds = parentBounds['after']['bounds']
 
-  assignExEyFromBounds(beforeBounds)
-  assignExEyFromBounds(afterBounds)
-  assignExEyFromBounds(parentBeforeBounds)
-  assignExEyFromBounds(parentAfterBounds)
+  console.log(parentBeforeBounds)
+  console.log(beforeBounds)
 
   const optionFix = options[OPTION_FIX]
 
   // X座標
+  console.log(node.name + '-------------------')
+  console.log(beforeBounds.width, afterBounds.width)
   if (
     optionFix == null &&
     approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
@@ -1393,7 +1381,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
   } else {
     // 親のX座標･Widthをもとに､割合でRight座標がきまる
     const beforeFixOptionRight =
-      (beforeBounds.ex - parentBeforeBounds.x) / parentBeforeBounds.width
+      (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
     fixOptionRight = beforeFixOptionRight
   }
 
@@ -1425,7 +1413,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
   } else {
     // 親のY座標･Heightをもとに､Bottom座標がきまる
     const beforeFixOptionBottom =
-      1 - (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+      (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
     fixOptionBottom = beforeFixOptionBottom
   }
 
@@ -1503,7 +1491,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
     anchorMax.x = 1
     offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
   } else if (fixOptionRight != null) {
-    anchorMax.x = fixOptionRight
+    anchorMax.x = 1 - fixOptionRight
     offsetMax.x = 0
   }
 
@@ -1517,7 +1505,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
     }
     if (fixOptionLeft !== true && fixOptionRight !== true) {
       //両方共ロックされていない
-      anchorMin.x = anchorMax.x = (fixOptionLeft + fixOptionRight) / 2
+      anchorMin.x = anchorMax.x = (fixOptionLeft + 1 - fixOptionRight) / 2
       offsetMin.x = -beforeBounds.width / 2
       offsetMax.x = beforeBounds.width / 2
     }
@@ -1537,7 +1525,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
     anchorMin.y = 0
     offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
   } else if (fixOptionBottom != null) {
-    anchorMin.y = 1 - fixOptionBottom
+    anchorMin.y = fixOptionBottom
     offsetMin.y = 0
   }
 
@@ -1550,7 +1538,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
       offsetMax.y = offsetMin.y + beforeBounds.height
     } else if (fixOptionTop !== true && fixOptionBottom !== true) {
       //両方共ロックされていない
-      anchorMin.y = anchorMax.y = 1 - (fixOptionTop + fixOptionBottom) / 2
+      anchorMin.y = anchorMax.y = 1 - (fixOptionTop + 1 - fixOptionBottom) / 2
       offsetMin.y = -beforeBounds.height / 2
       offsetMax.y = beforeBounds.height / 2
     }
@@ -1640,9 +1628,10 @@ function makeResponsiveParameter(root) {
   const resizePlusHeight = 100
 
   // Artboardのリサイズ
+  const viewportHeight = root.viewportHeight // viewportの高さの保存
   root.resize(rootWidth + resizePlusWidth, rootHeight + resizePlusHeight)
-  const viewportHeight = root.viewportHeight
   if (root.viewportHeight != null) {
+    // viewportの高さを高さが変わった分の変化に合わせる
     root.viewportHeight = viewportHeight + resizePlusHeight
   }
 
@@ -1728,15 +1717,20 @@ function checkHashBounds(hashBounds, repair) {
         console.log('***error bounds changed:' + node.name)
         if (repair == true) {
           // 修復を試みる
-          var dx = restoreBounds.x - beforeBounds.x
-          var dy = restoreBounds.y - beforeBounds.y
-          try {
-            node.moveInParentCoordinates(dx, dy)
-            node.resize(beforeBounds.width, beforeBounds.height)
-          } catch (e) {}
-          if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
-            console.log('修復されました')
+          if (node.symbolId != null) {
+            var dx = restoreBounds.x - beforeBounds.x
+            var dy = restoreBounds.y - beforeBounds.y
+            try {
+              node.moveInParentCoordinates(dx, dy)
+              node.resize(beforeBounds.width, beforeBounds.height)
+            } catch (e) {}
+            if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
+            } else {
+              console.log('***修復できませんでした')
+              result = false
+            }
           } else {
+            console.log('***Componentのため修復できませんでした')
             result = false
           }
         } else {
@@ -1817,7 +1811,7 @@ async function nodeText(
     return
   }
 
-  const drawBoundsCM = getDrawBoundsInBaseCenterMiddle(node, artboard)
+  const drawBoundsCM = getBoundsCMInBase(node, artboard)
 
   let type = 'Text'
   if (checkOptionTextMeshPro(options)) {
@@ -2104,11 +2098,11 @@ function concatNameOptions(name, options) {
 function makeLayoutJson(root) {
   let rootBounds
   if (root instanceof Artboard) {
-    rootBounds = getGlobalBounds(root)
+    rootBounds = getGlobalDrawBounds(root)
     rootBounds.x = 0
     rootBounds.y = 0
   } else {
-    rootBounds = getCMWHInBase(root, root.parent)
+    rootBounds = getBoundsCMInBase(root, root.parent)
   }
 
   let layoutJson = {
@@ -2180,11 +2174,13 @@ async function nodeRoot(renditions, outputFolder, root) {
       return sp
     })()
 
+    /*
     console.log(
       indent + "'" + name + "':" + constructorName,
       options,
       responsiveBounds[node.guid]['responsiveParameter'],
     )
+    */
 
     // コメントアウトチェック
     if (checkOptionCommentOut(options)) {
@@ -2283,6 +2279,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'Ellipse':
       case 'Rectangle':
       case 'Path':
+      case 'Polygon':
         await nodeDrawing(
           layoutJson,
           node,
@@ -2319,8 +2316,8 @@ async function nodeRoot(renditions, outputFolder, root) {
   // rootにPivot情報があった場合､canvas.baseの位置を調整する
   let pivot = layoutJson.root['pivot']
   if (pivot && root.parent) {
-    let node = getGlobalBounds(root)
-    let parent = getGlobalBounds(root.parent)
+    let node = getGlobalDrawBounds(root)
+    let parent = getGlobalDrawBounds(root.parent)
     if (pivot.indexOf('left') >= 0) {
       layoutJson.info.canvas.base.x = parent.x - node.x - node.width / 2
     }
@@ -2358,6 +2355,8 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
     }
   }
+
+  checkHashBounds(responsiveBounds, true)
 
   // シンボル用サブフォルダの作成
   // try {
@@ -2397,9 +2396,6 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   }
 
   // データをもとに戻すため､意図的にエラーをスローする
-  if (!checkHashBounds(responsiveBounds)) {
-    // alert('bounds is changed. throwed error for UNDO')
-  }
   throw 'throw error for UNDO'
 }
 
