@@ -935,9 +935,9 @@ function getVLayout(json, areaNode, nodeChildren) {
     }
   }
   if (elem0 && elem1) {
-    // spacingの計算 ソートした上で､elem0とelem1で計算する
-    // 簡易的にやっている
-    const spacing = elem1.y - (elem0.y + elem0.h)
+    // spacingの計算
+    // ソートした上で､elem0とelem1で計算する 簡易的にやっている
+    const spacing = elem1.y - elem1.h / 2 - (elem0.y + elem0.h / 2)
     if (Number.isFinite(spacing)) {
       Object.assign(jsonVLayout, {
         spacing: spacing,
