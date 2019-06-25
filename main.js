@@ -67,6 +67,9 @@ const OPTION_BLANK = 'blank'
 const OPTION_ALIGN = 'align'
 const OPTION_RAYCAST_TARGET = 'raycasttarget'
 const OPTION_PADDING_BOTTOM = 'paddingbottom'
+const OPTION_IMAGE_SCALE = 'imagescale'
+const OPTION_IMAGE_TYPE = 'imagetype'
+
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -481,6 +484,14 @@ async function assignImage(
     })
   }
 
+  var localScale = 1.0;
+  if( options[OPTION_IMAGE_SCALE] != null ) {
+    const scaleImage= parseFloat(options[OPTION_IMAGE_SCALE])
+    if( Number.isFinite(scaleImage) ) {
+      localScale = scaleImage;
+    }
+  }
+
   if (!checkBoolean(options[OPTION_BLANK])) {
     Object.assign(json, {
       image: fileName,
@@ -491,7 +502,7 @@ async function assignImage(
       node: node,
       outputFile: file,
       type: application.RenditionType.PNG,
-      scale: scale,
+      scale: scale*localScale,
     })
   }
 }
@@ -1932,6 +1943,12 @@ async function nodeDrawing(
     if (options[OPTION_MIN_HEIGHT] != null) {
       Object.assign(json, {
         min_height: json.h, //assignImageでわりあてられている
+      })
+    }
+    // image type
+    if (options[OPTION_IMAGE_TYPE] != null) {
+      Object.assign(json, {
+        image_type: options[OPTION_IMAGE_TYPE]
       })
     }
   }
