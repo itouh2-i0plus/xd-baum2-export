@@ -69,7 +69,7 @@ const OPTION_RAYCAST_TARGET = 'raycasttarget'
 const OPTION_PADDING_BOTTOM = 'paddingbottom'
 const OPTION_IMAGE_SCALE = 'imagescale'
 const OPTION_IMAGE_TYPE = 'imagetype'
-
+const OPTION_NO_SLICE = 'noslice'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -454,8 +454,13 @@ async function assignImage(
     length++
   }
 
+  var fileExtension = '.png'
+  if (checkBoolean(options[OPTION_NO_SLICE])) {
+    fileExtension = '-nosilice.png'
+  }
+
   // 出力画像ファイル
-  const file = await subFolder.createFile(fileName + '.png', {
+  const file = await subFolder.createFile(fileName + fileExtension, {
     overwrite: true,
   })
 
@@ -484,11 +489,11 @@ async function assignImage(
     })
   }
 
-  var localScale = 1.0;
-  if( options[OPTION_IMAGE_SCALE] != null ) {
-    const scaleImage= parseFloat(options[OPTION_IMAGE_SCALE])
-    if( Number.isFinite(scaleImage) ) {
-      localScale = scaleImage;
+  var localScale = 1.0
+  if (options[OPTION_IMAGE_SCALE] != null) {
+    const scaleImage = parseFloat(options[OPTION_IMAGE_SCALE])
+    if (Number.isFinite(scaleImage)) {
+      localScale = scaleImage
     }
   }
 
@@ -502,7 +507,7 @@ async function assignImage(
       node: node,
       outputFile: file,
       type: application.RenditionType.PNG,
-      scale: scale*localScale,
+      scale: scale * localScale,
     })
   }
 }
@@ -1948,7 +1953,7 @@ async function nodeDrawing(
     // image type
     if (options[OPTION_IMAGE_TYPE] != null) {
       Object.assign(json, {
-        image_type: options[OPTION_IMAGE_TYPE]
+        image_type: options[OPTION_IMAGE_TYPE],
       })
     }
   }
