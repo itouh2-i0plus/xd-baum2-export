@@ -16,8 +16,8 @@
         }
     },{
         "type": "menu",
-        "label": "@fix",
-        "commandId": "addFixCommand",
+        "label": "responsive param add",
+        "commandId": "addResponsiveParam",
         "shortcut": {
             "win": "Ctrl+Shift+Alt+f"
         }

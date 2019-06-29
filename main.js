@@ -2046,9 +2046,16 @@ function parseNameOptions(node) {
     name = name.substring(1)
   }
 
+  // Unityでコンポーネント化する
   if (name.startsWith('+')) {
     options[OPTION_COMPONENT] = true
     name = name.substring(1)
+  }
+
+  // 最初の1文字が.なら親の名前を利用する
+  if (name.startsWith('.')) {
+    var parentNameOption = parseNameOptions(parent)
+    name = parentNameOption.name + name
   }
 
   // 名前の最後が/であれば､サブPrefabのオプションをONにする
@@ -2057,11 +2064,21 @@ function parseNameOptions(node) {
     name = name.slice(0, -1)
   }
 
-  if (name.endsWith('Image') || name.endsWith('_image') || name == 'image') {
+  if (
+    name.endsWith('Image') ||
+    name.endsWith('_image') ||
+    name.endsWith('.image') ||
+    name == 'image'
+  ) {
     options[OPTION_IMAGE] = true
   }
 
-  if (name.endsWith('Button') || name.endsWith('_button') || name == 'button') {
+  if (
+    name.endsWith('Button') ||
+    name.endsWith('_button') ||
+    name.endsWith('.button') ||
+    name == 'button'
+  ) {
     options[OPTION_BUTTON] = true
   }
 
@@ -2073,11 +2090,21 @@ function parseNameOptions(node) {
     options[OPTION_SCROLLBAR] = true
   }
 
-  if (name.endsWith('Text') || name.endsWith('_text') || name == 'text') {
+  if (
+    name.endsWith('Text') ||
+    name.endsWith('_text') ||
+    name.endsWith('.text') ||
+    name == 'text'
+  ) {
     options[OPTION_TEXT] = true
   }
 
-  if (name.endsWith('Toggle') || name.endsWith('_toggle') || name == 'toggle') {
+  if (
+    name.endsWith('Toggle') ||
+    name.endsWith('_toggle') ||
+    name.endsWith('.toggle') ||
+    name == 'toggle'
+  ) {
     options[OPTION_TOGGLE] = true
   }
 
@@ -2509,7 +2536,7 @@ function getExportRootNodes(selection, root) {
   return [selection.items[0].parent]
 }
 
-async function exportBaum2Command(selection, root) {
+async function pluginExportBaum2Command(selection, root) {
   let inputFolder
   let inputScale
   let errorLabel
@@ -2805,7 +2832,12 @@ async function exportBaum2Command(selection, root) {
   }
 }
 
-async function addFixCommand(selection, root) {
+/**
+ * レスポンシブパラメータを取得し､名前に反映する
+ * @param {*} selection
+ * @param {*} root
+ */
+async function pluginResponsiveParamName(selection, root) {
   let selectionItems = selection.items
   // レスポンシブパラメータの作成
   responsiveBounds = {}
@@ -2858,7 +2890,7 @@ async function addFixCommand(selection, root) {
  * @param {*} selection
  * @param {*} root
  */
-async function addImageSizeFix(selection, root) {
+async function pluginAddImageSizeFix(selection, root) {
   const sizeFixerName = '#SIZE-FIXER'
   let artboard
   let groups = []
@@ -2916,11 +2948,42 @@ async function addImageSizeFix(selection, root) {
   alert('done', 'Size Fixer')
 }
 
+/**
+ * 選択したノードを画像出力する
+ * 画像出力のテスト用
+ * @param {*} selection
+ * @param {*} root
+ */
+async function testRendition(selection, root) {
+  const folder = await fs.getFolder()
+  const file = await folder.createFile('rendition.png')
+  let renditionSettings = [
+    {
+      node: selection.items[0], // [1]
+      outputFile: file, // [2]
+      type: application.RenditionType.PNG, // [3]
+      scale: 2, // [4]
+    },
+  ]
+  application
+    .createRenditions(renditionSettings) // [1]
+    .then(results => {
+      // [2]
+      console.log(
+        `PNG rendition has been saved at ${results[0].outputFile.nativePath}`,
+      )
+    })
+    .catch(error => {
+      // [3]
+      console.log(error)
+    })
+}
+
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
-    exportBaum2Command: exportBaum2Command,
-    addFixCommand: addFixCommand,
-    addImageSizeFix: addImageSizeFix,
+    exportBaum2Command: pluginExportBaum2Command,
+    addResponsiveParam: pluginResponsiveParamName,
+    addImageSizeFix: pluginAddImageSizeFix,
   },
 }
