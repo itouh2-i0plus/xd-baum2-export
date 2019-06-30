@@ -52,7 +52,7 @@ const OPTION_LIST = 'scroller'
 const OPTION_PIVOT = 'pivot'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
-const OPTION_GROUP = 'group'
+const OPTION_TOGGLE_GROUP = 'togglegroup'
 const OPTION_VLAYOUT = 'vlayout'
 const OPTION_HLAYOUT = 'hlayout'
 const OPTION_GLAYOUT = 'glayout'
@@ -1179,9 +1179,9 @@ async function nodeGroup(
       name: name,
     })
     // Toggle group
-    if (options[OPTION_GROUP]) {
+    if (options[OPTION_TOGGLE_GROUP]) {
       Object.assign(json, {
-        group: options[OPTION_GROUP],
+        group: options[OPTION_TOGGLE_GROUP],
       })
     }
     assignResponsiveParameter(json, node)
