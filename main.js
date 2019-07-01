@@ -1965,11 +1965,20 @@ async function nodeDrawing(
  * @param {*} str
  */
 function parseNameOptions(node) {
+  if (node == null) {
+    return null
+  }
+
   let name = null
   let options = {}
 
   let nameStr = node.name
   let parent = node.parent
+
+  // 親の属性をみてオプションを定義する
+  const parentNameOptions = parseNameOptions(parent)
+  const parentName = parentNameOptions == null ? '' : parentNameOptions.name
+
   if (parent != null && parent.constructor.name == 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
     // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
@@ -1991,13 +2000,11 @@ function parseNameOptions(node) {
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parent.children.length; i++) {
       if (parent.children.at(i) == node) {
-        nameStr = 'item' + i
+        nameStr = parentName + '.item' + i
         break
       }
     }
 
-    // 親の属性をみてオプションを定義する
-    const parentNameOptions = parseNameOptions(parent)
     // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
     // viewport　(Unityではここで､vgroupはもたない)
     //   content +vgroup +content_size_fitter (これらはBaum2で付与される)
@@ -2054,8 +2061,7 @@ function parseNameOptions(node) {
 
   // 最初の1文字が.なら親の名前を利用する
   if (name.startsWith('.')) {
-    var parentNameOption = parseNameOptions(parent)
-    name = parentNameOption.name + name
+    name = parentNameOptions.name + name
   }
 
   // 名前の最後が/であれば､サブPrefabのオプションをONにする
