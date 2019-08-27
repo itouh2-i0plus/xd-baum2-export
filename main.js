@@ -1352,14 +1352,14 @@ function calcResponsiveParameter(node, hashBounds, options) {
   const parentBeforeBounds = parentBounds['before']['bounds']
   const parentAfterBounds = parentBounds['after']['bounds']
 
-  console.log(parentBeforeBounds)
-  console.log(beforeBounds)
+  // console.log(parentBeforeBounds)
+  // console.log(beforeBounds)
 
   const optionFix = options[OPTION_FIX]
 
   // X座標
-  console.log(node.name + '-------------------')
-  console.log(beforeBounds.width, afterBounds.width)
+  // console.log(node.name + '-------------------')
+  // console.log(beforeBounds.width, afterBounds.width)
   if (
     optionFix == null &&
     approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
@@ -2426,12 +2426,24 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     await nodeRoot(renditions, outputFolder, root)
   }
 
+  // すべて可視にする
+  // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
   for (var i in roots) {
     let root = roots[i]
     nodeWalker(root, node => {
+      const name = node.name
       try {
         node.visible = true
-      } catch (e) {}
+      } catch (e) {
+        console.log('***error ' + name + ': visible true failed.')
+      }
+      try {
+        if (node.blur != null) {
+          node.blur = null
+        }
+      } catch (e) {
+        console.log('***error ' + name + ': blur off failed.')
+      }
     })
   }
 
