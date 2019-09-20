@@ -48,7 +48,7 @@ const OPTION_IMAGE = 'image'
 const OPTION_TEXT = 'text'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
-const OPTION_LIST = 'scroller'
+const OPTION_SCROLLER = 'scroller'
 const OPTION_PIVOT = 'pivot'
 const OPTION_FIX = 'fix'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
@@ -64,12 +64,13 @@ const OPTION_MIN_HEIGHT = 'minheight'
 const OPTION_PREFERRED_HEIGHT = 'preferredheight'
 const OPTION_PRESERVE_ASPECT = 'preserveaspect'
 const OPTION_BLANK = 'blank'
-const OPTION_ALIGN = 'align'
+const OPTION_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
+const OPTION_V_ALIGN = 'valign' //テキストの縦方向のアライメント XDの設定に追記される
 const OPTION_RAYCAST_TARGET = 'raycasttarget'
-const OPTION_PADDING_BOTTOM = 'paddingbottom'
+const OPTION_PADDING_BOTTOM = 'paddingbottom' // layout設定に有効になるオプション
 const OPTION_IMAGE_SCALE = 'imagescale'
 const OPTION_IMAGE_TYPE = 'imagetype'
-const OPTION_NO_SLICE = 'noslice'
+const OPTION_NO_SLICE = 'noslice' // 9スライスしない 現在Unity側でうまく動作せず
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -115,7 +116,7 @@ function checkOptionToggle(options) {
 }
 
 function checkOptionScroller(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_LIST])
+  return optionEnableExtended && checkBoolean(options[OPTION_SCROLLER])
 }
 
 function checkOptionViewport(options) {
@@ -456,7 +457,7 @@ async function assignImage(
 
   var fileExtension = '.png'
   if (checkBoolean(options[OPTION_NO_SLICE])) {
-    fileExtension = '-nosilice.png'
+    fileExtension = '-noslice.png'
   }
 
   // 出力画像ファイル
@@ -1599,6 +1600,9 @@ function calcResponsiveParameter(node, hashBounds, options) {
     offset_max: offsetMax,
   }
 
+  console.log(node.name);
+  console.log(ret)
+
   return ret
 }
 
@@ -1739,7 +1743,7 @@ function checkHashBounds(hashBounds, repair) {
             try {
               node.moveInParentCoordinates(dx, dy)
               node.resize(beforeBounds.width, beforeBounds.height)
-            } catch (e) {}
+            } catch (e) { }
             if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
             } else {
               console.log('***修復できませんでした')
@@ -1852,6 +1856,13 @@ async function nodeText(
     align = optionAlign
   }
 
+  // @v-align オプションがあった場合、付け足しする
+  // XDでは、left-center-rightは設定できるため
+  const optionVAlign = options[OPTION_V_ALIGN]
+  if (optionVAlign != null) {
+    align += optionVAlign
+  }
+
   // text.styleRangesの適応をしていない
   Object.assign(json, {
     type: type,
@@ -1957,6 +1968,22 @@ async function nodeDrawing(
       })
     }
   }
+}
+
+
+/**
+ * 名前に機能が入っているかどうかのチェック
+ */
+function checkTypeName(type, name) {
+  if (
+    type == name ||
+    name.endsWith('+' + type) ||
+    name.endsWith('-' + type) ||
+    name.endsWith('_' + type) ||
+    name.endsWith('.' + type) ||
+    name.endsWith(' ' + type)
+  ) return true;
+  return false;
 }
 
 /**
@@ -2072,62 +2099,65 @@ function parseNameOptions(node) {
 
   if (
     name.endsWith('Image') ||
-    name.endsWith('_image') ||
-    name.endsWith('.image') ||
-    name == 'image'
+    checkTypeName("image", name)
   ) {
     options[OPTION_IMAGE] = true
   }
 
   if (
     name.endsWith('Button') ||
-    name.endsWith('_button') ||
-    name.endsWith('.button') ||
-    name == 'button'
+    checkTypeName('button', name)
   ) {
     options[OPTION_BUTTON] = true
   }
 
-  if (name.endsWith('Slider') || name.endsWith('_slider') || name == 'slider') {
+  if (
+    name.endsWith('Slider') ||
+    checkTypeName('slider', name)
+  ) {
     options[OPTION_SLIDER] = true
   }
 
-  if (name.endsWith('Scrollbar')) {
+  if (
+    name.endsWith('Scrollbar') ||
+    checkTypeName('scrollbar', name)
+  ) {
     options[OPTION_SCROLLBAR] = true
   }
 
   if (
     name.endsWith('Text') ||
-    name.endsWith('_text') ||
-    name.endsWith('.text') ||
-    name == 'text'
+    checkTypeName('text', name)
   ) {
     options[OPTION_TEXT] = true
   }
 
   if (
     name.endsWith('Toggle') ||
-    name.endsWith('_toggle') ||
-    name.endsWith('.toggle') ||
-    name == 'toggle'
+    checkTypeName('toggle', name)
   ) {
     options[OPTION_TOGGLE] = true
   }
 
   // 拡張モード有効時のみ
   if (optionEnableExtended) {
-    if (name.endsWith('Input') || name.endsWith('_input') || name == 'input') {
+    if (
+      name.endsWith('Input') ||
+      checkTypeName('input', name)
+    ) {
       options[OPTION_INPUT] = true
     }
 
-    if (name.endsWith('List') || name.endsWith('_list') || name == 'list') {
-      options[OPTION_LIST] = true
+    if (
+      name.endsWith('List') ||
+      checkTypeName('list', name)
+    ) {
+      options[OPTION_SCROLLER] = true
     }
 
     if (
       name.endsWith('Viewport') ||
-      name.endsWith('_viewport') ||
-      name == 'viewport'
+      checkTypeName('viewport', name)
     ) {
       options[OPTION_VIEWPORT] = true
     }
@@ -2276,6 +2306,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     switch (constructorName) {
       case 'Artboard':
         Object.assign(layoutJson, {
+          // Artboardは親のサイズにぴったりはまるようにする
           anchor_min: {
             x: 0,
             y: 0,
@@ -2294,6 +2325,11 @@ async function nodeRoot(renditions, outputFolder, root) {
           },
           elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
+        if (node.fillEnabled == true && node.fill != null && (node.fill instanceof Color)) {
+          Object.assign(layoutJson, {
+            fill_color: node.fill.toHex(true)
+          });
+        }
         await funcForEachChild()
         break
       case 'BooleanGroup':
@@ -2883,7 +2919,7 @@ async function pluginResponsiveParamName(selection, root) {
           try {
             const newName = name + ' @fix=' + optionStr
             node.name = newName
-          } catch (e) {}
+          } catch (e) { }
         }
       }
       node.children.forEach(child => {
