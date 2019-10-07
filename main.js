@@ -442,6 +442,7 @@ async function assignImage(
   const nameOptions = parseNameOptions(node)
 
   let length = 5
+  // ファイル名が長すぎるとエラーになる可能性もある
   let fileName = convertToFileName(parentName + ' - ' + name, true)
   while (true) {
     const guidStr = '_' + node.guid.slice(0, length)
@@ -503,6 +504,8 @@ async function assignImage(
       image: fileName,
     })
     // 画像出力登録
+    // この画像サイズが、0になっていた場合出力に失敗する
+    // 例：レスポンシブパラメータを取得するため、リサイズする→しかし元にもどらなかった
     renditions.push({
       fileName: fileName,
       node: node,
@@ -2491,7 +2494,9 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
         console.log(`saved ${renditions.length} files`)
       })
       .catch(error => {
-        console.log('error:' + error)
+        //console.log(renditions)
+        console.log('画像ファイル出力エラー:' + error)
+        console.log("1)access denied (disk permission)\n2)readonly folder\n3)not enough disk space\n4)maximum path(I think it’s 256 currently on both platform)\n5)image size 0px");
       })
   } else {
     // 画像出力の必要がなければ終了
