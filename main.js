@@ -70,7 +70,8 @@ const OPTION_RAYCAST_TARGET = 'raycasttarget'
 const OPTION_PADDING_BOTTOM = 'paddingbottom' // layout設定に有効になるオプション
 const OPTION_IMAGE_SCALE = 'imagescale'
 const OPTION_IMAGE_TYPE = 'imagetype'
-const OPTION_NO_SLICE = 'noslice' // 9スライスしない 現在Unity側でうまく動作せず
+const OPTION_NO_SLICE = 'noslice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
+const OPTION_9SLICE = '9slice' // 9スライス
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENTOUT])
@@ -443,9 +444,9 @@ async function assignImage(
 
   let length = 5
   // ファイル名が長すぎるとエラーになる可能性もある
-  let fileName = convertToFileName(parentName + ' - ' + name, true)
+  let fileName = convertToFileName(parentName + '-' + name, true)
   while (true) {
-    const guidStr = '_' + node.guid.slice(0, length)
+    const guidStr = '-' + node.guid.slice(0, length)
     // すでに同じものがあるか検索
     const found = searchFileName(renditions, fileName + guidStr)
     if (!found) {
@@ -459,6 +460,36 @@ async function assignImage(
   var fileExtension = '.png'
   if (checkBoolean(options[OPTION_NO_SLICE])) {
     fileExtension = '-noslice.png'
+  }
+  if (options[OPTION_9SLICE]) {
+    var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
+    //var result = pattern.exec(options[OPTION_9SLICE])
+    var result = options[OPTION_9SLICE].match(pattern)
+    /*
+    省略については、CSSに準拠
+    http://www.htmq.com/css3/border-image-slice.shtml
+    上・右・下・左の端から内側へのオフセット量
+    4番目の値が省略された場合には、2番目の値と同じ。
+    3番目の値が省略された場合には、1番目の値と同じ。
+    2番目の値が省略された場合には、1番目の値と同じ。
+    */
+    if (result[2] == null) {
+      result[2] = result[1]
+    }
+    if (result[3] == null) {
+      result[3] = result[1]
+    }
+    if (result[4] == null) {
+      result[4] = result[1]
+    }
+    if (result[1] != null) {
+      var offset =
+        result[1] + ',' + result[2] + ',' + result[3] + ',' + result[4]
+      //console.log(offset)
+      fileExtension = '-9slice,' + offset + '.png'
+    } else {
+      fileExtension = '-9slice.png'
+    }
   }
 
   // 出力画像ファイル
@@ -1603,7 +1634,7 @@ function calcResponsiveParameter(node, hashBounds, options) {
     offset_max: offsetMax,
   }
 
-  console.log(node.name);
+  console.log(node.name)
   console.log(ret)
 
   return ret
@@ -1746,7 +1777,7 @@ function checkHashBounds(hashBounds, repair) {
             try {
               node.moveInParentCoordinates(dx, dy)
               node.resize(beforeBounds.width, beforeBounds.height)
-            } catch (e) { }
+            } catch (e) {}
             if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
             } else {
               console.log('***修復できませんでした')
@@ -1973,7 +2004,6 @@ async function nodeDrawing(
   }
 }
 
-
 /**
  * 名前に機能が入っているかどうかのチェック
  */
@@ -1985,8 +2015,9 @@ function checkTypeName(type, name) {
     name.endsWith('_' + type) ||
     name.endsWith('.' + type) ||
     name.endsWith(' ' + type)
-  ) return true;
-  return false;
+  )
+    return true
+  return false
 }
 
 /**
@@ -2100,68 +2131,41 @@ function parseNameOptions(node) {
     name = name.slice(0, -1)
   }
 
-  if (
-    name.endsWith('Image') ||
-    checkTypeName("image", name)
-  ) {
+  if (name.endsWith('Image') || checkTypeName('image', name)) {
     options[OPTION_IMAGE] = true
   }
 
-  if (
-    name.endsWith('Button') ||
-    checkTypeName('button', name)
-  ) {
+  if (name.endsWith('Button') || checkTypeName('button', name)) {
     options[OPTION_BUTTON] = true
   }
 
-  if (
-    name.endsWith('Slider') ||
-    checkTypeName('slider', name)
-  ) {
+  if (name.endsWith('Slider') || checkTypeName('slider', name)) {
     options[OPTION_SLIDER] = true
   }
 
-  if (
-    name.endsWith('Scrollbar') ||
-    checkTypeName('scrollbar', name)
-  ) {
+  if (name.endsWith('Scrollbar') || checkTypeName('scrollbar', name)) {
     options[OPTION_SCROLLBAR] = true
   }
 
-  if (
-    name.endsWith('Text') ||
-    checkTypeName('text', name)
-  ) {
+  if (name.endsWith('Text') || checkTypeName('text', name)) {
     options[OPTION_TEXT] = true
   }
 
-  if (
-    name.endsWith('Toggle') ||
-    checkTypeName('toggle', name)
-  ) {
+  if (name.endsWith('Toggle') || checkTypeName('toggle', name)) {
     options[OPTION_TOGGLE] = true
   }
 
   // 拡張モード有効時のみ
   if (optionEnableExtended) {
-    if (
-      name.endsWith('Input') ||
-      checkTypeName('input', name)
-    ) {
+    if (name.endsWith('Input') || checkTypeName('input', name)) {
       options[OPTION_INPUT] = true
     }
 
-    if (
-      name.endsWith('List') ||
-      checkTypeName('list', name)
-    ) {
+    if (name.endsWith('List') || checkTypeName('list', name)) {
       options[OPTION_SCROLLER] = true
     }
 
-    if (
-      name.endsWith('Viewport') ||
-      checkTypeName('viewport', name)
-    ) {
+    if (name.endsWith('Viewport') || checkTypeName('viewport', name)) {
       options[OPTION_VIEWPORT] = true
     }
   }
@@ -2328,10 +2332,14 @@ async function nodeRoot(renditions, outputFolder, root) {
           },
           elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
-        if (node.fillEnabled == true && node.fill != null && (node.fill instanceof Color)) {
+        if (
+          node.fillEnabled == true &&
+          node.fill != null &&
+          node.fill instanceof Color
+        ) {
           Object.assign(layoutJson, {
-            fill_color: node.fill.toHex(true)
-          });
+            fill_color: node.fill.toHex(true),
+          })
         }
         await funcForEachChild()
         break
@@ -2496,7 +2504,9 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       .catch(error => {
         //console.log(renditions)
         console.log('画像ファイル出力エラー:' + error)
-        console.log("1)access denied (disk permission)\n2)readonly folder\n3)not enough disk space\n4)maximum path(I think it’s 256 currently on both platform)\n5)image size 0px");
+        console.log(
+          '1)access denied (disk permission)\n2)readonly folder\n3)not enough disk space\n4)maximum path(I think it’s 256 currently on both platform)\n5)image size 0px',
+        )
       })
   } else {
     // 画像出力の必要がなければ終了
@@ -2924,7 +2934,7 @@ async function pluginResponsiveParamName(selection, root) {
           try {
             const newName = name + ' @fix=' + optionStr
             node.name = newName
-          } catch (e) { }
+          } catch (e) {}
         }
       }
       node.children.forEach(child => {
