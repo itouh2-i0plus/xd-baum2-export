@@ -228,7 +228,7 @@ function getGlobalDrawBounds(node) {
  */
 function getGlobalBounds(node) {
   const hashBounds = responsiveBounds
-  var bounds = null
+  let bounds = null
   if (hashBounds != null) {
     const hbounds = hashBounds[node.guid]
     if (hbounds != null && hbounds['before'] != null) {
@@ -334,7 +334,7 @@ function assignCanvasGroup(json, node, options) {
 /**
  * オプションにpivot､stretchがあれば上書き
  * @param {*} json
- * @param {*} node
+ * @param {SceneNode} node
  */
 function assignDrawResponsiveParameter(json, node) {
   if (!optionNeedResponsiveParameter) {
@@ -356,6 +356,12 @@ function assignDrawResponsiveParameter(json, node) {
   }
 }
 
+/**
+ *
+ * @param json
+ * @param {SceneNode} node
+ * @returns {null}
+ */
 function assignResponsiveParameter(json, node) {
   if (!optionNeedResponsiveParameter) {
     return null
@@ -381,7 +387,7 @@ function assignResponsiveParameter(json, node) {
  * CenterMiddle座標と､サイズをアサインする
  * XY座標によるElementsソートなどに使われる
  * @param {*} json
- * @param bounds
+ * @param {Bounds} bounds
  */
 function assignBounds(json, bounds) {
   Object.assign(json, {
@@ -495,7 +501,7 @@ async function assignImage(
     length++
   }
 
-  var fileExtension = '.png'
+  let fileExtension = '.png'
   if (checkBoolean(options[OPTION_NO_SLICE])) {
     fileExtension = '-noslice.png'
   }
@@ -522,7 +528,7 @@ async function assignImage(
       result[7] = result[3]
     }
     if (result[1] != null) {
-      var offset =
+      let offset =
         parseInt(result[1]) * scale +
         'px,' +
         parseInt(result[3]) * scale +
@@ -566,7 +572,7 @@ async function assignImage(
     })
   }
 
-  var localScale = 1.0
+  let localScale = 1.0
   if (options[OPTION_IMAGE_SCALE] != null) {
     const scaleImage = parseFloat(options[OPTION_IMAGE_SCALE])
     if (Number.isFinite(scaleImage)) {
@@ -591,6 +597,18 @@ async function assignImage(
   }
 }
 
+/**
+ * 削除予定 Viewportのオプションにする
+ * @param json
+ * @param node
+ * @param root
+ * @param subFolder
+ * @param renditions
+ * @param name
+ * @param options
+ * @param funcForEachChild
+ * @returns {Promise<string>}
+ */
 async function assignScroller(
   json,
   node,
@@ -619,7 +637,7 @@ async function assignScroller(
       行が1つ → 横スクロール
       それ以外 → Grid
       */
-      var scrollDirection = 'vertical'
+      let scrollDirection = 'vertical'
       let item0
       if (node.numColumns === 1) {
         // vertical
@@ -635,7 +653,7 @@ async function assignScroller(
         scrollDirection = 'horizontal'
         // item[0]を一個だけコンバート
         await funcForEachChild(1)
-        items = [json.elements[0]]
+        items = [json.elements[0]] // TODO 対応する
       } else {
         // Grid
         item0 = {
@@ -948,7 +966,7 @@ async function assignViewport(
         }
       })
     } else if (options[OPTION_GRID_LAYOUT] != null) {
-      var gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+      let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
       if (scrollDirection === 'horizontal') {
         // 横スクロールのRepeatGridなら、縦の数を固定する
         Object.assign(gridLayoutJson, {
@@ -1034,9 +1052,9 @@ function getGridLayoutFromRepeatGrid(repeadGrid) {
  */
 function getNodeListBounds(nodeList, withoutNode) {
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
-  var childrenCalcBounds = new CalcBounds()
+  let childrenCalcBounds = new CalcBounds()
   // セルサイズを決めるため最大サイズを取得する
-  var childrenMinMaxSize = new MinMaxSize()
+  let childrenMinMaxSize = new MinMaxSize()
   nodeList.forEach(node => {
     const nameOptions = parseNameOptions(node)
     // コンポーネントにする場合は除く
@@ -1068,7 +1086,7 @@ function getNodeListBounds(nodeList, withoutNode) {
 function getVLayout(json, viewportNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
-  var childrenCalcBounds = getNodeListBounds(nodeChildren, viewportNode)
+  let childrenCalcBounds = getNodeListBounds(nodeChildren, viewportNode)
   //
   let jsonVLayout = {}
   // Paddingの計算
@@ -1159,7 +1177,7 @@ function getVLayout(json, viewportNode, nodeChildren) {
 function assignVLayout(json, node) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
-  var jsonVLayout = getVLayout(json, node, node.children)
+  let jsonVLayout = getVLayout(json, node, node.children)
   Object.assign(json, {
     layout: jsonVLayout,
   })
@@ -1168,7 +1186,7 @@ function assignVLayout(json, node) {
 function assignGridLayout(json, node) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
-  var jsonVLayout = getVLayout(json, node, node.children)
+  let jsonVLayout = getVLayout(json, node, node.children)
   jsonVLayout['method'] = 'grid'
   Object.assign(json, {
     layout: jsonVLayout,
@@ -1791,7 +1809,7 @@ function calcResponsiveParameter(
  * @param {*} func
  */
 function nodeWalker(node, func) {
-  var result = func(node)
+  let result = func(node)
   if (result === false) return // 明確なFalseの場合、子供へはいかない
   node.children.forEach(child => {
     nodeWalker(child, func)
@@ -1838,7 +1856,7 @@ function makeResponsiveParameter(root) {
 
   // 変更されたboundsを取得する
   nodeWalker(root, node => {
-    var hash = hashBounds[node.guid] || (hashBounds[node.guid] = {})
+    let hash = hashBounds[node.guid] || (hashBounds[node.guid] = {})
     hash['after'] = {
       bounds: getGlobalDrawBounds(node),
       global_bounds: getGlobalBounds(node),
@@ -1858,8 +1876,8 @@ function makeResponsiveParameter(root) {
   })
 
   // レスポンシブパラメータの生成
-  for (var key in hashBounds) {
-    var value = hashBounds[key]
+  for (let key in hashBounds) {
+    let value = hashBounds[key]
     // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
     value['responsiveParameter'] = calcResponsiveParameter(
       value['node'],
@@ -1921,8 +1939,8 @@ function checkHashBounds(hashBounds, repair) {
   for (const key in hashBounds) {
     const value = hashBounds[key]
     if (value['before'] && value['restore']) {
-      var beforeBounds = value['before']['bounds']
-      var restoreBounds = value['restore']['bounds']
+      let beforeBounds = value['before']['bounds']
+      let restoreBounds = value['restore']['bounds']
       if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
         // 変わってしまった
         let node = value['node']
@@ -2154,13 +2172,13 @@ async function nodeDrawing(
         component: {},
       })
     }
-    // assginPreferredHeight
+    // assignPreferredHeight
     if (options[OPTION_PREFERRED_HEIGHT] != null) {
       Object.assign(json, {
         preferred_height: json.h, //assignImageでわりあてられている
       })
     }
-    // assginMinHeight
+    // assignMinHeight
     if (options[OPTION_MIN_HEIGHT] != null) {
       Object.assign(json, {
         min_height: json.h, //assignImageでわりあてられている
@@ -2404,6 +2422,7 @@ function makeLayoutJson(root) {
  * @param {Artboard} root
  */
 async function nodeRoot(renditions, outputFolder, root) {
+  let subFolder
   let nameOptions = parseNameOptions(root)
 
   let subFolderName = nameOptions.name
@@ -2414,7 +2433,7 @@ async function nodeRoot(renditions, outputFolder, root) {
   // アートボード毎にフォルダを作成する
   // TODO:他にやりかたはないだろうか
   try {
-    var subFolder = await outputFolder.getEntry(subFolderName)
+    subFolder = await outputFolder.getEntry(subFolderName)
   } catch (e) {
     subFolder = await outputFolder.createFolder(subFolderName)
   }
@@ -2424,10 +2443,10 @@ async function nodeRoot(renditions, outputFolder, root) {
     overwrite: true,
   })
 
-  var layoutJson = makeLayoutJson(root)
+  let layoutJson = makeLayoutJson(root)
 
   let nodeWalker = async (nodeStack, layoutJson, depth, parentJson) => {
-    var node = nodeStack[nodeStack.length - 1]
+    let node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
     let { name, options } = parseNameOptions(node)
@@ -2842,7 +2861,7 @@ async function pluginExportBaum2Command(selection, root) {
           'button',
           {
             async onclick(e) {
-              var folder = await fs.getFolder()
+              let folder = await fs.getFolder()
               if (folder != null) {
                 inputFolder.value = folder.nativePath
                 outputFolder = folder
