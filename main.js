@@ -1,6 +1,6 @@
 // XD拡張APIのクラスをインポート
 const { Artboard, Color, Rectangle } = require('scenegraph')
-const application = require("application")
+const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
@@ -50,7 +50,7 @@ const OPTION_V_LAYOUT = 'vlayout'
 const OPTION_H_LAYOUT = 'hlayout'
 const OPTION_GRID_LAYOUT = 'gridlayout' // 19/12/04 glayoutから変更
 const OPTION_VIEWPORT = 'viewport'
-const OPTION_CANVASGROUP = 'canvasgroup'
+const OPTION_CANVAS_GROUP = 'canvasgroup'
 const OPTION_COMPONENT = 'component'
 const OPTION_VERTICAL_FIT = 'verticalfit'
 const OPTION_MIN_HEIGHT = 'minheight'
@@ -121,7 +121,7 @@ function checkOptionViewport(options) {
  * 誤差範囲での差があるか
  * @param {number} a
  * @param {number} b
- * @param {number||null} eps
+ * @param {number=} eps
  */
 function approxEqual(a, b, eps) {
   if (eps == null) {
@@ -132,7 +132,7 @@ function approxEqual(a, b, eps) {
 
 /**
  * ファイル名につかえる文字列に変換する
- * @param {*} name
+ * @param {string} name
  * @param {boolean} includeDot ドットも変換対象にするか
  * @return {string}
  */
@@ -158,8 +158,8 @@ function convertToLabel(name) {
  * @param {*} obj
  */
 function printAllProperties(obj) {
-  var propNames = []
-  var o = obj
+  let propNames = []
+  let o = obj
   while (o) {
     propNames = propNames.concat(Object.getOwnPropertyNames(o))
     o = Object.getPrototypeOf(o)
@@ -172,8 +172,7 @@ function printAllProperties(obj) {
  * @param {number} color
  */
 function getRGB(color) {
-  const c = ('000000' + color.toString(16)).substr(-6)
-  return c
+  return ('000000' + color.toString(16)).substr(-6)
 }
 
 /**
@@ -201,11 +200,11 @@ function getGlobalDrawBounds(node) {
   // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
   // それを利用するようにする
   const hashBounds = responsiveBounds
-  var bounds = null
+  let bounds = null
   if (hashBounds != null) {
-    const hbounds = hashBounds[node.guid]
-    if (hbounds != null && hbounds['before'] != null) {
-      bounds = Object.assign({}, hbounds['before']['bounds'])
+    const hBounds = hashBounds[node.guid]
+    if (hBounds != null && hBounds['before'] != null) {
+      bounds = Object.assign({}, hBounds['before']['bounds'])
     }
   }
   if (bounds != null) return bounds
@@ -324,7 +323,7 @@ function testBounds(a, b) {
  * @param options
  */
 function assignCanvasGroup(json, node, options) {
-  let canvasGroup = options[OPTION_CANVASGROUP]
+  let canvasGroup = options[OPTION_CANVAS_GROUP]
   if (canvasGroup != null) {
     Object.assign(json, {
       canvasgroup: { alpha: 0 },
@@ -382,14 +381,14 @@ function assignResponsiveParameter(json, node) {
  * CenterMiddle座標と､サイズをアサインする
  * XY座標によるElementsソートなどに使われる
  * @param {*} json
- * @param boundsCM
+ * @param bounds
  */
-function assignBounds(json, boundsCM) {
+function assignBounds(json, bounds) {
   Object.assign(json, {
-    x: boundsCM.x,
-    y: boundsCM.y,
-    w: boundsCM.width,
-    h: boundsCM.height,
+    x: bounds.x,
+    y: bounds.y,
+    w: bounds.width,
+    h: bounds.height,
   })
 }
 
@@ -658,13 +657,13 @@ async function assignScroller(
         await funcForEachChild(node.numColumns)
         // 一列はいっているitemを作成する
         for (let i = 0; i < 1; i++) {
-          var elem = json.elements[i]
+          let elem = json.elements[i]
           //elem.name = 'item0-' + (node.numColumns - i - 1)
           elem.name = 'item0-' + i
           item0.elements.push(elem)
         }
         let item0_0 = item0.elements[0]
-        // item0のRecttransform 縦スクロールは横にピッチリ　縦はitem0_0サイズ
+        // item0のRectTransform 縦スクロールは横にピッチリ　縦はitem0_0サイズ
         Object.assign(item0, {
           anchor_min: { x: 0, y: 1 },
           anchor_max: { x: 1, y: 1 },
@@ -771,10 +770,11 @@ async function assignViewport(
   funcForEachChild,
   depth,
 ) {
+  let scrollDirection
   if (node.constructor.name === 'Group') {
     // 通常グループ､マスクグループでViewportをつかう
     // Areaを探し､AreaはDrawBounds情報のみ取得して処理しないようにする
-    var viewportNode = null
+    let viewportNode = null
     let calcContentBounds = new CalcBounds()
 
     // マスクが利用されたViewportである場合､マスクを取得する
@@ -787,7 +787,7 @@ async function assignViewport(
       console.log('***error viewport:マスクがみつかりませんでした')
     }
     await funcForEachChild(null, child => {
-      if (child == viewportNode) {
+      if (child === viewportNode) {
         // ViewportAreaNodeはElement処理をしない
         return false
       }
@@ -805,9 +805,9 @@ async function assignViewport(
     // 縦の並び順を正常にするため､Yでソートする
     sortElementsByPositionAsc(json.elements)
 
-    var viewportBounds = getGlobalBounds(viewportNode)
-    var contentBounds = calcContentBounds.bounds
-    var scrollDirection = ''
+    const viewportBounds = getGlobalBounds(viewportNode)
+    const contentBounds = calcContentBounds.bounds
+    scrollDirection = ''
     // サイズだけをみて、スクロールする方向を決めてしまう
     // 本来は、XY座標もみるべき
     if (viewportBounds.width < contentBounds.width) {
@@ -833,17 +833,17 @@ async function assignViewport(
     })
 
     if (options[OPTION_V_LAYOUT]) {
-      let vlayoutJson = getVLayout(json, viewportNode, node.children)
+      let vLayoutJson = getVLayout(json, viewportNode, node.children)
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
-      vlayoutJson['padding']['bottom'] = 0
+      vLayoutJson['padding']['bottom'] = 0
 
       if (options[OPTION_PADDING_BOTTOM] != null) {
-        vlayoutJson['padding']['bottom'] =
+        vLayoutJson['padding']['bottom'] =
           parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
       }
 
       Object.assign(json, {
-        layout: vlayoutJson,
+        layout: vLayoutJson,
       })
 
       forEachReverseElements(json.elements, elementJson => {
@@ -855,34 +855,34 @@ async function assignViewport(
         }
       })
     } else {
-      // VLAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
+      // V_LAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
       const padding_top =
         calcContentBounds.bounds.y - getGlobalDrawBounds(viewportNode).y
       json['content_h'] += padding_top
     }
 
     if (options[OPTION_GRID_LAYOUT]) {
-      let glayoutJson = getVLayout(json, viewportNode, node.children)
-      glayout['method'] = 'grid'
+      let gridLayoutJson = getVLayout(json, viewportNode, node.children) //TODO: グリッドレイアウトをVLAYOUTで取得している
+      gridLayoutJson['method'] = 'grid'
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
-      glayoutJson['padding']['bottom'] = 0
+      gridLayoutJson['padding']['bottom'] = 0
 
       if (options[OPTION_PADDING_BOTTOM] != null) {
-        glayoutJson['padding']['bottom'] =
+        gridLayoutJson['padding']['bottom'] =
           parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
       }
 
       Object.assign(json, {
-        layout: glayoutJson,
+        layout: gridLayoutJson,
       })
     }
 
     assignDrawResponsiveParameter(json, node)
-  } else if (node.constructor.name == 'RepeatGrid') {
+  } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
     // 以下縦スクロール専用でコーディング
-    var scrollDirection = 'none'
+    scrollDirection = 'none'
     if (options[OPTION_SCROLL] != null) {
       scrollDirection = options[OPTION_SCROLL]
     }
@@ -905,7 +905,7 @@ async function assignViewport(
     })
     const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
 
-    var child0 = viewportNode.children.at(0)
+    let child0 = viewportNode.children.at(0)
     const child0BoundsCM = getDrawBoundsCMInBase(child0, viewportNode)
 
     const cellWidth = viewportNode.cellSize.width * scale
@@ -949,13 +949,13 @@ async function assignViewport(
       })
     } else if (options[OPTION_GRID_LAYOUT] != null) {
       var gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
-      if (scrollDirection == 'horizontal') {
+      if (scrollDirection === 'horizontal') {
         // 横スクロールのRepeatGridなら、縦の数を固定する
         Object.assign(gridLayoutJson, {
           fixed_row_count: viewportNode.numRows,
         })
       }
-      if (scrollDirection == 'vertical') {
+      if (scrollDirection === 'vertical') {
         // 縦スクロールのRepeatGridなら、横の数を固定する
         Object.assign(gridLayoutJson, {
           fixed_column_count: viewportNode.numColumns,
@@ -1007,15 +1007,15 @@ function sortElementsByPositionDesc(jsonElements) {
  * @param {*} repeadGrid
  */
 function getGridLayoutFromRepeatGrid(repeadGrid) {
-  var layoutJson = {}
-  var repeadGridBounds = getGlobalBounds(repeadGrid)
-  var nodesBounds = getNodeListBounds(repeadGrid.children, null)
+  let layoutJson = {}
+  const repeatGridBounds = getGlobalBounds(repeadGrid)
+  const nodesBounds = getNodeListBounds(repeadGrid.children, null)
   Object.assign(layoutJson, {
     method: 'grid',
     padding: {
-      left: nodesBounds.bounds.x - repeadGridBounds.x,
+      left: nodesBounds.bounds.x - repeatGridBounds.x,
       right: 0,
-      top: nodesBounds.bounds.y - repeadGridBounds.y,
+      top: nodesBounds.bounds.y - repeatGridBounds.y,
       bottom: 0,
     },
     spacing: {
@@ -1097,25 +1097,25 @@ function getVLayout(json, viewportNode, nodeChildren) {
   })
 
   // componentの無いelemリストを作成する
-  let elems = []
+  let elements = []
   forEachReverseElements(json.elements, element => {
     //後ろから追加していく
     if (element && element['component'] == null) {
-      elems.push(element)
+      elements.push(element)
     }
   })
 
   // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
   // そのため､json.elementsは予めソートしておくことが必要
   // childrenでは､ソートされていないため､使用できない
-  const elem0 = elems[0]
+  const elem0 = elements[0]
   let elem1 = null
 
   // 縦にそこそこ離れているELEMを探す
-  for (let i = 1; i < elems.length; i++) {
+  for (let i = 1; i < elements.length; i++) {
     // そこそこ離れている判定 少々のズレに目をつぶる
-    if (Math.abs(elem0.y - elems[i].y) > (elem0.h / 2) * 0.3 + 2) {
-      elem1 = elems[i]
+    if (Math.abs(elem0.y - elements[i].y) > (elem0.h / 2) * 0.3 + 2) {
+      elem1 = elements[i]
       break
     }
   }
@@ -1144,8 +1144,8 @@ function getVLayout(json, viewportNode, nodeChildren) {
     }
   }
   // items全部が stretchx:true なら　ChildForceExpand.width = true
-  const foundNotStretchX = elems.forEach(elem => {
-    return elem['stretchx'] != true
+  const foundNotStretchX = elements.forEach(elem => {
+    return elem['stretchx'] !== true
   })
   if (!foundNotStretchX) {
     Object.assign(jsonVLayout, {
@@ -1231,7 +1231,7 @@ async function assignGroup(
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
-  // assignVerticaFit
+  // assignVerticalFit
   if (options[OPTION_VERTICAL_FIT] != null) {
     Object.assign(json, {
       vertical_fit: 'preferred', // デフォルトはpreferred
@@ -1449,10 +1449,16 @@ class CalcBounds {
     }
   }
 
+  /**
+   * @param {Bounds} bounds
+   */
   addBounds(bounds) {
     this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
   }
 
+  /**
+   * @returns {Bounds}
+   */
   get bounds() {
     return {
       x: this.sx,
@@ -1468,16 +1474,15 @@ class CalcBounds {
  * option = x
  * option = -x-
  * option = -x
- * @param {*} optionStr
- * @param {*} paramStr
+ * @param {string} optionStr
+ * @param {string} paramStr
  */
 function hasOptionParam(optionStr, paramStr) {
   if (optionStr == null || paramStr == null) return null
   if (optionStr === paramStr) return true
   if (optionStr.startsWith(`${paramStr}-`)) return true
   if (optionStr.indexOf(`-${paramStr}-`) >= 0) return true
-  if (optionStr.endsWith(`-${paramStr}`)) return true
-  return false
+  return optionStr.endsWith(`-${paramStr}`)
 }
 
 /**
@@ -1579,9 +1584,8 @@ function calcResponsiveParameter(
     fixOptionRight = true
   } else {
     // 親のX座標･Widthをもとに､割合でRight座標がきまる
-    const beforeFixOptionRight =
+    fixOptionRight =
       (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
-    fixOptionRight = beforeFixOptionRight
   }
 
   // Y座標
@@ -1913,7 +1917,7 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
  * @param {boolean|null} repair
  */
 function checkHashBounds(hashBounds, repair) {
-  var result = true
+  let result = true
   for (const key in hashBounds) {
     const value = hashBounds[key]
     if (value['before'] && value['restore']) {
@@ -1952,7 +1956,7 @@ function checkHashBounds(hashBounds, repair) {
 
 /**
  * 描画サイズでのレスポンシブパラメータの取得
- * @param {*} node
+ * @param {SceneNode} node
  */
 function getDrawResponsiveParameter(node) {
   let bounds = responsiveBounds[node.guid]
@@ -1961,7 +1965,7 @@ function getDrawResponsiveParameter(node) {
 
 /**
  * GlobalBoundsでのレスポンシブパラメータの取得
- * @param {*} node
+ * @param {SceneNode} node
  */
 function getResponsiveParameter(node) {
   let bounds = responsiveBounds[node.guid]
@@ -1973,12 +1977,12 @@ function getResponsiveParameter(node) {
  * @param {*} node
  */
 function isFixWidth(node) {
-  var param = getDrawResponsiveParameter(node)
+  const param = getDrawResponsiveParameter(node)
   return checkBoolean(param['fix']['width'])
 }
 
 function isFixHeight(node) {
-  var param = getDrawResponsiveParameter(node)
+  const param = getDrawResponsiveParameter(node)
   return checkBoolean(param['fix']['height'])
 }
 
@@ -2043,26 +2047,26 @@ async function nodeText(
   }
 
   let textType = 'point'
-  let halign = node.textAlign
-  let valign = 'middle'
+  let hAlign = node.textAlign
+  let vAlign = 'middle'
   if (node.areaBox) {
     // エリア内テキストだったら
     textType = 'paragraph'
     // 上揃え
-    valign = 'upper'
+    vAlign = 'upper'
   }
 
   // @ALIGN オプションがあった場合､上書きする
   const optionAlign = options[OPTION_ALIGN]
   if (optionAlign != null) {
-    halign = optionAlign
+    hAlign = optionAlign
   }
 
   // @v-align オプションがあった場合、上書きする
   // XDでは、left-center-rightは設定できるため
   const optionVAlign = options[OPTION_V_ALIGN]
   if (optionVAlign != null) {
-    valign = optionVAlign
+    vAlign = optionVAlign
   }
 
   // text.styleRangesの適応をしていない
@@ -2075,7 +2079,7 @@ async function nodeText(
     style: node.fontStyle,
     size: node.fontSize * scale,
     color: getRGB(node.fill.value),
-    align: halign + valign,
+    align: hAlign + vAlign,
     x: boundsCM.x,
     y: boundsCM.y,
     w: boundsCM.width,
@@ -2106,7 +2110,6 @@ async function nodeDrawing(
   renditions,
   name,
   options,
-  parentJson,
 ) {
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
   if (checkOptionButton(options)) {
@@ -2226,7 +2229,7 @@ function parseNameOptions(node) {
     nameStr = 'child0'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parent.children.length; i++) {
-      if (parent.children.at(i) == node) {
+      if (parent.children.at(i) === node) {
         nameStr = parentName + '.child' + i
         break
       }
@@ -2502,7 +2505,7 @@ async function nodeRoot(renditions, outputFolder, root) {
           elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
         })
         if (
-          node.fillEnabled == true &&
+          node.fillEnabled === true &&
           node.fill != null &&
           node.fill instanceof Color
         ) {
@@ -2559,7 +2562,6 @@ async function nodeRoot(renditions, outputFolder, root) {
           renditions,
           name,
           options,
-          parentJson,
         )
         await funcForEachChild()
         break
@@ -2606,7 +2608,7 @@ async function nodeRoot(renditions, outputFolder, root) {
   }
 
   // レイアウトファイルの出力
-  layoutFile.write(JSON.stringify(layoutJson, null, '  '))
+  await layoutFile.write(JSON.stringify(layoutJson, null, '  '))
   console.log(layoutFileName)
 }
 
@@ -2621,7 +2623,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // レスポンシブパラメータの作成
   responsiveBounds = {}
   if (optionNeedResponsiveParameter) {
-    for (var i in responsiveCheckArtboards) {
+    for (const i in responsiveCheckArtboards) {
       let artboard = responsiveCheckArtboards[i]
       Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
     }
@@ -2637,14 +2639,14 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // }
 
   // アートボード毎の処理
-  for (var i in roots) {
+  for (const i in roots) {
     let root = roots[i]
     await nodeRoot(renditions, outputFolder, root)
   }
 
   // すべて可視にする
   // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
-  for (var i in roots) {
+  for (const i in roots) {
     let root = roots[i]
     nodeWalker(root, node => {
       const nameOptions = parseNameOptions(node)
@@ -2708,9 +2710,9 @@ function h(tag, props, ...children) {
     if (props.nodeType || typeof props !== 'object') {
       children.unshift(props)
     } else {
-      for (let name in props) {
+      for (const name in props) {
         let value = props[name]
-        if (name == 'style') {
+        if (name === 'style') {
           Object.assign(element.style, value)
         } else {
           element.setAttribute(name, value)
@@ -2730,6 +2732,7 @@ function h(tag, props, ...children) {
 /**
  * alertの表示
  * @param {string} message
+ * @param {string=} title
  */
 async function alert(message, title) {
   if (title == null) {
@@ -2780,7 +2783,7 @@ function getExportRootNodes(selection, root) {
     alert('出力アートボート直下のノードを1つ選択してください')
     throw 'not selected immediate child.'
   }
-  var node = selection.items[0]
+  const node = selection.items[0]
   const parentIsArtboard = node.parent instanceof Artboard
   if (!parentIsArtboard) {
     alert('出力アートボート直下のノードを1つ選択してください')
@@ -3075,7 +3078,7 @@ async function pluginExportBaum2Command(selection, root) {
             }
           }
         }
-        var children = node.children
+        const children = node.children
         if (children) funcForEach(children)
       })
     }
@@ -3189,17 +3192,17 @@ async function pluginAddImageSizeFix(selection, root) {
   // サイズ固定のためのダミー透明描画オブジェクトを作成する
   const fixBounds = calcFixBounds.bounds
   groups.forEach(group => {
-    let fixerGpraphic = new Rectangle()
-    fixerGpraphic.name = sizeFixerName
-    fixerGpraphic.width = fixBounds.width
-    fixerGpraphic.height = fixBounds.height
-    fixerGpraphic.fillEnabled = false
-    fixerGpraphic.strokeEnabled = false
+    let fixerGraphic = new Rectangle()
+    fixerGraphic.name = sizeFixerName
+    fixerGraphic.width = fixBounds.width
+    fixerGraphic.height = fixBounds.height
+    fixerGraphic.fillEnabled = false
+    fixerGraphic.strokeEnabled = false
     // まずは追加し
-    group.addChild(fixerGpraphic)
+    group.addChild(fixerGraphic)
     // ズレを計算､移動する
-    const lineBounds = fixerGpraphic.globalBounds
-    fixerGpraphic.moveInParentCoordinates(
+    const lineBounds = fixerGraphic.globalBounds
+    fixerGraphic.moveInParentCoordinates(
       fixBounds.x - lineBounds.x,
       fixBounds.y - lineBounds.y,
     )
