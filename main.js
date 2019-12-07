@@ -194,7 +194,7 @@ function getArtboard(node) {
 /**
  * グローバル座標とサイズを取得する
  * responsiveBoundsの中の値は壊れないようにする
- * @param {SceneNode} node
+ * @param {SceneNodeClass} node
  */
 function getGlobalDrawBounds(node) {
   // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
@@ -224,15 +224,15 @@ function getGlobalDrawBounds(node) {
 
 /**
  * グローバル座標とサイズを取得する
- * @param {SceneNode} node
+ * @param {SceneNodeClass} node
  */
 function getGlobalBounds(node) {
   const hashBounds = responsiveBounds
   let bounds = null
   if (hashBounds != null) {
-    const hbounds = hashBounds[node.guid]
-    if (hbounds != null && hbounds['before'] != null) {
-      bounds = Object.assign({}, hbounds['before']['global_bounds'])
+    const hBounds = hashBounds[node.guid]
+    if (hBounds != null && hBounds['before'] != null) {
+      bounds = Object.assign({}, hBounds['before']['global_bounds'])
     }
   }
   if (bounds != null) return bounds
@@ -253,8 +253,9 @@ function getGlobalBounds(node) {
  * Baum2用Boundsパラメータの取得
  * Artboard内でのDrawBoundsを取得する
  * x､yはCenterMiddleでの座標になる
- * @param {SceneNode} node
- * @param {Artboard} base
+ * @param {SceneNodeClass} node
+ * @param {SceneNodeClass} base
+ * @return {Bounds}
  */
 function getDrawBoundsCMInBase(node, base) {
   const nodeDrawBounds = getGlobalDrawBounds(node)
@@ -267,6 +268,11 @@ function getDrawBoundsCMInBase(node, base) {
   }
 }
 
+/**
+ * @param {SceneNodeClass} node
+ * @param {SceneNodeClass} base
+ * @return {Bounds}
+ */
 function getBoundsCMInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
@@ -454,6 +460,17 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
   }
 }
 
+/**
+ *
+ * @param json
+ * @param {SceneNode} node
+ * @param root
+ * @param subFolder
+ * @param renditions
+ * @param name
+ * @param options
+ * @return {Promise<void>}
+ */
 async function assignImage(
   json,
   node,
@@ -865,7 +882,7 @@ async function assignViewport(
       })
 
       forEachReverseElements(json.elements, elementJson => {
-        if (!hasHeightLayouter(elementJson)) {
+        if (!hasVerticalLayout(elementJson)) {
           // preferred-heightをつける
           Object.assign(elementJson, {
             preferred_height: elementJson.h,
@@ -880,7 +897,7 @@ async function assignViewport(
     }
 
     if (options[OPTION_GRID_LAYOUT]) {
-      let gridLayoutJson = getVLayout(json, viewportNode, node.children) //TODO: グリッドレイアウトをVLAYOUTで取得している
+      let gridLayoutJson = getVLayout(json, viewportNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
       gridLayoutJson['method'] = 'grid'
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
       gridLayoutJson['padding']['bottom'] = 0
@@ -905,6 +922,7 @@ async function assignViewport(
       scrollDirection = options[OPTION_SCROLL]
     }
     let calcContentBounds = new CalcBounds()
+    /** @type {RepeatGrid} */
     let viewportNode = node
     const viewportBounds = getGlobalDrawBounds(viewportNode)
     calcContentBounds.addBounds(viewportBounds)
@@ -958,7 +976,7 @@ async function assignViewport(
       })
 
       forEachReverseElements(json.elements, elementJson => {
-        if (!hasHeightLayouter(elementJson)) {
+        if (!hasVerticalLayout(elementJson)) {
           // preferred-heightをつける
           Object.assign(elementJson, {
             preferred_height: elementJson.h,
@@ -1022,12 +1040,12 @@ function sortElementsByPositionDesc(jsonElements) {
 
 /**
  * リピートグリッドから、GridLayoutGroup用パラメータを取得する
- * @param {*} repeadGrid
+ * @param {*} repeatGrid
  */
-function getGridLayoutFromRepeatGrid(repeadGrid) {
+function getGridLayoutFromRepeatGrid(repeatGrid) {
   let layoutJson = {}
-  const repeatGridBounds = getGlobalBounds(repeadGrid)
-  const nodesBounds = getNodeListBounds(repeadGrid.children, null)
+  const repeatGridBounds = getGlobalBounds(repeatGrid)
+  const nodesBounds = getNodeListBounds(repeatGrid.children, null)
   Object.assign(layoutJson, {
     method: 'grid',
     padding: {
@@ -1037,11 +1055,11 @@ function getGridLayoutFromRepeatGrid(repeadGrid) {
       bottom: 0,
     },
     spacing: {
-      x: repeadGrid.paddingX * scale, // 横の隙間
-      y: repeadGrid.paddingY * scale, // 縦の隙間
+      x: repeatGrid.paddingX * scale, // 横の隙間
+      y: repeatGrid.paddingY * scale, // 縦の隙間
     },
-    cell_max_width: repeadGrid.cellSize.width * scale,
-    cell_max_height: repeadGrid.cellSize.height * scale,
+    cell_max_width: repeatGrid.cellSize.width * scale,
+    cell_max_height: repeatGrid.cellSize.height * scale,
   })
   return layoutJson
 }
@@ -1060,7 +1078,7 @@ function getNodeListBounds(nodeList, withoutNode) {
     // コンポーネントにする場合は除く
     if (nameOptions.options['component']) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
-    if (node == withoutNode) return
+    if (node === withoutNode) return
     const childBounds = getGlobalBounds(node)
     childrenCalcBounds.addBounds(childBounds)
     childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
@@ -1197,7 +1215,7 @@ function assignGridLayout(json, node) {
  * Heightレイアウトするための情報をもっているElementか
  * @param {*} elementJson
  */
-function hasHeightLayouter(elementJson) {
+function hasVerticalLayout(elementJson) {
   const type = elementJson['type']
   if (type === 'Text') {
     return true
@@ -1223,6 +1241,19 @@ function forEachReverseElements(elements, func) {
   }
 }
 
+/**
+ *
+ * @param json
+ * @param {SceneNode} node
+ * @param root
+ * @param subFolder
+ * @param renditions
+ * @param name
+ * @param options
+ * @param funcForEachChild
+ * @param depth
+ * @return {Promise<string>}
+ */
 async function assignGroup(
   json,
   node,
@@ -1276,7 +1307,7 @@ async function assignGroup(
       size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
     })
     forEachReverseElements(json.elements, elementJson => {
-      if (!hasHeightLayouter(elementJson)) {
+      if (!hasVerticalLayout(elementJson)) {
         // preferred-heightをつける
         Object.assign(elementJson, {
           preferred_height: elementJson.h,
@@ -2056,6 +2087,8 @@ async function nodeText(
 
   const boundsCM = getBoundsCMInBase(node, artboard)
 
+  /** @type {Text} */
+  let nodeText = node
   let type = 'Text'
   if (checkOptionTextMeshPro(options)) {
     type = 'TextMeshPro'
@@ -2065,9 +2098,9 @@ async function nodeText(
   }
 
   let textType = 'point'
-  let hAlign = node.textAlign
+  let hAlign = nodeText.textAlign
   let vAlign = 'middle'
-  if (node.areaBox) {
+  if (nodeText.areaBox) {
     // エリア内テキストだったら
     textType = 'paragraph'
     // 上揃え
@@ -2687,7 +2720,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       }
       // 9SLICEであった場合、そのグループの不可視情報はそのまま活かすため
       // 自身は可視にし、子供の不可視情報は生かす
-      // 本来は souceImageをNaturalWidth,Heightで出力する
+      // 本来は sourceImageをNaturalWidth,Heightで出力する
       if (nameOptions.options[OPTION_9SLICE] != null) {
         return false
       }
@@ -2786,7 +2819,7 @@ async function alert(message, title) {
     ),
   )
   document.body.appendChild(dialog)
-  return await dialog.showModal()
+  return dialog.showModal()
 }
 
 /**
@@ -3104,9 +3137,9 @@ async function pluginExportBaum2Command(selection, root) {
 
     funcForEach(exportRootNodes)
 
-    if (exports.length === 0) {
+    if (!Object.keys(exports).length) {
       // 出力するものが見つからなかった
-      alert('no selected artboards.')
+      await alert('no selected artboards.')
       return
     }
 
@@ -3168,8 +3201,8 @@ async function pluginResponsiveParamName(selection, root) {
 /**
  * 選択した複数のグループのDrawBoundsのサイズをそろえるため､ダミーの描画オブジェクトを作成する
  * 現在は､同一Artboardであることを求める
- * @param {*} selection
- * @param {*} root
+ * @param {Selection} selection
+ * @param {RootNode} root
  */
 async function pluginAddImageSizeFix(selection, root) {
   const sizeFixerName = '#SIZE-FIXER'
@@ -3226,14 +3259,14 @@ async function pluginAddImageSizeFix(selection, root) {
       fixBounds.y - lineBounds.y,
     )
   })
-  alert('done', 'Size Fixer')
+  await alert('done', 'Size Fixer')
 }
 
 /**
  * 選択したノードを画像出力する
  * 画像出力のテスト用
- * @param {*} selection
- * @param {*} root
+ * @param {Selection} selection
+ * @param {RootNode} root
  */
 async function testRendition(selection, root) {
   const folder = await fs.getFolder()
@@ -3260,6 +3293,12 @@ async function testRendition(selection, root) {
     })
 }
 
+/**
+ *
+ * @param {Selection} selection
+ * @param {RootNode} root
+ * @return {Promise<void>}
+ */
 async function testInteractions(selection, root) {
   // Print all the interactions triggered by a node
   const node = selection.items[0]
