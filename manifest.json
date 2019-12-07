@@ -1,32 +1,35 @@
 {
-    "id": "BAUM2_EXPORT",
-    "name": "baum2 export plugin",
-    "description": "Baum2中間ファイルを出力します",
-    "version": "0.8.0",
-    "host": {
-        "app": "XD",
-        "minVersion": "14.0.0"
+  "id": "BAUM2_EXPORT",
+  "name": "baum2 export plugin",
+  "description": "Baum2中間ファイルを出力します",
+  "version": "0.8.0",
+  "host": {
+    "app": "XD",
+    "minVersion": "19.0.0"
+  },
+  "uiEntryPoints": [
+    {
+      "type": "menu",
+      "label": "baum2 export",
+      "commandId": "exportBaum2Command",
+      "shortcut": {
+        "win": "Ctrl+Shift+Alt+p"
+      }
     },
-    "uiEntryPoints": [{
-        "type": "menu",
-        "label": "baum2 export",
-        "commandId": "exportBaum2Command",
-        "shortcut": {
-            "win": "Ctrl+Shift+Alt+p"
-        }
-    },{
-        "type": "menu",
-        "label": "responsive param add",
-        "commandId": "addResponsiveParam",
-        "shortcut": {
-            "win": "Ctrl+Shift+Alt+f"
-        }
-    },{
-        "type": "menu",
-        "label": "baum2 image size fixer",
-        "commandId": "addImageSizeFix",
-        "shortcut": {
-            "win": "Ctrl+Shift+Alt+L"
-        }
-    }]
+    {
+      "type": "menu",
+      "label": "responsive param add",
+      "commandId": "addResponsiveParam"
+    },
+    {
+      "type": "menu",
+      "label": "baum2 image size fixer",
+      "commandId": "addImageSizeFix"
+    },
+    {
+      "type": "menu",
+      "label": "test interactions",
+      "commandId": "testInteractions"
+    }
+  ]
 }
