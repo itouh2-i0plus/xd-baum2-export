@@ -33,7 +33,7 @@ var optionNeedResponsiveParameter = true
 var optionEnableSubPrefab = true
 
 // Textノードは強制的にTextMeshProに変換する
-var optionTextToTextMP = false
+var optionDefaultTextMP = false
 
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
@@ -44,18 +44,19 @@ const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
+const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal both
 const OPTION_IMAGE = 'image'
-const OPTION_TEXT = 'text'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
 const OPTION_SCROLLER = 'scroller'
 const OPTION_PIVOT = 'pivot'
 const OPTION_FIX = 'fix'
+const OPTION_TEXT = 'text'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_TOGGLE_GROUP = 'togglegroup'
-const OPTION_VLAYOUT = 'vlayout'
-const OPTION_HLAYOUT = 'hlayout'
-const OPTION_GLAYOUT = 'glayout'
+const OPTION_V_LAYOUT = 'vlayout'
+const OPTION_H_LAYOUT = 'hlayout'
+const OPTION_GRID_LAYOUT = 'gridlayout' // 19/12/04 glayoutから変更
 const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVASGROUP = 'canvasgroup'
 const OPTION_COMPONENT = 'component'
@@ -105,10 +106,7 @@ function checkOptionText(options) {
 }
 
 function checkOptionTextMeshPro(options) {
-  return (
-    optionEnableExtended &&
-    (optionTextToTextMP || checkBoolean(options[OPTION_TEXTMP]))
-  )
+  return optionEnableExtended && checkBoolean(options[OPTION_TEXTMP])
 }
 
 function checkOptionInput(options) {
@@ -744,6 +742,26 @@ async function assignScroller(
   return 'Scroller'
 }
 
+/**
+ *
+ * @param {*} json
+ * @param {*} node
+ * @param {*} root
+ * @param {*} subFolder
+ * @param {*} renditions
+ * @param {*} name
+ * @param {*} options
+ * @param {*} funcForEachChild
+ * @param {*} depth
+ * 出力構成
+ * Viewport +Image(タッチ用透明)　+ScrollRect +RectMask2D
+ *   - $Content ← 自動生成
+ *      - Node
+ * @scrollで、スクロール方向を指定することで、ScrollRectコンポーネントがつく
+ * Content内のレイアウト定義可能
+ * Content内、すべて変換が基本(XDの見た目そのままコンバートが基本)
+ * Item化する場合は指定する
+ */
 async function assignViewport(
   json,
   node,
@@ -758,12 +776,12 @@ async function assignViewport(
   if (node.constructor.name == 'Group') {
     // 通常グループ､マスクグループでViewportをつかう
     // Areaを探し､AreaはDrawBounds情報のみ取得して処理しないようにする
-    var viewportAreaNode = null
+    var viewportNode = null
     let calcContentBounds = new CalcBounds()
 
     // マスクが利用されたViewportである場合､マスクを取得する
     if (node.mask) {
-      viewportAreaNode = node.mask
+      viewportNode = node.mask
     } else {
       // コンテンツグループと同じところにマスク(area)がある場合､
       // 意図通りサイズが可変されない
@@ -771,17 +789,14 @@ async function assignViewport(
       console.log('***error viewport:マスクがみつかりませんでした')
     }
     await funcForEachChild(null, child => {
-      if (child == viewportAreaNode) {
+      if (child == viewportNode) {
         // ViewportAreaNodeはElement処理をしない
         return false
       }
       const nameOptions = parseNameOptions(child)
-      // まだAreaが確定していない場合､areaという名前の子供を探す
-      if (
-        viewportAreaNode == null &&
-        nameOptions.name.toLowerCase() == 'area'
-      ) {
-        viewportAreaNode = child
+      // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
+      if (viewportNode == null && nameOptions.name.toLowerCase() == 'area') {
+        viewportNode = child
         return false //処理しない(Elementに含まれない)
       }
       const childBounds = getGlobalDrawBounds(child)
@@ -792,10 +807,19 @@ async function assignViewport(
     // 縦の並び順を正常にするため､Yでソートする
     sortElementsByPositionAsc(json.elements)
 
-    // 以下縦スクロール専用でコーディング
-    var scrollDirection = 'vertical'
+    var viewportBounds = getGlobalBounds(viewportNode)
+    var contentBounds = calcContentBounds.bounds
+    var scrollDirection = ''
+    // サイズだけをみて、スクロールする方向を決めてしまう
+    // 本来は、XY座標もみるべき
+    if (viewportBounds.width < contentBounds.width) {
+      scrollDirection += 'horizontal'
+    }
+    if (viewportBounds.height < contentBounds.height) {
+      scrollDirection += 'vertical'
+    }
 
-    const viewportBoundsCM = getDrawBoundsCMInBase(viewportAreaNode, root)
+    const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
 
     Object.assign(json, {
       type: 'Viewport',
@@ -806,12 +830,12 @@ async function assignViewport(
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
       // Contentグループ情報
-      content_w: calcContentBounds.bounds.width,
-      content_h: calcContentBounds.bounds.height,
+      content_w: contentBounds.width,
+      content_h: contentBounds.height,
     })
 
-    if (options[OPTION_VLAYOUT]) {
-      let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
+    if (options[OPTION_V_LAYOUT]) {
+      let vlayoutJson = getVLayout(json, viewportNode, node.children)
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
       vlayoutJson['padding']['bottom'] = 0
 
@@ -835,12 +859,12 @@ async function assignViewport(
     } else {
       // VLAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
       const padding_top =
-        calcContentBounds.bounds.y - getGlobalDrawBounds(viewportAreaNode).y
+        calcContentBounds.bounds.y - getGlobalDrawBounds(viewportNode).y
       json['content_h'] += padding_top
     }
 
-    if (options[OPTION_GLAYOUT]) {
-      let glayoutJson = getVLayout(json, viewportAreaNode, node.children)
+    if (options[OPTION_GRID_LAYOUT]) {
+      let glayoutJson = getVLayout(json, viewportNode, node.children)
       glayout['method'] = 'grid'
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
       glayoutJson['padding']['bottom'] = 0
@@ -857,35 +881,38 @@ async function assignViewport(
 
     assignDrawResponsiveParameter(json, node)
   } else if (node.constructor.name == 'RepeatGrid') {
-    // リピートグリッドでスクロールエリアを作成する
+    // リピートグリッドでViewportを作成する
+    // リピードグリッド内、Itemとするか、全部実態化するか、
     // 以下縦スクロール専用でコーディング
-    var scrollDirection = 'vertical'
+    var scrollDirection = 'none'
+    if (options[OPTION_SCROLL] != null) {
+      scrollDirection = options[OPTION_SCROLL]
+    }
     let calcContentBounds = new CalcBounds()
-    let viewportAreaNode = node
-    const viewportAreaBounds = getGlobalDrawBounds(viewportAreaNode)
-    calcContentBounds.addBounds(viewportAreaBounds)
+    let viewportNode = node
+    const viewportBounds = getGlobalDrawBounds(viewportNode)
+    calcContentBounds.addBounds(viewportBounds)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
     // そういったものを省くための処理
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
       const nameOptions = parseNameOptions(child)
       const bounds = getGlobalDrawBounds(child)
-      if (!testBounds(viewportAreaBounds, bounds)) {
+      if (!testBounds(viewportBounds, bounds)) {
         console.log(nameOptions.name + 'はViewportにはいっていない')
         return false // 処理しない
       }
       calcContentBounds.addBounds(bounds)
       return true // 処理する
     })
-    const viewportBoundsCM = getDrawBoundsCMInBase(viewportAreaNode, root)
+    const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
 
-    var child0 = viewportAreaNode.children.at(0)
-    const child0BoundsCM = getDrawBoundsCMInBase(child0, viewportAreaNode)
+    var child0 = viewportNode.children.at(0)
+    const child0BoundsCM = getDrawBoundsCMInBase(child0, viewportNode)
 
-    const cellWidth = viewportAreaNode.cellSize.width * scale
+    const cellWidth = viewportNode.cellSize.width * scale
     // item[0] がY方向へ移動している分
-    const cellHeight =
-      child0BoundsCM.y + viewportAreaNode.cellSize.height * scale
+    const cellHeight = child0BoundsCM.y + viewportNode.cellSize.height * scale
 
     Object.assign(json, {
       type: 'Viewport',
@@ -900,8 +927,8 @@ async function assignViewport(
       content_h: calcContentBounds.bounds.height,
     })
 
-    if (options[OPTION_VLAYOUT] != null) {
-      let vlayoutJson = getVLayout(json, viewportAreaNode, node.children)
+    if (options[OPTION_V_LAYOUT] != null) {
+      let vlayoutJson = getVLayout(json, viewportNode, node.children)
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
       vlayoutJson['padding']['bottom'] = 0
 
@@ -921,6 +948,23 @@ async function assignViewport(
             preferred_height: elementJson.h,
           })
         }
+      })
+    } else if (options[OPTION_GRID_LAYOUT] != null) {
+      var gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+      if (scrollDirection == 'horizontal') {
+        // 横スクロールのRepeatGridなら、縦の数を固定する
+        Object.assign(gridLayoutJson, {
+          fixed_row_count: viewportNode.numRows,
+        })
+      }
+      if (scrollDirection == 'vertical') {
+        // 縦スクロールのRepeatGridなら、横の数を固定する
+        Object.assign(gridLayoutJson, {
+          fixed_column_count: viewportNode.numColumns,
+        })
+      }
+      Object.assign(json, {
+        layout: gridLayoutJson,
       })
     }
 
@@ -961,6 +1005,58 @@ function sortElementsByPositionDesc(jsonElements) {
 }
 
 /**
+ * リピートグリッドから、GridLayoutGroup用パラメータを取得する
+ * @param {*} repeadGrid
+ */
+function getGridLayoutFromRepeatGrid(repeadGrid) {
+  var layoutJson = {}
+  var repeadGridBounds = getGlobalBounds(repeadGrid)
+  var nodesBounds = getNodeListBounds(repeadGrid.children, null)
+  Object.assign(layoutJson, {
+    method: 'grid',
+    padding: {
+      left: nodesBounds.bounds.x - repeadGridBounds.x,
+      right: 0,
+      top: nodesBounds.bounds.y - repeadGridBounds.y,
+      bottom: 0,
+    },
+    spacing: {
+      x: repeadGrid.paddingX * scale, // 横の隙間
+      y: repeadGrid.paddingY * scale, // 縦の隙間
+    },
+    cell_max_width: repeadGrid.cellSize.width * scale,
+    cell_max_height: repeadGrid.cellSize.height * scale,
+  })
+  return layoutJson
+}
+
+/**
+ * 子供(コンポーネント化するもの･withoutNodeを除く)の全体サイズと
+ * 子供の中での最大Width、Heightを取得する
+ */
+function getNodeListBounds(nodeList, withoutNode) {
+  // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
+  var childrenCalcBounds = new CalcBounds()
+  // セルサイズを決めるため最大サイズを取得する
+  var childrenMinMaxSize = new MinMaxSize()
+  nodeList.forEach(node => {
+    const nameOptions = parseNameOptions(node)
+    // コンポーネントにする場合は除く
+    if (nameOptions.options['component']) return
+    // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
+    if (node == withoutNode) return
+    const childBounds = getGlobalBounds(node)
+    childrenCalcBounds.addBounds(childBounds)
+    childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
+  })
+  return {
+    bounds: childrenCalcBounds.bounds,
+    node_max_width: childrenMinMaxSize.maxWidth * scale,
+    node_max_height: childrenMinMaxSize.maxHeight * scale,
+  }
+}
+
+/**
  * VLayoutパラメータを生成する
  * ※List､LayoutGroup､Viewport共通
  * AreaNode　と　json.elementsの子供情報から
@@ -968,36 +1064,26 @@ function sortElementsByPositionDesc(jsonElements) {
  * 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
  * そのため､json.elementsは予めソートしておくことが必要
  * @param {*} json
- * @param {*} areaNode
+ * @param {*} viewportNode
  */
-function getVLayout(json, areaNode, nodeChildren) {
+function getVLayout(json, viewportNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
-  var childrenCalcBounds = new CalcBounds()
-  // セルサイズを決めるため最大サイズを取得する
-  var childrenMinMaxSize = new MinMaxSize()
-  nodeChildren.forEach(child => {
-    const nameOptions = parseNameOptions(child)
-    // コンポーネントにする場合は除く
-    if (nameOptions.options['component']) return
-    // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
-    if (child == areaNode) return
-    const childBounds = getGlobalDrawBounds(child)
-    childrenCalcBounds.addBounds(childBounds)
-    childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
-  })
+  var childrenCalcBounds = getNodeListBounds(nodeChildren, viewportNode)
   //
   let jsonVLayout = {}
   // Paddingの計算
-  let areaBounds = getGlobalDrawBounds(areaNode)
+  let viewportBounds = getGlobalDrawBounds(viewportNode)
   const childrenBounds = childrenCalcBounds.bounds
-  const paddingLeft = childrenBounds.x - areaBounds.x
-  const paddingTop = childrenBounds.y - areaBounds.y
+  const paddingLeft = childrenBounds.x - viewportBounds.x
+  const paddingTop = childrenBounds.y - viewportBounds.y
   const paddingRight =
-    areaBounds.x + areaBounds.width - (childrenBounds.x + childrenBounds.width)
+    viewportBounds.x +
+    viewportBounds.width -
+    (childrenBounds.x + childrenBounds.width)
   const paddingBottom =
-    areaBounds.y +
-    areaBounds.height -
+    viewportBounds.y +
+    viewportBounds.height -
     (childrenBounds.y + childrenBounds.height)
   Object.assign(jsonVLayout, {
     method: 'vertical',
@@ -1007,8 +1093,8 @@ function getVLayout(json, areaNode, nodeChildren) {
       top: paddingTop,
       bottom: paddingBottom,
     },
-    cell_max_width: childrenMinMaxSize.maxWidth,
-    cell_max_height: childrenMinMaxSize.maxHeight,
+    cell_max_width: childrenCalcBounds.node_max_Width,
+    cell_max_height: childrenCalcBounds.node_max_height,
   })
 
   // componentの無いelemリストを作成する
@@ -1080,7 +1166,7 @@ function assignVLayout(json, node) {
   })
 }
 
-function assignGLayout(json, node) {
+function assignGridLayout(json, node) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
   var jsonVLayout = getVLayout(json, node, node.children)
@@ -1170,7 +1256,7 @@ async function assignGroup(
   }
 
   // assignVGroup
-  if (options[OPTION_VLAYOUT] != null) {
+  if (options[OPTION_V_LAYOUT] != null) {
     assignVLayout(json, node)
     Object.assign(json, {
       size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
@@ -1185,8 +1271,8 @@ async function assignGroup(
     })
   }
 
-  if (options[OPTION_GLAYOUT] != null) {
-    assignGLayout(json, node)
+  if (options[OPTION_GRID_LAYOUT] != null) {
+    assignGridLayout(json, node)
   }
 
   return type
@@ -1687,8 +1773,8 @@ function calcResponsiveParameter(
       width: fixOptionWidth,
       height: fixOptionHeight,
     },
-    anchor_min: anchorMin,
-    anchor_max: anchorMax,
+    anchor_min: anchorMin, // ここまできてもNULLでおわるケースがある　ルート直下で、四方どこにもロックされていない場合
+    anchor_max: anchorMax, // ここまできてもNULLでおわるケースがある　ルート直下で、四方どこにもロックされていない場合
     offset_min: offsetMin,
     offset_max: offsetMax,
   }
@@ -1929,7 +2015,11 @@ async function nodeText(
     return
   }
 
-  if (!checkOptionText(options) && !checkOptionInput(options)) {
+  if (
+    !checkOptionText(options) &&
+    !checkOptionInput(options) &&
+    !checkOptionTextMeshPro(options)
+  ) {
     await nodeDrawing(
       json,
       node,
@@ -2135,11 +2225,11 @@ function parseNameOptions(node) {
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    nameStr = 'item0'
+    nameStr = 'child0'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parent.children.length; i++) {
       if (parent.children.at(i) == node) {
-        nameStr = parentName + '.item' + i
+        nameStr = parentName + '.child' + i
         break
       }
     }
@@ -2148,8 +2238,8 @@ function parseNameOptions(node) {
     // viewport　(Unityではここで､vgroupはもたない)
     //   content +vgroup +content_size_fitter (これらはBaum2で付与される)
     //     item0 +vgroup
-    if (parentNameOptions.options[OPTION_VLAYOUT] != null) {
-      options[OPTION_VLAYOUT] = true
+    if (parentNameOptions.options[OPTION_V_LAYOUT] != null) {
+      options[OPTION_V_LAYOUT] = true
     }
   }
 
@@ -2226,7 +2316,11 @@ function parseNameOptions(node) {
   }
 
   if (name.endsWith('Text') || checkTypeName('text', name)) {
-    options[OPTION_TEXT] = true
+    if (optionDefaultTextMP) {
+      options[OPTION_TEXTMP] = true
+    } else {
+      options[OPTION_TEXT] = true
+    }
   }
 
   if (name.endsWith('Toggle') || checkTypeName('toggle', name)) {
@@ -2897,7 +2991,7 @@ async function pluginExportBaum2Command(selection, root) {
               // サブPrefab
               optionEnableSubPrefab = checkEnableSubPrefab.checked
               //
-              optionTextToTextMP = checkTextToTMP.checked
+              optionDefaultTextMP = checkTextToTMP.checked
               //
               optionForceTextToImage = checkForceTextToImage.checked
               //
@@ -2926,7 +3020,7 @@ async function pluginExportBaum2Command(selection, root) {
   checkEnableExtended.checked = optionEnableExtended
   checkGetResponsiveParameter.checked = optionNeedResponsiveParameter
   checkEnableSubPrefab.checked = optionEnableSubPrefab
-  checkTextToTMP.checked = optionTextToTextMP
+  checkTextToTMP.checked = optionDefaultTextMP
   checkForceTextToImage.checked = optionForceTextToImage
   checkCheckMarkedForExport.checked = optionCheckMarkedForExport
 
