@@ -1,14 +1,6 @@
 // XD拡張APIのクラスをインポート
-const {
-  Artboard,
-  Text,
-  Color,
-  ImageFill,
-  Line,
-  Rectangle,
-} = require('scenegraph')
-const scenegraph = require('scenegraph')
-const application = require('application')
+const { Artboard, Color, Rectangle } = require('scenegraph')
+const application = require("application")
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
@@ -39,12 +31,12 @@ var optionDefaultTextMP = false
 var optionForceTextToImage = false
 
 // オプション文字列　全て小文字 オプションは 大文字は小文字､-は消去し判定する
-const OPTION_COMMENTOUT = 'commentout'
+const OPTION_COMMENT_OUT = 'commentout'
 const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
-const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal both
+const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
 const OPTION_IMAGE = 'image'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
@@ -75,7 +67,7 @@ const OPTION_NO_SLICE = 'noslice' // 9スライスしない (アトラスを作�
 const OPTION_9SLICE = '9slice' // 9スライス
 
 function checkOptionCommentOut(options) {
-  return checkBoolean(options[OPTION_COMMENTOUT])
+  return checkBoolean(options[OPTION_COMMENT_OUT])
 }
 
 function checkOptionSubPrefab(options) {
@@ -129,7 +121,7 @@ function checkOptionViewport(options) {
  * 誤差範囲での差があるか
  * @param {number} a
  * @param {number} b
- * @param {number} eps
+ * @param {number||null} eps
  */
 function approxEqual(a, b, eps) {
   if (eps == null) {
@@ -186,11 +178,13 @@ function getRGB(color) {
 
 /**
  * 親をさかのぼり､Artboardを探し出す
+ * @param {SceneNode} node
+ * @returns {Artboard|null}
  */
 function getArtboard(node) {
   let parent = node
   while (parent != null) {
-    if (parent.constructor.name == 'Artboard') {
+    if (parent.constructor.name === 'Artboard') {
       return parent
     }
     parent = parent.parent
@@ -201,7 +195,7 @@ function getArtboard(node) {
 /**
  * グローバル座標とサイズを取得する
  * responsiveBoundsの中の値は壊れないようにする
- * @param {scenegraph} node
+ * @param {SceneNode} node
  */
 function getGlobalDrawBounds(node) {
   // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
@@ -231,7 +225,7 @@ function getGlobalDrawBounds(node) {
 
 /**
  * グローバル座標とサイズを取得する
- * @param {scenegraph} node
+ * @param {SceneNode} node
  */
 function getGlobalBounds(node) {
   const hashBounds = responsiveBounds
@@ -260,8 +254,8 @@ function getGlobalBounds(node) {
  * Baum2用Boundsパラメータの取得
  * Artboard内でのDrawBoundsを取得する
  * x､yはCenterMiddleでの座標になる
- * @param {scenegraph} node
- * @param {artboard} base
+ * @param {SceneNode} node
+ * @param {Artboard} base
  */
 function getDrawBoundsCMInBase(node, base) {
   const nodeDrawBounds = getGlobalDrawBounds(node)
@@ -285,12 +279,16 @@ function getBoundsCMInBase(node, base) {
   }
 }
 
+/**
+ * @param r
+ * @returns {boolean}
+ */
 function checkBoolean(r) {
   if (typeof r == 'string') {
     const val = r.toLowerCase()
-    if (val == 'false' || val == '0' || val == 'null') return false
+    if (val === 'false' || val === '0' || val === 'null') return false
   }
-  return r ? true : false
+  return !!r
 }
 
 /**
@@ -309,8 +307,8 @@ function testLine(as, ae, bs, be) {
 
 /**
  * バウンディングボックスの衝突検知
- * @param {*} a
- * @param {*} b
+ * @param {Bounds} a
+ * @param {Bounds} b
  */
 function testBounds(a, b) {
   return (
@@ -322,7 +320,8 @@ function testBounds(a, b) {
 /**
  * CanvasGroupオプション
  * @param {*} json
- * @param {*} node
+ * @param {SceneNode} node
+ * @param options
  */
 function assignCanvasGroup(json, node, options) {
   let canvasGroup = options[OPTION_CANVASGROUP]
@@ -334,7 +333,7 @@ function assignCanvasGroup(json, node, options) {
 }
 
 /**
- * オプションにpivot､streachがあれば上書き
+ * オプションにpivot､stretchがあれば上書き
  * @param {*} json
  * @param {*} node
  */
@@ -383,9 +382,9 @@ function assignResponsiveParameter(json, node) {
  * CenterMiddle座標と､サイズをアサインする
  * XY座標によるElementsソートなどに使われる
  * @param {*} json
- * @param {*} node
+ * @param boundsCM
  */
-function assignBoundsCM(json, boundsCM) {
+function assignBounds(json, boundsCM) {
   Object.assign(json, {
     x: boundsCM.x,
     y: boundsCM.y,
@@ -395,10 +394,9 @@ function assignBoundsCM(json, boundsCM) {
 }
 
 function searchFileName(renditions, fileName) {
-  const found = renditions.find(entry => {
-    return entry.fileName == fileName
+  return renditions.find(entry => {
+    return entry.fileName === fileName
   })
-  return found
 }
 
 async function symbolImage(json, node, root, subFolder, renditions, name) {
@@ -503,10 +501,10 @@ async function assignImage(
     fileExtension = '-noslice.png'
   }
   if (options[OPTION_9SLICE]) {
-    var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
-    var pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
+    // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
+    const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
     //var result = pattern.exec(options[OPTION_9SLICE])
-    var result = options[OPTION_9SLICE].match(pattern)
+    const result = options[OPTION_9SLICE].match(pattern)
     /*
     省略については、CSSに準拠
     http://www.htmq.com/css3/border-image-slice.shtml
@@ -562,10 +560,10 @@ async function assignImage(
     })
   }
 
-  const optionRaycastTarget = nameOptions.options[OPTION_RAYCAST_TARGET]
-  if (optionRaycastTarget != null) {
+  const optionRayCastTarget = nameOptions.options[OPTION_RAYCAST_TARGET]
+  if (optionRayCastTarget != null) {
     Object.assign(json, {
-      raycast_target: checkBoolean(optionRaycastTarget),
+      raycast_target: checkBoolean(optionRayCastTarget),
     })
   }
 
@@ -606,11 +604,11 @@ async function assignScroller(
 ) {
   let areaNodes = node.children.filter(child => {
     const { name, options } = parseNameOptions(child)
-    return name == 'Area'
+    return name === 'Area'
   })
 
-  if (areaNodes.length == 0) {
-    if (node.constructor.name == 'RepeatGrid') {
+  if (areaNodes.length === 0) {
+    if (node.constructor.name === 'RepeatGrid') {
       /*
       Areaがなくて､リピートグリッドだけでもScrollerを作成する
       仕様:
@@ -624,16 +622,16 @@ async function assignScroller(
       */
       var scrollDirection = 'vertical'
       let item0
-      if (node.numColumns == 1) {
+      if (node.numColumns === 1) {
         // vertical
-        var scrollDirection = 'vertical'
+        scrollDirection = 'vertical'
         // item[0]を一個だけコンバート
         await funcForEachChild(1)
         // アイテムの作成
         // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
         // もう1段したの子供がアイテムになる
         item0 = json.elements[0]
-      } else if (node.numRows == 1) {
+      } else if (node.numRows === 1) {
         // Horizontal
         scrollDirection = 'horizontal'
         // item[0]を一個だけコンバート
@@ -692,7 +690,7 @@ async function assignScroller(
       const cellHeight = node.cellSize.height * scale
 
       const spacing =
-        scrollDirection == 'vertical'
+        scrollDirection === 'vertical'
           ? node.paddingY * scale
           : node.paddingX * scale
       const drawBounds = getDrawBoundsCMInBase(node, root)
@@ -745,7 +743,7 @@ async function assignScroller(
 /**
  *
  * @param {*} json
- * @param {*} node
+ * @param {SceneNode} node
  * @param {*} root
  * @param {*} subFolder
  * @param {*} renditions
@@ -773,7 +771,7 @@ async function assignViewport(
   funcForEachChild,
   depth,
 ) {
-  if (node.constructor.name == 'Group') {
+  if (node.constructor.name === 'Group') {
     // 通常グループ､マスクグループでViewportをつかう
     // Areaを探し､AreaはDrawBounds情報のみ取得して処理しないようにする
     var viewportNode = null
@@ -795,7 +793,7 @@ async function assignViewport(
       }
       const nameOptions = parseNameOptions(child)
       // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
-      if (viewportNode == null && nameOptions.name.toLowerCase() == 'area') {
+      if (viewportNode == null && nameOptions.name.toLowerCase() === 'area') {
         viewportNode = child
         return false //処理しない(Elementに含まれない)
       }
@@ -981,7 +979,7 @@ function sortElementsByPositionAsc(jsonElements) {
   jsonElements.sort((elemA, elemB) => {
     const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
     const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
-    if (a_y == b_y) {
+    if (a_y === b_y) {
       const a_x = elemA['component'] ? Number.MAX_VALUE : elemA['x']
       const b_x = elemB['component'] ? Number.MAX_VALUE : elemB['x']
       return b_x - a_x
@@ -995,7 +993,7 @@ function sortElementsByPositionDesc(jsonElements) {
   jsonElements.sort((elemA, elemB) => {
     const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
     const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
-    if (b_y == a_y) {
+    if (b_y === a_y) {
       const a_x = elemA['component'] ? Number.MAX_VALUE : elemA['x']
       const b_x = elemB['component'] ? Number.MAX_VALUE : elemB['x']
       return a_x - b_x
@@ -1064,7 +1062,8 @@ function getNodeListBounds(nodeList, withoutNode) {
  * 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
  * そのため､json.elementsは予めソートしておくことが必要
  * @param {*} json
- * @param {*} viewportNode
+ * @param {SceneNode} viewportNode
+ * @param {SceneNodeList} nodeChildren
  */
 function getVLayout(json, viewportNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
@@ -1182,16 +1181,13 @@ function assignGridLayout(json, node) {
  */
 function hasHeightLayouter(elementJson) {
   const type = elementJson['type']
-  if (type == 'Text') {
+  if (type === 'Text') {
     return true
   }
-  if (elementJson['layout'] && elementJson['layout']['method'] == 'vertical') {
+  if (elementJson['layout'] && elementJson['layout']['method'] === 'vertical') {
     return true
   }
-  if (elementJson['preferred_height']) {
-    return true
-  }
-  return false
+  return !!elementJson['preferred_height']
 }
 
 /**
@@ -1282,10 +1278,14 @@ async function assignGroup(
  * Groupの処理 戻り値は処理したType
  * 注意:ここで､子供の処理もしてしまう
  * @param {*} json
- * @param {scenegraph} node
+ * @param {SceneNode} node
+ * @param root
+ * @param subFolder
+ * @param renditions
  * @param {*} funcForEachChild
  * @param {string} name
  * @param {string[]} options
+ * @param depth
  */
 async function nodeGroup(
   json,
@@ -1315,7 +1315,7 @@ async function nodeGroup(
       name: name,
     })
     assignDrawResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+    assignBounds(json, getDrawBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1355,7 +1355,7 @@ async function nodeGroup(
       })
     }
     assignDrawResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+    assignBounds(json, getDrawBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1407,6 +1407,7 @@ class MinMaxSize {
     this.maxWidth = null
     this.maxHeight = null
   }
+
   addSize(w, h) {
     if (this.minWidth == null || this.minWidth > w) {
       this.minWidth = w
@@ -1430,6 +1431,7 @@ class CalcBounds {
     this.ex = null
     this.ey = null
   }
+
   addBoundsParam(x, y, w, h) {
     if (this.sx == null || this.sx > x) {
       this.sx = x
@@ -1446,9 +1448,11 @@ class CalcBounds {
       this.ey = ey
     }
   }
+
   addBounds(bounds) {
     this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
   }
+
   get bounds() {
     return {
       x: this.sx,
@@ -1469,7 +1473,7 @@ class CalcBounds {
  */
 function hasOptionParam(optionStr, paramStr) {
   if (optionStr == null || paramStr == null) return null
-  if (optionStr == paramStr) return true
+  if (optionStr === paramStr) return true
   if (optionStr.startsWith(`${paramStr}-`)) return true
   if (optionStr.indexOf(`-${paramStr}-`) >= 0) return true
   if (optionStr.endsWith(`-${paramStr}`)) return true
@@ -1478,10 +1482,10 @@ function hasOptionParam(optionStr, paramStr) {
 
 /**
  * 本当に正確なレスポンシブパラメータは、シャドウなどエフェクトを考慮し、どれだけ元サイズより
-   大きくなるか最終アウトプットのサイズを踏まえて計算する必要がある
-   calcResonsiveParameter内で、判断する必要があると思われる
+ 大きくなるか最終アウトプットのサイズを踏まえて計算する必要がある
+ calcResonsiveParameter内で、判断する必要があると思われる
  * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
-    fix: {
+ fix: {
       // ロック true or ピクセル数
       left: fixOptionLeft,
       right: fixOptionRight,
@@ -1490,14 +1494,14 @@ function hasOptionParam(optionStr, paramStr) {
       width: fixOptionWidth,
       height: fixOptionHeight,
     },
-    anchor_min: anchorMin,
-    anchor_max: anchorMax,
-    offset_min: offsetMin,
-    offset_max: offsetMax,
- * @param {*} beforeBounds
- * @param {*} afterBounds
- * @param {number} resizePlusWidth リサイズ時に増えた幅
- * @param {number} resizePlusHeight リサイズ時に増えた高さ
+ anchor_min: anchorMin,
+ anchor_max: anchorMax,
+ offset_min: offsetMin,
+ offset_max: offsetMax,
+ * @param node
+ * @param hashBounds
+ * @param options
+ * @param calcDrawBounds
  */
 function calcResponsiveParameter(
   node,
@@ -1557,9 +1561,8 @@ function calcResponsiveParameter(
     fixOptionLeft = true
   } else {
     // 親のX座標･Widthをもとに､Left座標がきまる
-    const beforeFixOptionLeft =
+    fixOptionLeft =
       (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
-    fixOptionLeft = beforeFixOptionLeft
   }
 
   const beforeRight =
@@ -1598,9 +1601,8 @@ function calcResponsiveParameter(
     fixOptionTop = true
   } else {
     // 親のY座標･heightをもとに､Top座標がきまる
-    const beforeFixOptionTop =
+    fixOptionTop =
       (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
-    fixOptionTop = beforeFixOptionTop
   }
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
   const afterBottom = parentAfterBounds.ey - afterBounds.ey
@@ -1608,9 +1610,8 @@ function calcResponsiveParameter(
     fixOptionBottom = true
   } else {
     // 親のY座標･Heightをもとに､Bottom座標がきまる
-    const beforeFixOptionBottom =
+    fixOptionBottom =
       (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
-    fixOptionBottom = beforeFixOptionBottom
   }
 
   if (optionFix != null) {
@@ -1764,7 +1765,7 @@ function calcResponsiveParameter(
     offsetMax.y = -(middle - parentMiddle) + beforeBounds.height / 2
   }
 
-  let ret = {
+  return {
     fix: {
       left: fixOptionLeft,
       right: fixOptionRight,
@@ -1778,8 +1779,6 @@ function calcResponsiveParameter(
     offset_min: offsetMin,
     offset_max: offsetMax,
   }
-
-  return ret
 }
 
 /**
@@ -1911,11 +1910,12 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
  * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
  * 元通りのサイズに戻ったかどうかのチェック
  * @param {*} hashBounds
+ * @param {boolean|null} repair
  */
 function checkHashBounds(hashBounds, repair) {
   var result = true
-  for (var key in hashBounds) {
-    var value = hashBounds[key]
+  for (const key in hashBounds) {
+    const value = hashBounds[key]
     if (value['before'] && value['restore']) {
       var beforeBounds = value['before']['bounds']
       var restoreBounds = value['restore']['bounds']
@@ -1923,11 +1923,11 @@ function checkHashBounds(hashBounds, repair) {
         // 変わってしまった
         let node = value['node']
         console.log('***error bounds changed:' + node.name)
-        if (repair == true) {
+        if (repair === true) {
           // 修復を試みる
           if (node.symbolId != null) {
-            var dx = restoreBounds.x - beforeBounds.x
-            var dy = restoreBounds.y - beforeBounds.y
+            const dx = restoreBounds.x - beforeBounds.x
+            const dy = restoreBounds.y - beforeBounds.y
             try {
               node.moveInParentCoordinates(dx, dy)
               node.resize(beforeBounds.width, beforeBounds.height)
@@ -1985,8 +1985,8 @@ function isFixHeight(node) {
 /**
  * テキストレイヤーの処理
  * @param {*} json
- * @param {scenegraph} node
- * @param {artboard} artboard
+ * @param {SceneNode} node
+ * @param {Artboard} artboard
  * @param {*} subfolder
  * @param {[]} renditions
  * @param {string} name
@@ -2091,8 +2091,8 @@ async function nodeText(
 /**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json
- * @param {scenegraph} node
- * @param {artboard} root
+ * @param {SceneNode} node
+ * @param {Artboard} root
  * @param {*} subFolder
  * @param {*} renditions
  * @param {string} name
@@ -2176,22 +2176,20 @@ async function nodeDrawing(
  * 名前に機能が入っているかどうかのチェック
  */
 function checkTypeName(type, name) {
-  if (
-    type == name ||
+  return (
+    type === name ||
     name.endsWith('+' + type) ||
     name.endsWith('-' + type) ||
     name.endsWith('_' + type) ||
     name.endsWith('.' + type) ||
     name.endsWith(' ' + type)
   )
-    return true
-  return false
 }
 
 /**
  * node.nameをパースしオプションに分解する
  * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
- * @param {*} str
+ * @param {SceneNode} node
  */
 function parseNameOptions(node) {
   if (node == null) {
@@ -2208,7 +2206,7 @@ function parseNameOptions(node) {
   const parentNameOptions = parseNameOptions(parent)
   const parentName = parentNameOptions == null ? '' : parentNameOptions.name
 
-  if (parent != null && parent.constructor.name == 'RepeatGrid') {
+  if (parent != null && parent.constructor.name === 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
     // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
     // item_button
@@ -2272,7 +2270,7 @@ function parseNameOptions(node) {
 
   // 名前の最初1文字目が#ならコメントNode
   if (name.startsWith('#')) {
-    options[OPTION_COMMENTOUT] = true
+    options[OPTION_COMMENT_OUT] = true
     name = name.substring(1)
   }
 
@@ -2351,7 +2349,7 @@ function parseNameOptions(node) {
 function concatNameOptions(name, options) {
   let str = '' + name
 
-  for (let key in options) {
+  for (const key in options) {
     let val = options[key]
     str += '@' + key + '=' + val
   }
@@ -2369,7 +2367,7 @@ function makeLayoutJson(root) {
     rootBounds = getDrawBoundsCMInBase(root, root.parent)
   }
 
-  let layoutJson = {
+  return {
     info: {
       version: '0.6.1',
       canvas: {
@@ -2394,14 +2392,13 @@ function makeLayoutJson(root) {
       name: root.name,
     },
   }
-  return layoutJson
 }
 
 /**
  * アートボードの処理
  * @param {*} renditions
  * @param {*} outputFolder
- * @param {artboard} root
+ * @param {Artboard} root
  */
 async function nodeRoot(renditions, outputFolder, root) {
   let nameOptions = parseNameOptions(root)
@@ -2676,7 +2673,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     })
   }
 
-  if (renditions.length != 0) {
+  if (renditions.length !== 0) {
     // 一括画像ファイル出力
     await application
       .createRenditions(renditions)
@@ -2770,10 +2767,16 @@ async function alert(message, title) {
   return await dialog.showModal()
 }
 
+/**
+ *
+ * @param {Selection} selection
+ * @param {RootNode} root
+ * @returns {SceneNode}
+ */
 function getExportRootNodes(selection, root) {
   // 選択されているものがない場合 全てが変換対象
   // return selection.items.length > 0 ? selection.items : root.children
-  if (selection.items.length != 1) {
+  if (selection.items.length !== 1) {
     alert('出力アートボート直下のノードを1つ選択してください')
     throw 'not selected immediate child.'
   }
@@ -2787,6 +2790,12 @@ function getExportRootNodes(selection, root) {
   return [selection.items[0].parent]
 }
 
+/**
+ *
+ * @param {Selection} selection
+ * @param {RootNode} root
+ * @returns {Promise<void>}
+ */
 async function pluginExportBaum2Command(selection, root) {
   let inputFolder
   let inputScale
@@ -3034,7 +3043,7 @@ async function pluginExportBaum2Command(selection, root) {
   }
 
   // Dialogの結果チェック
-  if (result == 'export') {
+  if (result === 'export') {
     // 出力ノードリスト
     let exports = {}
     // レスポンシブパラメータを取得するため､操作を行うアートボード
@@ -3073,7 +3082,7 @@ async function pluginExportBaum2Command(selection, root) {
 
     funcForEach(exportRootNodes)
 
-    if (exports.length == 0) {
+    if (exports.length === 0) {
       // 出力するものが見つからなかった
       alert('no selected artboards.')
       return
@@ -3114,8 +3123,7 @@ async function pluginResponsiveParamName(selection, root) {
             .replace('w-h', 'size') // サイズ固定
             .replace('x-y-size', 'size') // グループのresizeをやったところ､topleftも動いてしまったケース sizeのみにする
           try {
-            const newName = name + ' @fix=' + optionStr
-            node.name = newName
+            node.name = name + ' @fix=' + optionStr
           } catch (e) {}
         }
       }
@@ -3153,7 +3161,7 @@ async function pluginAddImageSizeFix(selection, root) {
 
     // すでにあるSizeFixerを削除する
     let sizeFixers = item.children.filter(child => {
-      return child.name == sizeFixerName
+      return child.name === sizeFixerName
     })
     sizeFixers.forEach(item => {
       item.removeFromParent()
@@ -3165,7 +3173,7 @@ async function pluginAddImageSizeFix(selection, root) {
     } else {
       const myArtboard = getArtboard(item)
       // 同じアートボードであるか
-      if (artboard != myArtboard) {
+      if (artboard !== myArtboard) {
         throw error('failed')
       }
     }
@@ -3230,11 +3238,27 @@ async function testRendition(selection, root) {
     })
 }
 
+async function testInteractions(selection, root) {
+  // Print all the interactions triggered by a node
+  const node = selection.items[0]
+  console.log('test interactions:' + node.name)
+  node.triggeredInteractions.forEach(interaction => {
+    console.log(
+      'Trigger: ' +
+        interaction.trigger.type +
+        ' -> Action: ' +
+        interaction.action.type,
+    )
+    printAllProperties(interaction.action.destination)
+  })
+}
+
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
     exportBaum2Command: pluginExportBaum2Command,
     addResponsiveParam: pluginResponsiveParamName,
     addImageSizeFix: pluginAddImageSizeFix,
+    testInteractions: testInteractions,
   },
 }
