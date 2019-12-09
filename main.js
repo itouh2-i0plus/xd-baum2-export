@@ -34,6 +34,7 @@ var optionForceTextToImage = false
 const OPTION_COMMENT_OUT = 'commentout'
 const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
+const OPTION_DIRECTION = 'direction'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
 const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
@@ -672,7 +673,7 @@ async function assignScroller(
         scrollDirection = 'horizontal'
         // item[0]を一個だけコンバート
         await funcForEachChild(1)
-        items = [json.elements[0]] // TODO 対応する
+        // items = [json.elements[0]] // TODO 対応する
       } else {
         // Grid
         item0 = {
@@ -686,7 +687,8 @@ async function assignScroller(
               top: 0,
               bottom: 0,
             },
-            spacing: 0,
+            spacing_x: 0,
+            spacing_y: 0,
           },
           elements: [],
         }
@@ -725,10 +727,8 @@ async function assignScroller(
       const cellWidth = node.cellSize.width * scale
       const cellHeight = node.cellSize.height * scale
 
-      const spacing =
-        scrollDirection === 'vertical'
-          ? node.paddingY * scale
-          : node.paddingX * scale
+      const spacing_x = node.paddingX * scale
+      const spacing_y = node.paddingY * scale
       const drawBounds = getDrawBoundsCMInBase(node, root)
 
       // Paddingの計算
@@ -759,7 +759,8 @@ async function assignScroller(
             top: paddingTop,
             bottom: paddingBottom,
           },
-          spacing: spacing,
+          spacing_x: spacing_x,
+          spacing_y: spacing_y,
         },
         x: drawBounds.x,
         y: drawBounds.y,
@@ -807,34 +808,45 @@ async function assignViewport(
   funcForEachChild,
   depth,
 ) {
-  let scrollDirection
+  // スクロールする方向を取得する
+  // これがNULLのままなら、Unity上ではスクロールしない
+  let scrollDirection = null
+  let optionScroll = options[OPTION_SCROLL]
+  if (optionScroll != null) {
+    optionScroll = optionScroll.toLowerCase().replace(/-/g, '')
+    if (optionScroll.includes('vertical') || optionScroll === 'v') {
+      scrollDirection = 'vertical'
+    }
+    if (optionScroll.includes('horizontal') || optionScroll === 'h') {
+      scrollDirection = 'horizontal'
+    }
+  }
   if (node.constructor.name === 'Group') {
+    /** @type {Group} */
+    let groupNode = node
     // 通常グループ､マスクグループでViewportをつかう
-    // Areaを探し､AreaはDrawBounds情報のみ取得して処理しないようにする
-    let viewportNode = null
+    // Groupでもスクロールウィンドウはできるようにするが、RepeatGridではない場合レイアウト情報が取得しづらい
+    let maskNode = null
     let calcContentBounds = new CalcBounds()
 
     // マスクが利用されたViewportである場合､マスクを取得する
-    if (node.mask) {
-      viewportNode = node.mask
+    if (groupNode.mask) {
+      maskNode = groupNode.mask
     } else {
-      // コンテンツグループと同じところにマスク(area)がある場合､
-      // 意図通りサイズが可変されない
-      // マスクはコンテンツグループと同列かつアートボード直下にある必要がでてくる
       console.log('***error viewport:マスクがみつかりませんでした')
     }
     await funcForEachChild(null, child => {
-      if (child === viewportNode) {
-        // ViewportAreaNodeはElement処理をしない
+      if (child === maskNode) {
+        // maskはElement処理をしない
         return false
       }
       const nameOptions = parseNameOptions(child)
       // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
-      if (viewportNode == null && nameOptions.name.toLowerCase() === 'area') {
-        viewportNode = child
+      if (maskNode == null && nameOptions.name.toLowerCase() === 'area') {
+        maskNode = child
         return false //処理しない(Elementに含まれない)
       }
-      const childBounds = getGlobalDrawBounds(child)
+      const childBounds = getGlobalBounds(child)
       calcContentBounds.addBounds(childBounds)
       return true // 処理する
     })
@@ -842,35 +854,25 @@ async function assignViewport(
     // 縦の並び順を正常にするため､Yでソートする
     sortElementsByPositionAsc(json.elements)
 
-    const viewportBounds = getGlobalBounds(viewportNode)
+    const maskBounds = getGlobalBounds(maskNode)
     const contentBounds = calcContentBounds.bounds
-    scrollDirection = ''
-    // サイズだけをみて、スクロールする方向を決めてしまう
-    // 本来は、XY座標もみるべき
-    if (viewportBounds.width < contentBounds.width) {
-      scrollDirection += 'horizontal'
-    }
-    if (viewportBounds.height < contentBounds.height) {
-      scrollDirection += 'vertical'
-    }
 
-    const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
+    const maskBoundsCM = getDrawBoundsCMInBase(maskNode, root)
 
     Object.assign(json, {
       type: 'Viewport',
       name: name,
-      scroll: scrollDirection,
-      x: viewportBoundsCM.x,
-      y: viewportBoundsCM.y,
-      w: viewportBoundsCM.width,
-      h: viewportBoundsCM.height,
+      x: maskBoundsCM.x,
+      y: maskBoundsCM.y,
+      w: maskBoundsCM.width,
+      h: maskBoundsCM.height,
       // Contentグループ情報
       content_w: contentBounds.width,
       content_h: contentBounds.height,
     })
 
     if (options[OPTION_V_LAYOUT]) {
-      let vLayoutJson = getVLayout(json, viewportNode, node.children)
+      let vLayoutJson = getVLayout(json, maskNode, node.children)
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
       vLayoutJson['padding']['bottom'] = 0
 
@@ -894,12 +896,12 @@ async function assignViewport(
     } else {
       // V_LAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
       const padding_top =
-        calcContentBounds.bounds.y - getGlobalDrawBounds(viewportNode).y
+        calcContentBounds.bounds.y - getGlobalDrawBounds(maskNode).y
       json['content_h'] += padding_top
     }
 
     if (options[OPTION_GRID_LAYOUT]) {
-      let gridLayoutJson = getVLayout(json, viewportNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
+      let gridLayoutJson = getVLayout(json, maskNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
       gridLayoutJson['method'] = 'grid'
       // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
       gridLayoutJson['padding']['bottom'] = 0
@@ -919,10 +921,7 @@ async function assignViewport(
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
     // 以下縦スクロール専用でコーディング
-    scrollDirection = 'none'
-    if (options[OPTION_SCROLL] != null) {
-      scrollDirection = options[OPTION_SCROLL]
-    }
+
     let calcContentBounds = new CalcBounds()
     /** @type {RepeatGrid} */
     let viewportNode = node
@@ -953,7 +952,6 @@ async function assignViewport(
     Object.assign(json, {
       type: 'Viewport',
       name: name,
-      scroll: scrollDirection,
       x: viewportBoundsCM.x,
       y: viewportBoundsCM.y,
       w: viewportBoundsCM.width,
@@ -986,21 +984,54 @@ async function assignViewport(
         }
       })
     } else if (options[OPTION_GRID_LAYOUT] != null) {
+      const optionGridLayout = options[
+        OPTION_GRID_LAYOUT
+      ].toLowerCase().replace(/-/g, '')
       let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+      let fixedRowCount = null
+      let fixedColumnCount = null
+
+      //グリッドレイアウト並べる個数の定義
       if (scrollDirection === 'horizontal') {
         // 横スクロールのRepeatGridなら、縦の数を固定する
-        Object.assign(gridLayoutJson, {
-          fixed_row_count: viewportNode.numRows,
-        })
+        fixedRowCount = viewportNode.numRows
       }
       if (scrollDirection === 'vertical') {
         // 縦スクロールのRepeatGridなら、横の数を固定する
+        fixedColumnCount = viewportNode.numColumns
+      }
+      // fixedが明確に書いてある場合はそちらを上書き
+      if (optionGridLayout.includes('fixedrow')) {
+        fixedRowCount = viewportNode.numRows
+      }
+      if (optionGridLayout.includes('fixedcolumn')) {
+        fixedColumnCount = viewportNode.numRows
+      }
+      if (fixedColumnCount != null) {
         Object.assign(gridLayoutJson, {
-          fixed_column_count: viewportNode.numColumns,
+          fixed_column_count: fixedColumnCount,
         })
       }
+      if (fixedRowCount != null) {
+        Object.assign(gridLayoutJson, {
+          fixed_row_count: fixedRowCount,
+        })
+      }
+
       Object.assign(json, {
         layout: gridLayoutJson,
+      })
+    }
+
+    // scrollオプションが設定されていれば、scroll情報を埋め込む
+    if (optionScroll) {
+      let scrollJson = {}
+      Object.assign(scrollJson, {
+        direction: scrollDirection,
+        auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
+      })
+      Object.assign(json, {
+        scroll: scrollJson,
       })
     }
 
@@ -1056,10 +1087,8 @@ function getGridLayoutFromRepeatGrid(repeatGrid) {
       top: nodesBounds.bounds.y - repeatGridBounds.y,
       bottom: 0,
     },
-    spacing: {
-      x: repeatGrid.paddingX * scale, // 横の隙間
-      y: repeatGrid.paddingY * scale, // 縦の隙間
-    },
+    spacing_x: repeatGrid.paddingX * scale, // 横の隙間
+    spacing_y: repeatGrid.paddingY * scale, // 縦の隙間
     cell_max_width: repeatGrid.cellSize.width * scale,
     cell_max_height: repeatGrid.cellSize.height * scale,
   })
@@ -1160,10 +1189,10 @@ function getVLayout(json, viewportNode, nodeChildren) {
   if (elem0 && elem1) {
     // spacingの計算
     // ソートした上で､elem0とelem1で計算する 簡易的にやっている
-    const spacing = elem1.y - elem1.h / 2 - (elem0.y + elem0.h / 2)
-    if (Number.isFinite(spacing)) {
+    const spacing_y = elem1.y - elem1.h / 2 - (elem0.y + elem0.h / 2)
+    if (Number.isFinite(spacing_y)) {
       Object.assign(jsonVLayout, {
-        spacing: spacing,
+        spacing_y: spacing_y,
       })
     }
     // left揃えか
@@ -1382,12 +1411,20 @@ async function nodeGroup(
     return type
   }
 
-  if (checkOptionSlider(options)) {
+  if (checkOptionScrollbar(options)) {
     const type = 'Scrollbar'
     Object.assign(json, {
       type: type,
       name: name,
     })
+    let direction = options[OPTION_DIRECTION]
+    if (direction != null) {
+      direction = direction.toLowerCase().replace(/-/g, '')
+      Object.assign(json, {
+        direction: direction,
+      })
+    }
+
     assignDrawResponsiveParameter(json, node)
     await funcForEachChild()
     return type
@@ -2286,6 +2323,17 @@ function parseNameOptions(node) {
         nameStr = parentName + '.child' + i
         break
       }
+    }
+
+    // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
+    let commentOut = true
+    node.children.forEach(child => {
+      if (!child.name.startsWith('#')) {
+        commentOut = false
+      }
+    })
+    if (commentOut) {
+      options[OPTION_COMMENT_OUT] = true
     }
 
     // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
