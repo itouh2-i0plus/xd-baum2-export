@@ -50,7 +50,7 @@ const OPTION_V_LAYOUT = 'vlayout'
 const OPTION_H_LAYOUT = 'hlayout'
 const OPTION_GRID_LAYOUT = 'gridlayout' // 19/12/04 glayoutから変更
 const OPTION_VIEWPORT = 'viewport'
-const OPTION_CANVAS_GROUP = 'canvasgroup'
+const OPTION_CANVAS_GROUP = 'canvasgroup' // 削除予定
 const OPTION_COMPONENT = 'component'
 const OPTION_VERTICAL_FIT = 'verticalfit'
 const OPTION_MIN_HEIGHT = 'minheight'
@@ -195,6 +195,7 @@ function getArtboard(node) {
  * グローバル座標とサイズを取得する
  * responsiveBoundsの中の値は壊れないようにする
  * @param {SceneNodeClass} node
+ * @return {null|Bounds}
  */
 function getGlobalDrawBounds(node) {
   // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
@@ -225,6 +226,7 @@ function getGlobalDrawBounds(node) {
 /**
  * グローバル座標とサイズを取得する
  * @param {SceneNodeClass} node
+ * @return {null|Bounds}
  */
 function getGlobalBounds(node) {
   const hashBounds = responsiveBounds
