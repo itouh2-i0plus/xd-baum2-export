@@ -34,7 +34,6 @@ var optionForceTextToImage = false
 const OPTION_COMMENT_OUT = 'commentout'
 const OPTION_SUB_PREFAB = 'subprefab'
 const OPTION_BUTTON = 'button'
-const OPTION_DIRECTION = 'direction'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
 const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
@@ -66,6 +65,7 @@ const OPTION_IMAGE_SCALE = 'imagescale'
 const OPTION_IMAGE_TYPE = 'imagetype'
 const OPTION_NO_SLICE = 'noslice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const OPTION_9SLICE = '9slice' // 9スライス
+const OPTION_SIZE_FIT = 'sizefit' // グループの中身でサイズがかわる　@grid-layout と @scroll で、いい感じにオプションを追加する
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENT_OUT])
@@ -335,7 +335,7 @@ function assignCanvasGroup(json, node, options) {
   let canvasGroup = options[OPTION_CANVAS_GROUP]
   if (canvasGroup != null) {
     Object.assign(json, {
-      canvasgroup: { alpha: 0 },
+      canvas_group: { alpha: 0 },
     })
   }
 }
@@ -778,6 +778,22 @@ async function assignScroller(
 }
 
 /**
+ * ContentSizeFitter情報の付与
+ * @param json
+ * @param options
+ */
+function assignContentSizeFitter(json, options) {
+  if (options[OPTION_SIZE_FIT]) {
+    Object.assign(json, {
+      content_size_fitter: {
+        horizontal_fit: 'preferred_size',
+        vertical_fit: 'preferred_size',
+      },
+    })
+  }
+}
+
+/**
  *
  * @param {*} json
  * @param {SceneNode} node
@@ -814,10 +830,16 @@ async function assignViewport(
   let optionScroll = options[OPTION_SCROLL]
   if (optionScroll != null) {
     optionScroll = optionScroll.toLowerCase().replace(/-/g, '')
-    if (optionScroll.includes('vertical') || optionScroll === 'v') {
+    if (
+      optionScroll.includes('vertical') ||
+      hasOptionParam(optionScroll, 'v')
+    ) {
       scrollDirection = 'vertical'
     }
-    if (optionScroll.includes('horizontal') || optionScroll === 'h') {
+    if (
+      optionScroll.includes('horizontal') ||
+      hasOptionParam(optionScroll, 'h')
+    ) {
       scrollDirection = 'horizontal'
     }
   }
@@ -866,9 +888,12 @@ async function assignViewport(
       y: maskBoundsCM.y,
       w: maskBoundsCM.width,
       h: maskBoundsCM.height,
+      fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content_w: contentBounds.width,
-      content_h: contentBounds.height,
+      content: {
+        width: contentBounds.width,
+        height: contentBounds.height,
+      },
     })
 
     if (options[OPTION_V_LAYOUT]) {
@@ -956,9 +981,12 @@ async function assignViewport(
       y: viewportBoundsCM.y,
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
+      fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content_w: calcContentBounds.bounds.width,
-      content_h: calcContentBounds.bounds.height,
+      content: {
+        width: calcContentBounds.bounds.width,
+        height: calcContentBounds.bounds.height,
+      },
     })
 
     if (options[OPTION_V_LAYOUT] != null) {
@@ -984,39 +1012,39 @@ async function assignViewport(
         }
       })
     } else if (options[OPTION_GRID_LAYOUT] != null) {
+      /*
       const optionGridLayout = options[
         OPTION_GRID_LAYOUT
       ].toLowerCase().replace(/-/g, '')
+       */
       let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+
+      /*
+      // 固定する数は、ここでは決定しない
+      // レスポンシブに変更される数なので、アプリケーション側で対応する
       let fixedRowCount = null
       let fixedColumnCount = null
 
       //グリッドレイアウト並べる個数の定義
-      if (scrollDirection === 'horizontal') {
+      if (scrollDirection === "horizontal" ) {
         // 横スクロールのRepeatGridなら、縦の数を固定する
         fixedRowCount = viewportNode.numRows
       }
-      if (scrollDirection === 'vertical') {
+      if (scrollDirection === "vertical") {
         // 縦スクロールのRepeatGridなら、横の数を固定する
         fixedColumnCount = viewportNode.numColumns
       }
-      // fixedが明確に書いてある場合はそちらを上書き
-      if (optionGridLayout.includes('fixedrow')) {
-        fixedRowCount = viewportNode.numRows
-      }
-      if (optionGridLayout.includes('fixedcolumn')) {
-        fixedColumnCount = viewportNode.numRows
-      }
       if (fixedColumnCount != null) {
         Object.assign(gridLayoutJson, {
-          fixed_column_count: fixedColumnCount,
+          fixed_column_count: fixedColumnCount
         })
       }
       if (fixedRowCount != null) {
         Object.assign(gridLayoutJson, {
-          fixed_row_count: fixedRowCount,
+          fixed_row_count: fixedRowCount
         })
       }
+      */
 
       Object.assign(json, {
         layout: gridLayoutJson,
@@ -1025,15 +1053,16 @@ async function assignViewport(
 
     // scrollオプションが設定されていれば、scroll情報を埋め込む
     if (optionScroll) {
-      let scrollJson = {}
-      Object.assign(scrollJson, {
-        direction: scrollDirection,
-        auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
-      })
       Object.assign(json, {
-        scroll: scrollJson,
+        scroll: {
+          direction: scrollDirection,
+          auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
+        },
       })
     }
+
+    // @contentRisizeなどのオプションにより、Contentのサイズが変更される場合の情報を付与する
+    assignContentSizeFitter(json, options)
 
     assignDrawResponsiveParameter(json, node)
   }
@@ -1073,7 +1102,7 @@ function sortElementsByPositionDesc(jsonElements) {
 
 /**
  * リピートグリッドから、GridLayoutGroup用パラメータを取得する
- * @param {*} repeatGrid
+ * @param {RepeatGrid} repeatGrid
  */
 function getGridLayoutFromRepeatGrid(repeatGrid) {
   let layoutJson = {}
@@ -1122,12 +1151,32 @@ function getNodeListBounds(nodeList, withoutNode) {
 }
 
 /**
+ * HLayoutパラメータを生成する
+ * @param json
+ * @param viewportNode
+ * @param nodeChildren
+ * @returns {{padding: {top: number, left: number, bottom: number, right: number}, method: string}}
+ */
+function getHLayout(json, viewportNode, nodeChildren) {
+  return {
+    method: 'horizontal',
+    padding: {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+    },
+  }
+}
+
+/**
  * VLayoutパラメータを生成する
  * ※List､LayoutGroup､Viewport共通
  * AreaNode　と　json.elementsの子供情報から
  * Spacing､Padding､Alignment情報を生成する
  * 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
  * そのため､json.elementsは予めソートしておくことが必要
+ * TODO:　レイアウト取得ができる共通関数がほしい
  * @param {*} json
  * @param {SceneNode} viewportNode
  * @param {SceneNodeList} nodeChildren
@@ -1232,14 +1281,57 @@ function assignVLayout(json, node) {
   })
 }
 
+function assignHLayout(json, node) {
+  // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
+  //sortElementsByPositionAsc(json.elements)
+  let jsonHLayout = getHLayout(json, node, node.children)
+  Object.assign(json, {
+    layout: jsonHLayout,
+  })
+}
+
+/**
+ *
+ * @param json
+ * @param {SceneNode} node
+ */
 function assignGridLayout(json, node) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
-  let jsonVLayout = getVLayout(json, node, node.children)
-  jsonVLayout['method'] = 'grid'
+  let jsonLayout
+  if (node.constructor.name == 'RepeatGrid') {
+    jsonLayout = getGridLayoutFromRepeatGrid(node)
+  } else {
+    // RepeatGridでなければ、VLayout情報から取得する
+    jsonLayout = getVLayout(json, node, node.children)
+    jsonLayout['method'] = 'grid'
+  }
   Object.assign(json, {
-    layout: jsonVLayout,
+    layout: jsonLayout,
   })
+}
+
+/**
+ *
+ * @param json
+ * @param {SceneNode} node
+ * @param options
+ */
+function assignLayout(json, node, options) {
+  if (options[OPTION_V_LAYOUT] != null) {
+    assignVLayout(json, node)
+    return
+  }
+
+  if (options[OPTION_H_LAYOUT] != null) {
+    assignHLayout(json, node)
+    return
+  }
+
+  if (options[OPTION_GRID_LAYOUT] != null) {
+    assignGridLayout(json, node)
+    return
+  }
 }
 
 /**
@@ -1314,7 +1406,7 @@ async function assignGroup(
   // assignVerticalFit
   if (options[OPTION_VERTICAL_FIT] != null) {
     Object.assign(json, {
-      vertical_fit: 'preferred', // デフォルトはpreferred
+      vertical_fit: 'preferred_size', // デフォルトはpreferred
     })
   }
 
@@ -1331,11 +1423,11 @@ async function assignGroup(
     })
   }
 
-  // assignVGroup
-  if (options[OPTION_V_LAYOUT] != null) {
-    assignVLayout(json, node)
+  assignLayout(json, node, options)
+
+  if (options[OPTION_SIZE_FIT]) {
     Object.assign(json, {
-      size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
+      content_size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
     })
     forEachReverseElements(json.elements, elementJson => {
       if (!hasVerticalLayout(elementJson)) {
@@ -1345,10 +1437,6 @@ async function assignGroup(
         })
       }
     })
-  }
-
-  if (options[OPTION_GRID_LAYOUT] != null) {
-    assignGridLayout(json, node)
   }
 
   return type
@@ -1417,13 +1505,15 @@ async function nodeGroup(
       type: type,
       name: name,
     })
-    let direction = options[OPTION_DIRECTION]
-    if (direction != null) {
-      direction = direction.toLowerCase().replace(/-/g, '')
+    let scroll = options[OPTION_SCROLL]
+    if (scroll != null) {
+      scroll = scroll.toLowerCase().replace(/-/g, '')
       Object.assign(json, {
-        direction: direction,
+        scroll: scroll,
       })
     }
+
+    assignLayout(json, node, options)
 
     assignDrawResponsiveParameter(json, node)
     await funcForEachChild()
@@ -2266,9 +2356,9 @@ async function nodeDrawing(
 }
 
 /**
- * 名前に機能が入っているかどうかのチェック
+ * 名前後ろに機能が入っているかどうかのチェック
  */
-function checkTypeName(type, name) {
+function checkEndsTypeName(type, name) {
   return (
     type === name ||
     name.endsWith('+' + type) ||
@@ -2401,23 +2491,23 @@ function parseNameOptions(node) {
     name = name.slice(0, -1)
   }
 
-  if (name.endsWith('Image') || checkTypeName('image', name)) {
+  if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
     options[OPTION_IMAGE] = true
   }
 
-  if (name.endsWith('Button') || checkTypeName('button', name)) {
+  if (name.endsWith('Button') || checkEndsTypeName('button', name)) {
     options[OPTION_BUTTON] = true
   }
 
-  if (name.endsWith('Slider') || checkTypeName('slider', name)) {
+  if (name.endsWith('Slider') || checkEndsTypeName('slider', name)) {
     options[OPTION_SLIDER] = true
   }
 
-  if (name.endsWith('Scrollbar') || checkTypeName('scrollbar', name)) {
+  if (name.endsWith('Scrollbar') || checkEndsTypeName('scrollbar', name)) {
     options[OPTION_SCROLLBAR] = true
   }
 
-  if (name.endsWith('Text') || checkTypeName('text', name)) {
+  if (name.endsWith('Text') || checkEndsTypeName('text', name)) {
     if (optionDefaultTextMP) {
       options[OPTION_TEXTMP] = true
     } else {
@@ -2425,21 +2515,21 @@ function parseNameOptions(node) {
     }
   }
 
-  if (name.endsWith('Toggle') || checkTypeName('toggle', name)) {
+  if (name.endsWith('Toggle') || checkEndsTypeName('toggle', name)) {
     options[OPTION_TOGGLE] = true
   }
 
   // 拡張モード有効時のみ
   if (optionEnableExtended) {
-    if (name.endsWith('Input') || checkTypeName('input', name)) {
+    if (name.endsWith('Input') || checkEndsTypeName('input', name)) {
       options[OPTION_INPUT] = true
     }
 
-    if (name.endsWith('List') || checkTypeName('list', name)) {
+    if (name.endsWith('List') || checkEndsTypeName('list', name)) {
       options[OPTION_SCROLLER] = true
     }
 
-    if (name.endsWith('Viewport') || checkTypeName('viewport', name)) {
+    if (name.endsWith('Viewport') || checkEndsTypeName('viewport', name)) {
       options[OPTION_VIEWPORT] = true
     }
   }
