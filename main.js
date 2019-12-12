@@ -4,7 +4,7 @@ const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
-var scale = 2.0
+var scale = 1.0
 
 // レスポンシブパラメータを保存する
 var responsiveBounds = {}
@@ -65,7 +65,9 @@ const OPTION_IMAGE_SCALE = 'imagescale'
 const OPTION_IMAGE_TYPE = 'imagetype'
 const OPTION_NO_SLICE = 'noslice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const OPTION_9SLICE = '9slice' // 9スライス
-const OPTION_SIZE_FIT = 'sizefit' // グループの中身でサイズがかわる　@grid-layout と @scroll で、いい感じにオプションを追加する
+const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
+const OPTION_CONTENT_SIZE_FIT = 'contentsizefit' //自動的に生成される$ContentのSizeFitterオプション
+const OPTION_SIZE_FIT = 'sizefit' //自身のSizeFitterオプション
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENT_OUT])
@@ -268,6 +270,21 @@ function getDrawBoundsCMInBase(node, base) {
     y: nodeDrawBounds.y - baseBounds.y + nodeDrawBounds.height / 2,
     width: nodeDrawBounds.width,
     height: nodeDrawBounds.height,
+  }
+}
+
+/**
+ * 相対座標のBoundsを返す
+ * @param {Bounds} bounds
+ * @param {Bounds} baseBounds
+ * @returns {Bounds}
+ */
+function getBoundsInBase(bounds, baseBounds) {
+  return {
+    x: bounds.x - baseBounds.x,
+    y: bounds.y - baseBounds.y,
+    width: bounds.width,
+    height: bounds.height,
   }
 }
 
@@ -778,18 +795,75 @@ async function assignScroller(
 }
 
 /**
- * ContentSizeFitter情報の付与
+ *
+ * @param option
+ */
+function getSizeFitterParam(option) {
+  if (option == null) return null
+  let horizontalFit = null
+  let verticalFit = null
+  let param = {}
+  if (option === true) {
+    horizontalFit = 'preferred'
+    verticalFit = 'preferred'
+  } else {
+    const optionStr = option.toString().toLowerCase()
+    if (optionStr.includes('horizontal') || hasOptionParam(optionStr, 'h')) {
+      horizontalFit = 'preferred'
+    }
+    if (optionStr.includes('vertical') || hasOptionParam(optionStr, 'v')) {
+      verticalFit = 'preferred'
+    }
+  }
+
+  if (horizontalFit != null) {
+    Object.assign(param, {
+      horizontal_fit: horizontalFit,
+    })
+  }
+  if (verticalFit != null) {
+    Object.assign(param, {
+      vertical_fit: verticalFit,
+    })
+  }
+  return param
+}
+
+/**
+ * content-size-fit は content内のオプションになる
  * @param json
  * @param options
  */
-function assignContentSizeFitter(json, options) {
-  if (options[OPTION_SIZE_FIT]) {
-    Object.assign(json, {
-      content_size_fitter: {
-        horizontal_fit: 'preferred_size',
-        vertical_fit: 'preferred_size',
-      },
-    })
+function assignContentSizeFit(json, options) {
+  const optionContentSizeFit = options[OPTION_CONTENT_SIZE_FIT]
+  if (optionContentSizeFit) {
+    const sizeFitterParam = getSizeFitterParam(optionContentSizeFit)
+    if (sizeFitterParam != null) {
+      let jsonContent = json['content']
+      if (jsonContent == null) {
+        Object.assign(json, {
+          content: {
+            size_fitter: sizeFitterParam,
+          },
+        })
+      } else {
+        Object.assign(jsonContent, {
+          size_fitter: sizeFitterParam,
+        })
+      }
+    }
+  }
+}
+
+function assignSizeFit(json, options) {
+  const optionSizeFit = options[OPTION_SIZE_FIT]
+  if (optionSizeFit) {
+    const sizeFitterParam = getSizeFitterParam(optionSizeFit)
+    if (sizeFitterParam != null) {
+      Object.assign(json, {
+        size_fitter: sizeFitterParam,
+      })
+    }
   }
 }
 
@@ -803,7 +877,7 @@ function assignContentSizeFitter(json, options) {
  * @param {*} name
  * @param {*} options
  * @param {*} funcForEachChild
- * @param {*} depth
+ * @param {*} depth=undefined
  * 出力構成
  * Viewport +Image(タッチ用透明)　+ScrollRect +RectMask2D
  *   - $Content ← 自動生成
@@ -858,6 +932,9 @@ async function assignViewport(
       console.log('***error viewport:マスクがみつかりませんでした')
     }
     await funcForEachChild(null, child => {
+      const childBounds = getGlobalBounds(child)
+      calcContentBounds.addBounds(childBounds) // maskもContetBoundsの処理にいれる
+
       if (child === maskNode) {
         // maskはElement処理をしない
         return false
@@ -868,8 +945,6 @@ async function assignViewport(
         maskNode = child
         return false //処理しない(Elementに含まれない)
       }
-      const childBounds = getGlobalBounds(child)
-      calcContentBounds.addBounds(childBounds)
       return true // 処理する
     })
 
@@ -877,8 +952,6 @@ async function assignViewport(
     sortElementsByPositionAsc(json.elements)
 
     const maskBounds = getGlobalBounds(maskNode)
-    const contentBounds = calcContentBounds.bounds
-
     const maskBoundsCM = getDrawBoundsCMInBase(maskNode, root)
 
     Object.assign(json, {
@@ -890,58 +963,65 @@ async function assignViewport(
       h: maskBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content: {
-        width: contentBounds.width,
-        height: contentBounds.height,
-      },
+      content: getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     })
 
-    if (options[OPTION_V_LAYOUT]) {
-      let vLayoutJson = getVLayout(json, maskNode, node.children)
-      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
-      vLayoutJson['padding']['bottom'] = 0
+    let contentJson = json['content']
 
-      if (options[OPTION_PADDING_BOTTOM] != null) {
-        vLayoutJson['padding']['bottom'] =
-          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-      }
-
-      Object.assign(json, {
-        layout: vLayoutJson,
-      })
-
-      forEachReverseElements(json.elements, elementJson => {
-        if (!hasVerticalLayout(elementJson)) {
-          // preferred-heightをつける
-          Object.assign(elementJson, {
-            preferred_height: elementJson.h,
-          })
+    if (options[OPTION_LAYOUT]) {
+      const optionLayout = options[OPTION_LAYOUT]
+      if (
+        optionLayout.includes('vertical') ||
+        hasOptionParam(optionLayout, 'v')
+      ) {
+        let vLayoutJson = getVLayout(json, maskNode, node.children)
+        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
+        // vLayoutJson['padding']['bottom'] = 0
+        /*
+        if (options[OPTION_PADDING_BOTTOM] != null) {
+          vLayoutJson['padding']['bottom'] =
+            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
         }
-      })
-    } else {
-      // V_LAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
-      const padding_top =
-        calcContentBounds.bounds.y - getGlobalDrawBounds(maskNode).y
-      json['content_h'] += padding_top
-    }
+         */
 
-    if (options[OPTION_GRID_LAYOUT]) {
-      let gridLayoutJson = getVLayout(json, maskNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
-      gridLayoutJson['method'] = 'grid'
-      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
-      gridLayoutJson['padding']['bottom'] = 0
+        Object.assign(contentJson, {
+          layout: vLayoutJson,
+        })
 
-      if (options[OPTION_PADDING_BOTTOM] != null) {
-        gridLayoutJson['padding']['bottom'] =
-          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+        /*
+        forEachReverseElements(json.elements, elementJson => {
+          if (!hasVerticalLayout(elementJson)) {
+            // preferred-heightをつける
+            Object.assign(elementJson, {
+              preferred_height: elementJson.h
+            })
+          }
+        })
+        */
+      } else {
+        /*
+         // V_LAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
+         const padding_top =
+           calcContentBounds.bounds.y - getGlobalDrawBounds(maskNode).y
+         json["content_h"] += padding_top
+         */
       }
+      if (options[OPTION_GRID_LAYOUT]) {
+        let gridLayoutJson = getVLayout(json, maskNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
+        gridLayoutJson['method'] = 'grid'
+        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
+        gridLayoutJson['padding']['bottom'] = 0
 
-      Object.assign(json, {
-        layout: gridLayoutJson,
-      })
+        if (options[OPTION_PADDING_BOTTOM] != null) {
+          gridLayoutJson['padding']['bottom'] =
+            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+        }
+
+        Object.assign(json, {
+          layout: gridLayoutJson,
+        })
+      }
     }
-
-    assignDrawResponsiveParameter(json, node)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -950,7 +1030,7 @@ async function assignViewport(
     let calcContentBounds = new CalcBounds()
     /** @type {RepeatGrid} */
     let viewportNode = node
-    const viewportBounds = getGlobalDrawBounds(viewportNode)
+    const viewportBounds = getGlobalBounds(viewportNode)
     calcContentBounds.addBounds(viewportBounds)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
     // そういったものを省くための処理
@@ -965,6 +1045,7 @@ async function assignViewport(
       calcContentBounds.addBounds(bounds)
       return true // 処理する
     })
+
     const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
 
     let child0 = viewportNode.children.at(0)
@@ -983,89 +1064,110 @@ async function assignViewport(
       h: viewportBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content: {
-        width: calcContentBounds.bounds.width,
-        height: calcContentBounds.bounds.height,
-      },
+      content: getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     })
 
-    if (options[OPTION_V_LAYOUT] != null) {
-      let vlayoutJson = getVLayout(json, viewportNode, node.children)
-      // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
-      vlayoutJson['padding']['bottom'] = 0
+    let contentJson = json['content']
 
-      if (options[OPTION_PADDING_BOTTOM] != null) {
-        vlayoutJson['padding']['bottom'] =
-          parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-      }
+    if (options[OPTION_LAYOUT] != null) {
+      const optionLayout = options[OPTION_LAYOUT].toString()
+      if (
+        optionLayout.includes('vertical') ||
+        hasOptionParam(optionLayout, 'v')
+      ) {
+        let vlayoutJson = getVLayout(json, viewportNode, node.children)
+        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
+        vlayoutJson['padding']['bottom'] = 0
 
-      Object.assign(json, {
-        layout: vlayoutJson,
-      })
+        if (options[OPTION_PADDING_BOTTOM] != null) {
+          vlayoutJson['padding']['bottom'] =
+            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
+        }
 
-      forEachReverseElements(json.elements, elementJson => {
-        if (!hasVerticalLayout(elementJson)) {
-          // preferred-heightをつける
-          Object.assign(elementJson, {
-            preferred_height: elementJson.h,
+        Object.assign(contentJson, {
+          layout: vlayoutJson,
+        })
+
+        forEachReverseElements(json.elements, elementJson => {
+          if (!hasVerticalLayout(elementJson)) {
+            // preferred-heightをつける
+            Object.assign(elementJson, {
+              preferred_height: elementJson.h,
+            })
+          }
+        })
+      } else if (
+        optionLayout.includes('grid') ||
+        hasOptionParam(optionLayout, 'g')
+      ) {
+        /*
+        const optionGridLayout = options[
+          OPTION_GRID_LAYOUT
+        ].toLowerCase().replace(/-/g, '')
+         */
+        // viewportNodeから、Contentのレイアウト情報を取得する
+        let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+
+        if (scrollDirection === 'vertical') {
+          Object.assign(gridLayoutJson, {
+            start_axis: 'horizontal',
           })
         }
-      })
-    } else if (options[OPTION_GRID_LAYOUT] != null) {
-      /*
-      const optionGridLayout = options[
-        OPTION_GRID_LAYOUT
-      ].toLowerCase().replace(/-/g, '')
-       */
-      let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
+        if (scrollDirection === 'horizontal') {
+          Object.assign(gridLayoutJson, {
+            start_axis: 'vertical',
+          })
+        }
 
-      /*
-      // 固定する数は、ここでは決定しない
-      // レスポンシブに変更される数なので、アプリケーション側で対応する
-      let fixedRowCount = null
-      let fixedColumnCount = null
+        // 固定する数は、ここでは決定しない
+        // レスポンシブに変更される数なので、アプリケーション側で対応する
+        // 上下がFIXされていれば、FixedRowCountは決定してもいいかも
+        /*
+        let fixedRowCount = null
+        let fixedColumnCount = null
 
-      //グリッドレイアウト並べる個数の定義
-      if (scrollDirection === "horizontal" ) {
-        // 横スクロールのRepeatGridなら、縦の数を固定する
-        fixedRowCount = viewportNode.numRows
-      }
-      if (scrollDirection === "vertical") {
-        // 縦スクロールのRepeatGridなら、横の数を固定する
-        fixedColumnCount = viewportNode.numColumns
-      }
-      if (fixedColumnCount != null) {
-        Object.assign(gridLayoutJson, {
-          fixed_column_count: fixedColumnCount
+        //グリッドレイアウト並べる個数の定義
+        if (scrollDirection === "horizontal" ) {
+          // 横スクロールのRepeatGridなら、縦の数を固定する
+          fixedRowCount = viewportNode.numRows
+        }
+        if (scrollDirection === "vertical") {
+          // 縦スクロールのRepeatGridなら、横の数を固定する
+          fixedColumnCount = viewportNode.numColumns
+        }
+        if (fixedColumnCount != null) {
+          Object.assign(gridLayoutJson, {
+            fixed_column_count: fixedColumnCount
+          })
+        }
+        if (fixedRowCount != null) {
+          Object.assign(gridLayoutJson, {
+            fixed_row_count: fixedRowCount
+          })
+        }
+        */
+
+        Object.assign(contentJson, {
+          layout: gridLayoutJson,
         })
       }
-      if (fixedRowCount != null) {
-        Object.assign(gridLayoutJson, {
-          fixed_row_count: fixedRowCount
-        })
-      }
-      */
-
-      Object.assign(json, {
-        layout: gridLayoutJson,
-      })
     }
-
-    // scrollオプションが設定されていれば、scroll情報を埋め込む
-    if (optionScroll) {
-      Object.assign(json, {
-        scroll: {
-          direction: scrollDirection,
-          auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
-        },
-      })
-    }
-
-    // @contentRisizeなどのオプションにより、Contentのサイズが変更される場合の情報を付与する
-    assignContentSizeFitter(json, options)
-
-    assignDrawResponsiveParameter(json, node)
   }
+
+  assignContentSizeFit(json, options)
+
+  // scrollオプションが設定されていれば、scroll情報を埋め込む
+  if (optionScroll) {
+    Object.assign(json, {
+      scroll: {
+        direction: scrollDirection,
+        auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
+      },
+    })
+  }
+
+  assignSizeFit(json, options)
+  assignDrawResponsiveParameter(json, node)
 }
 
 /**
@@ -1318,17 +1420,29 @@ function assignGridLayout(json, node) {
  * @param options
  */
 function assignLayout(json, node, options) {
-  if (options[OPTION_V_LAYOUT] != null) {
+  const optionLayout = options[OPTION_LAYOUT]
+  if (options[OPTION_LAYOUT] == null) return
+  const optionLayoutString = optionLayout.toString().toLowerCase()
+  if (
+    optionLayoutString.includes('vertical') ||
+    hasOptionParam(optionLayoutString, 'v')
+  ) {
     assignVLayout(json, node)
     return
   }
 
-  if (options[OPTION_H_LAYOUT] != null) {
+  if (
+    optionLayoutString.includes('horizontal') ||
+    hasOptionParam(optionLayoutString, 'h')
+  ) {
     assignHLayout(json, node)
     return
   }
 
-  if (options[OPTION_GRID_LAYOUT] != null) {
+  if (
+    optionLayoutString.includes('grid') ||
+    hasOptionParam(optionLayoutString, 'g')
+  ) {
     assignGridLayout(json, node)
     return
   }
@@ -1403,41 +1517,24 @@ async function assignGroup(
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
-  // assignVerticalFit
-  if (options[OPTION_VERTICAL_FIT] != null) {
-    Object.assign(json, {
-      vertical_fit: 'preferred_size', // デフォルトはpreferred
-    })
-  }
-
-  // assignPreferredHeight
-  if (options[OPTION_PREFERRED_HEIGHT] != null) {
-    Object.assign(json, {
-      preferred_height: json.h,
-    })
-  }
-
-  if (options[OPTION_MIN_HEIGHT] != null) {
-    Object.assign(json, {
-      min_height: json.h,
-    })
-  }
-
   assignLayout(json, node, options)
+  assignSizeFit(json, options)
 
-  if (options[OPTION_SIZE_FIT]) {
+  /*
+  if (options[OPTION_CONTENT_SIZE_FIT]) {
     Object.assign(json, {
-      content_size_fit_vertical: 'preferred', // 子供の推奨サイズでこのグループの高さは決まる
+      content_size_fit_vertical: "preferred" // 子供の推奨サイズでこのグループの高さは決まる
     })
     forEachReverseElements(json.elements, elementJson => {
       if (!hasVerticalLayout(elementJson)) {
         // preferred-heightをつける
         Object.assign(elementJson, {
-          preferred_height: elementJson.h,
+          preferred_height: elementJson.h
         })
       }
     })
   }
+  */
 
   return type
 }
@@ -1508,9 +1605,16 @@ async function nodeGroup(
     let scroll = options[OPTION_SCROLL]
     if (scroll != null) {
       scroll = scroll.toLowerCase().replace(/-/g, '')
-      Object.assign(json, {
-        scroll: scroll,
-      })
+      if (scroll === 'vertical' || scroll === 'v') {
+        Object.assign(json, {
+          scroll_direction: 'vertical',
+        })
+      }
+      if (scroll === 'horizontal' || scroll === 'h') {
+        Object.assign(json, {
+          scroll_direction: 'horizontal',
+        })
+      }
     }
 
     assignLayout(json, node, options)
@@ -1563,7 +1667,6 @@ async function nodeGroup(
       funcForEachChild,
     )
   }
-  // 他に"Mask"がある
 
   // 通常のグループ
   return await assignGroup(
