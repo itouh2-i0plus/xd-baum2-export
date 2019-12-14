@@ -68,6 +68,7 @@ const OPTION_9SLICE = '9slice' // 9スライス
 const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
 const OPTION_CONTENT_SIZE_FIT = 'contentsizefit' //自動的に生成される$ContentのSizeFitterオプション
 const OPTION_SIZE_FIT = 'sizefit' //自身のSizeFitterオプション
+const OPTION_CONTENT_FIX = 'contentfix'
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENT_OUT])
@@ -251,6 +252,8 @@ function getGlobalBounds(node) {
     y: bounds.y * scale,
     width: bounds.width * scale,
     height: bounds.height * scale,
+    ex: (bounds.x + bounds.width) * scale,
+    ey: (bounds.y + bounds.height) * scale,
   }
 }
 
@@ -802,20 +805,24 @@ function getSizeFitterParam(option) {
   if (option == null) return null
   let horizontalFit = null
   let verticalFit = null
-  let param = {}
   if (option === true) {
     horizontalFit = 'preferred'
     verticalFit = 'preferred'
   } else {
-    const optionStr = option.toString().toLowerCase()
-    if (optionStr.includes('horizontal') || hasOptionParam(optionStr, 'h')) {
+    const optionStr = option
+      .toString()
+      .toLowerCase()
+      .replace(/-/g, '')
+      .toLowerCase()
+    if (optionStr.includes('childrenh') || hasOptionParam(optionStr, 'h')) {
       horizontalFit = 'preferred'
     }
-    if (optionStr.includes('vertical') || hasOptionParam(optionStr, 'v')) {
+    if (optionStr.includes('childrenv') || hasOptionParam(optionStr, 'v')) {
       verticalFit = 'preferred'
     }
   }
 
+  let param = {}
   if (horizontalFit != null) {
     Object.assign(param, {
       horizontal_fit: horizontalFit,
@@ -826,6 +833,9 @@ function getSizeFitterParam(option) {
       vertical_fit: verticalFit,
     })
   }
+  if (Object.keys(param).length == 0) {
+    return null
+  }
   return param
 }
 
@@ -835,30 +845,47 @@ function getSizeFitterParam(option) {
  * @param options
  */
 function assignContentSizeFit(json, options) {
-  const optionContentSizeFit = options[OPTION_CONTENT_SIZE_FIT]
-  if (optionContentSizeFit) {
-    const sizeFitterParam = getSizeFitterParam(optionContentSizeFit)
-    if (sizeFitterParam != null) {
-      let jsonContent = json['content']
-      if (jsonContent == null) {
-        Object.assign(json, {
-          content: {
-            size_fitter: sizeFitterParam,
-          },
-        })
-      } else {
-        Object.assign(jsonContent, {
-          size_fitter: sizeFitterParam,
-        })
-      }
-    }
+  let optionContentSizeFit = options[OPTION_CONTENT_SIZE_FIT]
+  if (!optionContentSizeFit) {
+    return
   }
+  optionContentSizeFit = optionContentSizeFit.toLowerCase().replace(/-/g, '')
+  let jsonContent = json['content']
+  if (jsonContent == null) {
+    json['content'] = {}
+    jsonContent = json['content']
+  }
+  const sizeFitterParam = getSizeFitterParam(optionContentSizeFit)
+  if (sizeFitterParam != null) {
+    Object.assign(jsonContent, {
+      size_fitter: sizeFitterParam,
+    })
+  }
+
+  // Unityと乖離　ややこしくなる
+  /*
+  // $Contentが親(大抵Viewport)にサイズフィットするかどうか
+  let sizeFitParent = ''
+  if (optionContentSizeFit.includes('parenth')) {
+    sizeFitParent += 'horizontal'
+  }
+  if (optionContentSizeFit.includes('parentv')) {
+    sizeFitParent += 'vertical'
+  }
+  if (sizeFitParent != '') {
+    Object.assign(jsonContent, {
+      size_fit_parent: sizeFitParent,
+    })
+  }
+  */
 }
 
 function assignSizeFit(json, options) {
   const optionSizeFit = options[OPTION_SIZE_FIT]
-  if (optionSizeFit) {
+  if (optionSizeFit != null) {
     const sizeFitterParam = getSizeFitterParam(optionSizeFit)
+    console.log('----------------------------------------', optionSizeFit)
+    console.log(sizeFitterParam)
     if (sizeFitterParam != null) {
       Object.assign(json, {
         size_fitter: sizeFitterParam,
@@ -933,7 +960,7 @@ async function assignViewport(
     }
     await funcForEachChild(null, child => {
       const childBounds = getGlobalBounds(child)
-      calcContentBounds.addBounds(childBounds) // maskもContetBoundsの処理にいれる
+      calcContentBounds.addBounds(childBounds) // maskもContentBoundsの処理にいれる
 
       if (child === maskNode) {
         // maskはElement処理をしない
@@ -968,60 +995,34 @@ async function assignViewport(
 
     let contentJson = json['content']
 
-    if (options[OPTION_LAYOUT]) {
-      const optionLayout = options[OPTION_LAYOUT]
+    /*
+    if (options[OPTION_LAYOUT] != null) {
+      const optionLayout = options[OPTION_LAYOUT].toString().toLowerCase()
       if (
         optionLayout.includes('vertical') ||
         hasOptionParam(optionLayout, 'v')
       ) {
-        let vLayoutJson = getVLayout(json, maskNode, node.children)
-        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
-        // vLayoutJson['padding']['bottom'] = 0
-        /*
-        if (options[OPTION_PADDING_BOTTOM] != null) {
-          vLayoutJson['padding']['bottom'] =
-            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-        }
-         */
-
+        let vLayoutJson = calcLayout(json, node, maskNode, node.children)
+        vLayoutJson['method'] = 'vertical'
         Object.assign(contentJson, {
           layout: vLayoutJson,
         })
-
-        /*
-        forEachReverseElements(json.elements, elementJson => {
-          if (!hasVerticalLayout(elementJson)) {
-            // preferred-heightをつける
-            Object.assign(elementJson, {
-              preferred_height: elementJson.h
-            })
-          }
-        })
-        */
-      } else {
-        /*
-         // V_LAYOUTではない場合､Contentの上部がコンテンツ高さに影響する
-         const padding_top =
-           calcContentBounds.bounds.y - getGlobalDrawBounds(maskNode).y
-         json["content_h"] += padding_top
-         */
       }
       if (options[OPTION_GRID_LAYOUT]) {
-        let gridLayoutJson = getVLayout(json, maskNode, node.children) //TODO: グリッドレイアウトをV_LAYOUTで取得している
+        calcGridLayout(json, node)
+        let gridLayoutJson = calcLayout(json, node, maskNode, node.children)
         gridLayoutJson['method'] = 'grid'
-        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確な値がでないため　一旦0にする
-        gridLayoutJson['padding']['bottom'] = 0
-
         if (options[OPTION_PADDING_BOTTOM] != null) {
           gridLayoutJson['padding']['bottom'] =
             parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
         }
-
-        Object.assign(json, {
+        Object.assign(contentJson, {
           layout: gridLayoutJson,
         })
       }
     }
+    */
+    assignLayout(contentJson, node, maskNode, node.children, options)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -1071,41 +1072,7 @@ async function assignViewport(
 
     if (options[OPTION_LAYOUT] != null) {
       const optionLayout = options[OPTION_LAYOUT].toString()
-      if (
-        optionLayout.includes('vertical') ||
-        hasOptionParam(optionLayout, 'v')
-      ) {
-        let vlayoutJson = getVLayout(json, viewportNode, node.children)
-        // 縦スクロール､VGROUP内に可変HeightのNodeがあると､正確なPadding.Bottom値がでないため　一旦0にする
-        vlayoutJson['padding']['bottom'] = 0
-
-        if (options[OPTION_PADDING_BOTTOM] != null) {
-          vlayoutJson['padding']['bottom'] =
-            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-        }
-
-        Object.assign(contentJson, {
-          layout: vlayoutJson,
-        })
-
-        forEachReverseElements(json.elements, elementJson => {
-          if (!hasVerticalLayout(elementJson)) {
-            // preferred-heightをつける
-            Object.assign(elementJson, {
-              preferred_height: elementJson.h,
-            })
-          }
-        })
-      } else if (
-        optionLayout.includes('grid') ||
-        hasOptionParam(optionLayout, 'g')
-      ) {
-        /*
-        const optionGridLayout = options[
-          OPTION_GRID_LAYOUT
-        ].toLowerCase().replace(/-/g, '')
-         */
-        // viewportNodeから、Contentのレイアウト情報を取得する
+      if (optionLayout.includes('grid') || hasOptionParam(optionLayout, 'g')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
 
         if (scrollDirection === 'vertical') {
@@ -1119,33 +1086,11 @@ async function assignViewport(
           })
         }
 
-        // 固定する数は、ここでは決定しない
+        // 固定する数(constraintCount)は、ここでは決定しない
         // レスポンシブに変更される数なので、アプリケーション側で対応する
-        // 上下がFIXされていれば、FixedRowCountは決定してもいいかも
-        /*
-        let fixedRowCount = null
-        let fixedColumnCount = null
-
-        //グリッドレイアウト並べる個数の定義
-        if (scrollDirection === "horizontal" ) {
-          // 横スクロールのRepeatGridなら、縦の数を固定する
-          fixedRowCount = viewportNode.numRows
-        }
-        if (scrollDirection === "vertical") {
-          // 縦スクロールのRepeatGridなら、横の数を固定する
-          fixedColumnCount = viewportNode.numColumns
-        }
-        if (fixedColumnCount != null) {
-          Object.assign(gridLayoutJson, {
-            fixed_column_count: fixedColumnCount
-          })
-        }
-        if (fixedRowCount != null) {
-          Object.assign(gridLayoutJson, {
-            fixed_row_count: fixedRowCount
-          })
-        }
-        */
+        // 高さがFIXされていれば、FixedRowCountは決定してもいいかも
+        // https://forum.unity.com/threads/gridlayout-contentsizefitter-doesnt-work-in-4-6-1p3.286353/
+        // ここで、GridLayout、ContentSizeFitterをしたうえで、constraintCountを決めるMonoBehaviourサンプルがある
 
         Object.assign(contentJson, {
           layout: gridLayoutJson,
@@ -1155,6 +1100,7 @@ async function assignViewport(
   }
 
   assignContentSizeFit(json, options)
+  assignSizeFit(json, options)
 
   // scrollオプションが設定されていれば、scroll情報を埋め込む
   if (optionScroll) {
@@ -1166,7 +1112,13 @@ async function assignViewport(
     })
   }
 
-  assignSizeFit(json, options)
+  if (options[OPTION_CONTENT_FIX] != null) {
+    let contentJson = json['content']
+    Object.assign(contentJson, {
+      fix: options[OPTION_CONTENT_FIX],
+    })
+  }
+
   assignDrawResponsiveParameter(json, node)
 }
 
@@ -1176,6 +1128,7 @@ async function assignViewport(
  */
 function sortElementsByPositionAsc(jsonElements) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
+  if (jsonElements == null) return
   jsonElements.sort((elemA, elemB) => {
     const a_y = elemA['component'] ? Number.MAX_VALUE : elemA['y']
     const b_y = elemB['component'] ? Number.MAX_VALUE : elemB['y']
@@ -1229,6 +1182,9 @@ function getGridLayoutFromRepeatGrid(repeatGrid) {
 /**
  * 子供(コンポーネント化するもの･withoutNodeを除く)の全体サイズと
  * 子供の中での最大Width、Heightを取得する
+ * @param {SceneNodeList} nodeList
+ * @param {SceneNodeClass} withoutNode
+ * @returns {{node_max_height: number, node_max_width: number, bounds: Bounds}}
  */
 function getNodeListBounds(nodeList, withoutNode) {
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
@@ -1253,67 +1209,68 @@ function getNodeListBounds(nodeList, withoutNode) {
 }
 
 /**
- * HLayoutパラメータを生成する
- * @param json
- * @param viewportNode
- * @param nodeChildren
- * @returns {{padding: {top: number, left: number, bottom: number, right: number}, method: string}}
- */
-function getHLayout(json, viewportNode, nodeChildren) {
-  return {
-    method: 'horizontal',
-    padding: {
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-    },
-  }
-}
-
-/**
- * VLayoutパラメータを生成する
- * ※List､LayoutGroup､Viewport共通
- * AreaNode　と　json.elementsの子供情報から
- * Spacing､Padding､Alignment情報を生成する
- * 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
- * そのため､json.elementsは予めソートしておくことが必要
- * TODO:　レイアウト取得ができる共通関数がほしい
- * @param {*} json
- * @param {SceneNode} viewportNode
+ * Viewport内の、オブジェクトリストから Paddingを計算する
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
  * @param {SceneNodeList} nodeChildren
+ * @returns {{padding: {top: number, left: number, bottom: number, right: number}, cell_max_height: number, cell_max_width: number}}
  */
-function getVLayout(json, viewportNode, nodeChildren) {
-  // Paddingを取得するため､子供(コンポーネント化するもの･Areaを除く)のサイズを取得する
+function getViewportPaddingAndCellMaxSize(
+  viewportNode,
+  maskNode,
+  nodeChildren,
+) {
+  // Paddingを取得するため､子供(コンポーネント化するもの･maskを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
-  let childrenCalcBounds = getNodeListBounds(nodeChildren, viewportNode)
+  let childrenCalcBounds = getNodeListBounds(nodeChildren, maskNode)
   //
   let jsonVLayout = {}
   // Paddingの計算
-  let viewportBounds = getGlobalDrawBounds(viewportNode)
+  let viewportBounds = getGlobalDrawBounds(viewportNode) // 描画でのサイズを取得する
   const childrenBounds = childrenCalcBounds.bounds
-  const paddingLeft = childrenBounds.x - viewportBounds.x
-  const paddingTop = childrenBounds.y - viewportBounds.y
-  const paddingRight =
+  let paddingLeft = childrenBounds.x - viewportBounds.x
+  if (paddingLeft < 0) paddingLeft = 0
+  let paddingTop = childrenBounds.y - viewportBounds.y
+  if (paddingTop < 0) paddingTop = 0
+  let paddingRight =
     viewportBounds.x +
     viewportBounds.width -
     (childrenBounds.x + childrenBounds.width)
-  const paddingBottom =
+  if (paddingRight < 0) paddingRight = 0
+  let paddingBottom =
     viewportBounds.y +
     viewportBounds.height -
     (childrenBounds.y + childrenBounds.height)
-  Object.assign(jsonVLayout, {
-    method: 'vertical',
+  if (paddingBottom < 0) paddingBottom = 0
+  return {
     padding: {
       left: paddingLeft,
       right: paddingRight,
       top: paddingTop,
       bottom: paddingBottom,
     },
-    cell_max_width: childrenCalcBounds.node_max_Width,
+    cell_max_width: childrenCalcBounds.node_max_width,
     cell_max_height: childrenCalcBounds.node_max_height,
-  })
+  }
+}
 
+/**
+ * Layoutパラメータを生成する
+ * ※List､LayoutGroup､Viewport共通
+ * AreaNode　と　json.elementsの子供情報から
+ * Spacing､Padding､Alignment情報を生成する
+ * Baum2にわたすにはmethodが必要
+ * @param {*} json
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
+ * @param {SceneNodeList} nodeChildren
+ */
+function calcLayout(json, viewportNode, maskNode, nodeChildren) {
+  let jsonLayout = getViewportPaddingAndCellMaxSize(
+    viewportNode,
+    maskNode,
+    nodeChildren,
+  )
   // componentの無いelemリストを作成する
   let elements = []
   forEachReverseElements(json.elements, element => {
@@ -1323,129 +1280,221 @@ function getVLayout(json, viewportNode, nodeChildren) {
     }
   })
 
-  // 子供の1個め､2個め(コンポーネント化するものを省く)を見てSpacing､ChildAlignmentを決める
-  // そのため､json.elementsは予めソートしておくことが必要
-  // childrenでは､ソートされていないため､使用できない
+  // spacingの計算
+  // 最小の隙間をもつ elemV elemHを探す
+  // TODO: elem0と一つにせず、最も左にあるもの、最も上にあるものを選出するとすると　ルールとしてわかりやすい
   const elem0 = elements[0]
-  let elem1 = null
 
+  if (elem0 == null) return jsonLayout
+
+  let elemV = null
+  let elemH = null
+
+  let spacing_x = null
+  let spacing_y = null
+
+  const elem0Top = elem0.y + elem0.h / 2
+  const elem0Bottom = elem0.y - elem0.h / 2
+  const elem0Left = elem0.x - elem0.w / 2
+  const elem0Right = elem0.x + elem0.w / 2
   // 縦にそこそこ離れているELEMを探す
   for (let i = 1; i < elements.length; i++) {
-    // そこそこ離れている判定 少々のズレに目をつぶる
-    if (Math.abs(elem0.y - elements[i].y) > (elem0.h / 2) * 0.3 + 2) {
-      elem1 = elements[i]
-      break
+    const elem = elements[i]
+    const elemTop = elem.y + elem.h / 2
+    const elemBottom = elem.y - elem.h / 2
+    const elemLeft = elem.x - elem.w / 2
+    const elemRight = elem.x + elem.w / 2
+
+    // 縦ズレをさがす
+    if (elem0Bottom >= elemTop) {
+      let space = elem0Bottom - elemTop
+      if (spacing_y == null || spacing_y > space) {
+        elemV = elem
+        spacing_y = space
+      }
+    }
+    if (elem0Top <= elemBottom) {
+      let space = elemBottom - elem0Top
+      if (spacing_y == null || spacing_y > space) {
+        elemV = elem
+        spacing_y = space
+      }
+    }
+
+    // 横ズレをさがす
+    if (elem0Right < elemLeft) {
+      let space = elemLeft - elem0Right
+      if (spacing_x == null || spacing_x > space) {
+        elemH = elem
+        spacing_x = space
+      }
+    }
+    if (elem0Left > elemRight) {
+      let space = elem0Left - elemRight
+      if (spacing_x == null || spacing_x > space) {
+        elemH = elem
+        spacing_x = space
+      }
     }
   }
-  if (elem0 && elem1) {
-    // spacingの計算
-    // ソートした上で､elem0とelem1で計算する 簡易的にやっている
-    const spacing_y = elem1.y - elem1.h / 2 - (elem0.y + elem0.h / 2)
-    if (Number.isFinite(spacing_y)) {
-      Object.assign(jsonVLayout, {
-        spacing_y: spacing_y,
-      })
-    }
-    // left揃えか
-    if (approxEqual(elem0.x, elem1.x)) {
-      Object.assign(jsonVLayout, {
-        child_alignment: 'left',
-      })
-    } else if (approxEqual(elem0.x + elem0.w / 2, elem1.x + elem1.w / 2)) {
-      Object.assign(jsonVLayout, {
-        child_alignment: 'right',
-      })
-    } else {
-      Object.assign(jsonVLayout, {
-        child_alignment: 'center',
-      })
-    }
-  }
-  // items全部が stretchx:true なら　ChildForceExpand.width = true
-  const foundNotStretchX = elements.forEach(elem => {
-    return elem['stretchx'] !== true
-  })
-  if (!foundNotStretchX) {
-    Object.assign(jsonVLayout, {
-      child_force_expand_width: true,
+
+  if (spacing_x != null) {
+    Object.assign(jsonLayout, {
+      spacing_x: spacing_x,
     })
   }
 
+  if (spacing_y != null) {
+    Object.assign(jsonLayout, {
+      spacing_y: spacing_y,
+    })
+  }
+
+  let child_alignment = ''
+  // 縦ズレ参考Elemと比較し、横方向child_alignmentを計算する
+  if (elem0 && elemV) {
+    // left揃えか
+    if (approxEqual(elem0.x - elem0.w / 2, elemV.x - elemV.w / 2)) {
+      child_alignment += 'left'
+    } else if (approxEqual(elem0.x + elem0.w / 2, elemV.x + elemV.w / 2)) {
+      child_alignment += 'right'
+    } else if (approxEqual(elem0.x, elemV.x)) {
+      child_alignment += 'center'
+    }
+  }
+
+  // 横ズレ参考Elemと比較し、縦方向child_alignmentを計算する
+  if (elem0 && elemH) {
+    // left揃えか
+    if (approxEqual(elem0.y - elem0.h / 2, elemV.y - elemV.h / 2)) {
+      child_alignment += 'top'
+    } else if (approxEqual(elem0.y + elem0.h / 2, elemV.y + elemV.h / 2)) {
+      child_alignment += 'bottom'
+    } else if (approxEqual(elem0.y, elemV.y)) {
+      child_alignment += 'middle'
+    }
+  }
+
+  if (child_alignment != '') {
+    Object.assign(jsonLayout, {
+      child_alignment: child_alignment,
+    })
+  }
+
+  /*
+  // items全部が stretchx:true なら　ChildForceExpand.width = true
+  const foundNotStretchX = elements.forEach(elem => {
+    return elem["stretchx"] !== true
+  })
+  if (!foundNotStretchX) {
+    Object.assign(jsonVLayout, {
+      child_force_expand_width: true
+    })
+  }
+  */
+
+  return jsonLayout
+}
+
+/**
+ * @param json
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
+ * @param {SceneNodeList} children
+ * @returns {{padding: {top: number, left: number, bottom: number, right: number}, cell_max_height: number, cell_max_width: number}}
+ */
+function calcVLayout(json, viewportNode, maskNode, children) {
+  // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
+  sortElementsByPositionAsc(json.elements)
+  let jsonVLayout = calcLayout(json, viewportNode, maskNode, children)
+  jsonVLayout['method'] = 'vertical'
   return jsonVLayout
 }
 
-function assignVLayout(json, node) {
-  // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
-  sortElementsByPositionAsc(json.elements)
-  let jsonVLayout = getVLayout(json, node, node.children)
-  Object.assign(json, {
-    layout: jsonVLayout,
-  })
-}
-
-function assignHLayout(json, node) {
+/**
+ * @param json
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
+ * @param {SceneNodeList} children
+ * @returns {{padding: {top: number, left: number, bottom: number, right: number}, cell_max_height: number, cell_max_width: number}}
+ */
+function calcHLayout(json, viewportNode, maskNode, children) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   //sortElementsByPositionAsc(json.elements)
-  let jsonHLayout = getHLayout(json, node, node.children)
-  Object.assign(json, {
-    layout: jsonHLayout,
-  })
+  let jsonHLayout = calcLayout(json, viewportNode, maskNode, children)
+  jsonHLayout['method'] = 'horizontal'
+  return jsonHLayout
 }
 
 /**
- *
  * @param json
- * @param {SceneNode} node
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
+ * @param {SceneNodeList} children
+ * @returns {{padding: {top: number, left: number, bottom: number, right: number}, cell_max_height: number, cell_max_width: number}}
  */
-function assignGridLayout(json, node) {
+function calcGridLayout(json, viewportNode, maskNode, children) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
   let jsonLayout
-  if (node.constructor.name == 'RepeatGrid') {
-    jsonLayout = getGridLayoutFromRepeatGrid(node)
+  if (viewportNode.constructor.name === 'RepeatGrid') {
+    jsonLayout = getGridLayoutFromRepeatGrid(viewportNode)
   } else {
     // RepeatGridでなければ、VLayout情報から取得する
-    jsonLayout = getVLayout(json, node, node.children)
+    jsonLayout = calcLayout(json, viewportNode, maskNode, children)
     jsonLayout['method'] = 'grid'
   }
-  Object.assign(json, {
-    layout: jsonLayout,
-  })
+  return jsonLayout
 }
 
 /**
  *
  * @param json
- * @param {SceneNode} node
+ * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} maskNode
+ * @param {SceneNodeList} children
  * @param options
  */
-function assignLayout(json, node, options) {
-  const optionLayout = options[OPTION_LAYOUT]
-  if (options[OPTION_LAYOUT] == null) return
+function assignLayout(json, viewportNode, maskNode, children, options) {
+  if (options == null || options[OPTION_LAYOUT] == null) return
+  let optionLayout = options[OPTION_LAYOUT]
   const optionLayoutString = optionLayout.toString().toLowerCase()
+  let layoutJson = null
   if (
     optionLayoutString.includes('vertical') ||
     hasOptionParam(optionLayoutString, 'v')
   ) {
-    assignVLayout(json, node)
-    return
-  }
-
-  if (
+    layoutJson = calcVLayout(json, viewportNode, maskNode, children)
+  } else if (
     optionLayoutString.includes('horizontal') ||
     hasOptionParam(optionLayoutString, 'h')
   ) {
-    assignHLayout(json, node)
-    return
-  }
-
-  if (
+    layoutJson = calcHLayout(json, viewportNode, maskNode, children)
+  } else if (
     optionLayoutString.includes('grid') ||
     hasOptionParam(optionLayoutString, 'g')
   ) {
-    assignGridLayout(json, node)
-    return
+    layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
+  if (layoutJson == null) return
+  Object.assign(layoutJson, {
+    control_child_size_width: true,
+    control_child_size_height: true,
+  })
+  if (optionLayoutString.includes('expand-w')) {
+    Object.assign(layoutJson, {
+      child_force_expand_width: true,
+    })
+  }
+  if (optionLayoutString.includes('expand-h')) {
+    Object.assign(layoutJson, {
+      child_force_expand_height: true,
+    })
+  }
+
+  Object.assign(json, {
+    layout: layoutJson,
+  })
 }
 
 /**
@@ -1469,6 +1518,7 @@ function hasVerticalLayout(elementJson) {
  * @param {*} func
  */
 function forEachReverseElements(elements, func) {
+  if (elements == null) return
   for (let i = elements.length - 1; i >= 0; i--) {
     //後ろから追加していく
     let elementJson = elements[i]
@@ -1517,7 +1567,7 @@ async function assignGroup(
   assignCanvasGroup(json, node, options)
   await funcForEachChild()
 
-  assignLayout(json, node, options)
+  assignLayout(json, node, node, node.children, options)
   assignSizeFit(json, options)
 
   /*
@@ -1617,7 +1667,8 @@ async function nodeGroup(
       }
     }
 
-    assignLayout(json, node, options)
+    assignSizeFit(json, options)
+    assignLayout(json, node, node, node.children, options)
 
     assignDrawResponsiveParameter(json, node)
     await funcForEachChild()
@@ -1753,17 +1804,17 @@ class CalcBounds {
 /**
  * 文字列の中に所定のパラメータ文字列がるかチェックする
  * option = x
- * option = -x-
- * option = -x
+ * option = ,x,
+ * option = ,x
  * @param {string} optionStr
  * @param {string} paramStr
  */
 function hasOptionParam(optionStr, paramStr) {
   if (optionStr == null || paramStr == null) return null
   if (optionStr === paramStr) return true
-  if (optionStr.startsWith(`${paramStr}-`)) return true
-  if (optionStr.indexOf(`-${paramStr}-`) >= 0) return true
-  return optionStr.endsWith(`-${paramStr}`)
+  if (optionStr.startsWith(`${paramStr},`)) return true
+  if (optionStr.indexOf(`,${paramStr},`) >= 0) return true
+  return optionStr.endsWith(`,${paramStr}`)
 }
 
 /**
@@ -1809,98 +1860,16 @@ function calcResponsiveParameter(
   let fixOptionLeft = null
   let fixOptionRight = null
 
-  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
-
-  const bounds = hashBounds[node.guid]
-  if (!bounds || !bounds['before'] || !bounds['after']) return null
-  const beforeBounds = bounds['before'][boundsParameterName]
-  const afterBounds = bounds['after'][boundsParameterName]
-  const parentBounds = hashBounds[node.parent.guid]
-  if (!parentBounds || !parentBounds['before'] || !parentBounds['after'])
-    return null
-
-  const parentBeforeBounds = parentBounds['before'][boundsParameterName]
-  const parentAfterBounds = parentBounds['after'][boundsParameterName]
-
-  // console.log(parentBeforeBounds)
-  // console.log(beforeBounds)
-
   const optionFix = options[OPTION_FIX]
-
-  // X座標
-  // console.log(node.name + '-------------------')
-  // console.log(beforeBounds.width, afterBounds.width)
-  if (
-    optionFix == null &&
-    approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
-  ) {
-    fixOptionWidth = true
-  }
-  if (
-    optionFix == null &&
-    approxEqual(
-      beforeBounds.x - parentBeforeBounds.x,
-      afterBounds.x - parentAfterBounds.x,
-    )
-  ) {
-    // ロックされている
-    fixOptionLeft = true
-  } else {
-    // 親のX座標･Widthをもとに､Left座標がきまる
-    fixOptionLeft =
-      (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
-  }
-
-  const beforeRight =
-    parentBeforeBounds.x +
-    parentBeforeBounds.width -
-    (beforeBounds.x + beforeBounds.width)
-  const afterRight =
-    parentAfterBounds.x +
-    parentAfterBounds.width -
-    (afterBounds.x + afterBounds.width)
-
-  if (optionFix == null && approxEqual(beforeRight, afterRight, 0.001)) {
-    // ロックされている 0.001以下の誤差が起きることを確認した
-    fixOptionRight = true
-  } else {
-    // 親のX座標･Widthをもとに､割合でRight座標がきまる
-    fixOptionRight =
-      (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
-  }
-
-  // Y座標
-  if (
-    optionFix == null &&
-    approxEqual(beforeBounds.height, afterBounds.height, 0.0005)
-  ) {
-    fixOptionHeight = true
-  }
-  if (
-    optionFix == null &&
-    approxEqual(
-      beforeBounds.y - parentBeforeBounds.y,
-      afterBounds.y - parentAfterBounds.y,
-    )
-  ) {
-    fixOptionTop = true
-  } else {
-    // 親のY座標･heightをもとに､Top座標がきまる
-    fixOptionTop =
-      (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
-  }
-  const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
-  const afterBottom = parentAfterBounds.ey - afterBounds.ey
-  if (optionFix == null && approxEqual(beforeBottom, afterBottom, 0.0005)) {
-    fixOptionBottom = true
-  } else {
-    // 親のY座標･Heightをもとに､Bottom座標がきまる
-    fixOptionBottom =
-      (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
-  }
-
   if (optionFix != null) {
-    // オプションが指定してあれば､上書きする
+    // オプションが設定されたら、全ての設定が決まる
+    fixOptionWidth = false
+    fixOptionHeight = false
+    fixOptionTop = false
+    fixOptionBottom = false
+    fixOptionLeft = false
+    fixOptionRight = false
+
     let fixOption = optionFix.toLowerCase()
 
     if (
@@ -1929,7 +1898,6 @@ function calcResponsiveParameter(
     if (hasOptionParam(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
       fixOptionRight = true
     }
-
     if (hasOptionParam(fixOption, 'x')) {
       fixOptionLeft = true
       fixOptionRight = true
@@ -1940,9 +1908,111 @@ function calcResponsiveParameter(
     }
   }
 
-  // console.log('left:' + fixOptionLeft, 'right:' + fixOptionRight)
-  // console.log('top:' + fixOptionTop, 'bottom:' + fixOptionBottom)
-  // console.log('width:' + fixOptionWidth, 'height:' + fixOptionHeight)
+  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
+
+  const bounds = hashBounds[node.guid]
+  if (!bounds || !bounds['before'] || !bounds['after']) return null
+  const beforeBounds = bounds['before'][boundsParameterName]
+  const afterBounds = bounds['after'][boundsParameterName]
+  const parentBounds = hashBounds[node.parent.guid]
+  if (!parentBounds || !parentBounds['before'] || !parentBounds['after'])
+    return null
+
+  const parentBeforeBounds = parentBounds['before'][boundsParameterName]
+  const parentAfterBounds = parentBounds['after'][boundsParameterName]
+
+  // console.log(parentBeforeBounds)
+  // console.log(beforeBounds)
+
+  // X座標
+  // console.log(node.name + '-------------------')
+  // console.log(beforeBounds.width, afterBounds.width)
+  if (fixOptionWidth == null) {
+    if (approxEqual(beforeBounds.width, afterBounds.width, 0.0005)) {
+      fixOptionWidth = true
+    } else {
+      fixOptionWidth = false
+    }
+  }
+
+  if (
+    fixOptionLeft == null &&
+    approxEqual(
+      beforeBounds.x - parentBeforeBounds.x,
+      afterBounds.x - parentAfterBounds.x,
+    )
+  ) {
+    // ロックされている
+    fixOptionLeft = true
+  } else {
+    // 親のX座標･Widthをもとに､Left座標がきまる
+    fixOptionLeft =
+      (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
+  }
+
+  const beforeRight =
+    parentBeforeBounds.x +
+    parentBeforeBounds.width -
+    (beforeBounds.x + beforeBounds.width)
+  const afterRight =
+    parentAfterBounds.x +
+    parentAfterBounds.width -
+    (afterBounds.x + afterBounds.width)
+
+  if (fixOptionRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
+    // ロックされている 0.001以下の誤差が起きることを確認した
+    fixOptionRight = true
+  } else {
+    // 親のX座標･Widthをもとに､割合でRight座標がきまる
+    fixOptionRight =
+      (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
+  }
+
+  // Y座標
+  if (fixOptionHeight == null) {
+    if (approxEqual(beforeBounds.height, afterBounds.height, 0.0005)) {
+      fixOptionHeight = true
+    } else {
+      fixOptionHeight = false
+    }
+  }
+
+  if (
+    fixOptionTop == null &&
+    approxEqual(
+      beforeBounds.y - parentBeforeBounds.y,
+      afterBounds.y - parentAfterBounds.y,
+    )
+  ) {
+    fixOptionTop = true
+  } else {
+    // 親のY座標･heightをもとに､Top座標がきまる
+    fixOptionTop =
+      (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
+  }
+
+  const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
+  const afterBottom = parentAfterBounds.ey - afterBounds.ey
+  if (
+    fixOptionBottom == null &&
+    approxEqual(beforeBottom, afterBottom, 0.0005)
+  ) {
+    fixOptionBottom = true
+  } else {
+    // 親のY座標･Heightをもとに､Bottom座標がきまる
+    fixOptionBottom =
+      (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+  }
+
+  // anchorの値を決める
+  // ここまでに
+  // fixOptionWidth,fixOptionHeight : true || false
+  // fixOptionTop,fixOptionBottom : true || number
+  // fixOptionLeft,fixOptionRight : true || number
+  // になっていないといけない
+  // console.log("left:" + fixOptionLeft, "right:" + fixOptionRight)
+  // console.log("top:" + fixOptionTop, "bottom:" + fixOptionBottom)
+  // console.log("width:" + fixOptionWidth, "height:" + fixOptionHeight)
 
   let offsetMin = {
     x: null,
@@ -1964,7 +2034,7 @@ function calcResponsiveParameter(
     // 親のX座標から､X座標が固定値できまる
     anchorMin.x = 0
     offsetMin.x = beforeBounds.x - parentBeforeBounds.x
-  } else if (fixOptionLeft != null) {
+  } else {
     anchorMin.x = fixOptionLeft
     offsetMin.x = 0
   }
@@ -1972,7 +2042,7 @@ function calcResponsiveParameter(
     // 親のX座標から､X座標が固定値できまる
     anchorMax.x = 1
     offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
-  } else if (fixOptionRight != null) {
+  } else {
     anchorMax.x = 1 - fixOptionRight
     offsetMax.x = 0
   }
@@ -1998,7 +2068,7 @@ function calcResponsiveParameter(
     // 親のY座標から､Y座標が固定値できまる
     anchorMax.y = 1
     offsetMax.y = -(beforeBounds.y - parentBeforeBounds.y)
-  } else if (fixOptionTop != null) {
+  } else {
     anchorMax.y = 1 - fixOptionTop
     offsetMax.y = 0
   }
@@ -2006,7 +2076,7 @@ function calcResponsiveParameter(
     // 親のY座標から､Y座標が固定値できまる
     anchorMin.y = 0
     offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
-  } else if (fixOptionBottom != null) {
+  } else {
     anchorMin.y = fixOptionBottom
     offsetMin.y = 0
   }
@@ -2059,8 +2129,8 @@ function calcResponsiveParameter(
       width: fixOptionWidth,
       height: fixOptionHeight,
     },
-    anchor_min: anchorMin, // ここまできてもNULLでおわるケースがある　ルート直下で、四方どこにもロックされていない場合
-    anchor_max: anchorMax, // ここまできてもNULLでおわるケースがある　ルート直下で、四方どこにもロックされていない場合
+    anchor_min: anchorMin,
+    anchor_max: anchorMax,
     offset_min: offsetMin,
     offset_max: offsetMax,
   }
@@ -2529,6 +2599,7 @@ function parseNameOptions(node) {
       options[OPTION_COMMENT_OUT] = true
     }
 
+    /*
     // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
     // viewport　(Unityではここで､vgroupはもたない)
     //   content +vgroup +content_size_fitter (これらはBaum2で付与される)
@@ -2536,6 +2607,7 @@ function parseNameOptions(node) {
     if (parentNameOptions.options[OPTION_V_LAYOUT] != null) {
       options[OPTION_V_LAYOUT] = true
     }
+    */
   }
 
   let optionArray = nameStr.split('@')
