@@ -904,9 +904,9 @@ async function createViewport(
 
     let contentJson = json[STR_CONTENT]
 
-    if (options[OPTION_LAYOUT] != null) {
-      const optionLayout = options[OPTION_LAYOUT].toString()
-      if (optionLayout.includes('grid') || hasOptionParam(optionLayout, 'g')) {
+    const contentOptionLayout = getContentOption(options,OPTION_LAYOUT)
+    if (contentOptionLayout != null) {
+      if (contentOptionLayout.includes('grid') || hasOptionParam(contentOptionLayout, 'g')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
 
         // スクロールの方向が横なら、並びは縦から
@@ -1824,7 +1824,7 @@ function calcResponsiveParameter(
     const nameOptions = parseNameOptions(node)
     options = nameOptions.options
   }
-  console.log(`----------------------${node.name}----------------------`)
+  // console.log(`----------------------${node.name}----------------------`)
   let fixOptionWidth = null
   let fixOptionHeight = null
   let fixOptionTop = null
@@ -1843,7 +1843,6 @@ function calcResponsiveParameter(
     fixOptionLeft = options.left
     fixOptionRight = options.right
   }
-  console.log(fixOptionTop, fixOptionBottom)
 
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
 
