@@ -30,9 +30,13 @@ var optionDefaultTextMP = false
 // Textノードは強制的にImageに変換する
 var optionForceTextToImage = false
 
+const STR_CONTENT = 'content'
+const STR_VERTICAL = 'vertical'
+const STR_PREFERRED = 'preferred'
+
 // オプション文字列　全て小文字 オプションは 大文字は小文字､-は消去し判定する
-const OPTION_COMMENT_OUT = 'commentout'
-const OPTION_SUB_PREFAB = 'subprefab'
+const OPTION_COMMENT_OUT = 'comment-out'
+const OPTION_SUB_PREFAB = 'sub-prefab'
 const OPTION_BUTTON = 'button'
 const OPTION_SLIDER = 'slider'
 const OPTION_SCROLLBAR = 'scrollbar'
@@ -41,34 +45,58 @@ const OPTION_IMAGE = 'image'
 const OPTION_INPUT = 'input'
 const OPTION_TOGGLE = 'toggle'
 const OPTION_SCROLLER = 'scroller'
-const OPTION_PIVOT = 'pivot'
 const OPTION_FIX = 'fix'
 const OPTION_TEXT = 'text'
 const OPTION_TEXTMP = 'textmp' // textmeshpro
-const OPTION_TOGGLE_GROUP = 'togglegroup'
-const OPTION_V_LAYOUT = 'vlayout'
-const OPTION_H_LAYOUT = 'hlayout'
-const OPTION_GRID_LAYOUT = 'gridlayout' // 19/12/04 glayoutから変更
+const OPTION_TOGGLE_GROUP = 'toggle-group'
 const OPTION_VIEWPORT = 'viewport'
-const OPTION_CANVAS_GROUP = 'canvasgroup' // 削除予定
+const OPTION_CANVAS_GROUP = 'canvas-group' // 削除予定
 const OPTION_COMPONENT = 'component'
-const OPTION_VERTICAL_FIT = 'verticalfit'
-const OPTION_MIN_HEIGHT = 'minheight'
-const OPTION_PREFERRED_HEIGHT = 'preferredheight'
-const OPTION_PRESERVE_ASPECT = 'preserveaspect'
+const OPTION_MIN_HEIGHT = 'min-height'
+const OPTION_PREFERRED_HEIGHT = 'preferred-height'
+const OPTION_PRESERVE_ASPECT = 'preserve-aspect'
 const OPTION_BLANK = 'blank'
 const OPTION_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
-const OPTION_V_ALIGN = 'valign' //テキストの縦方向のアライメント XDの設定に追記される
-const OPTION_RAYCAST_TARGET = 'raycasttarget'
-const OPTION_PADDING_BOTTOM = 'paddingbottom' // layout設定に有効になるオプション
-const OPTION_IMAGE_SCALE = 'imagescale'
-const OPTION_IMAGE_TYPE = 'imagetype'
-const OPTION_NO_SLICE = 'noslice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
-const OPTION_9SLICE = '9slice' // 9スライス
+const OPTION_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
+const OPTION_RAYCAST_TARGET = 'raycast-target' // 削除予定
+const OPTION_PADDING_BOTTOM = 'padding-bottom' // layout設定に有効になるオプション
+const OPTION_IMAGE_SCALE = 'image-scale'
+const OPTION_IMAGE_TYPE = 'image-type'
+const OPTION_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
+const OPTION_IMAGE_SLICE = 'image-slice' // 9スライス
 const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
-const OPTION_CONTENT_SIZE_FIT = 'contentsizefit' //自動的に生成される$ContentのSizeFitterオプション
-const OPTION_SIZE_FIT = 'sizefit' //自身のSizeFitterオプション
-const OPTION_CONTENT_FIX = 'contentfix'
+const OPTION_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
+const OPTION_CONTENT = 'content'
+
+/**
+ * CSS Parser
+ * @author Jason Miller https://jsfiddle.net/user/developit/fiddles/ https://jsfiddle.net/developit/vzkckrw4/
+ * @param {string} text
+ * @return {[]}
+ */
+function parseCss(text) {
+  let tokenizer = /([\s\S]+?)\{([\s\S]*?)\}/gi,
+    rules = [],
+    token
+  text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  while ((token = tokenizer.exec(text))) {
+    let style = parseRule(token[2].trim())
+    const selector = token[1].trim().replace(/\s*\,\s*/, ', ')
+    //Object.assign( rules[selector], style)
+    rules.push({ name: selector, options: style })
+  }
+  return rules
+}
+
+function parseRule(css) {
+  let tokenizer = /\s*([a-z\-]+)\s*:\s*((?:[^;]*url\(.*?\)[^;]*|[^;]*)*)\s*(?:;|$)/gi,
+    obj = {},
+    token
+  while ((token = tokenizer.exec(css))) {
+    obj[token[1].toLowerCase()] = token[2]
+  }
+  return obj
+}
 
 function checkOptionCommentOut(options) {
   return checkBoolean(options[OPTION_COMMENT_OUT])
@@ -91,7 +119,7 @@ function checkOptionScrollbar(options) {
 }
 
 function checkOptionImage(options) {
-  if (checkBoolean(options[OPTION_9SLICE])) {
+  if (checkBoolean(options[OPTION_IMAGE_SLICE])) {
     return true
   }
   return checkBoolean(options[OPTION_IMAGE])
@@ -263,14 +291,14 @@ function getGlobalBounds(node) {
  * x､yはCenterMiddleでの座標になる
  * @param {SceneNodeClass} node
  * @param {SceneNodeClass} base
- * @return {Bounds}
+ * @return {{cx: number, cy: number, width: number, height: number}}
  */
 function getDrawBoundsCMInBase(node, base) {
   const nodeDrawBounds = getGlobalDrawBounds(node)
   const baseBounds = getGlobalDrawBounds(base)
   return {
-    x: nodeDrawBounds.x - baseBounds.x + nodeDrawBounds.width / 2,
-    y: nodeDrawBounds.y - baseBounds.y + nodeDrawBounds.height / 2,
+    cx: nodeDrawBounds.x - baseBounds.x + nodeDrawBounds.width / 2,
+    cy: nodeDrawBounds.y - baseBounds.y + nodeDrawBounds.height / 2,
     width: nodeDrawBounds.width,
     height: nodeDrawBounds.height,
   }
@@ -294,14 +322,14 @@ function getBoundsInBase(bounds, baseBounds) {
 /**
  * @param {SceneNodeClass} node
  * @param {SceneNodeClass} base
- * @return {Bounds}
+ * @return {{cx: number, cy: number, width: number, height: number}}
  */
 function getBoundsCMInBase(node, base) {
   const nodeBounds = getGlobalBounds(node)
   const baseBounds = getGlobalBounds(base)
   return {
-    x: nodeBounds.x - baseBounds.x + nodeBounds.width / 2,
-    y: nodeBounds.y - baseBounds.y + nodeBounds.height / 2,
+    cx: nodeBounds.x - baseBounds.x + nodeBounds.width / 2,
+    cy: nodeBounds.y - baseBounds.y + nodeBounds.height / 2,
     width: nodeBounds.width,
     height: nodeBounds.height,
   }
@@ -416,9 +444,9 @@ function assignResponsiveParameter(json, node) {
  * CenterMiddle座標と､サイズをアサインする
  * XY座標によるElementsソートなどに使われる
  * @param {*} json
- * @param {Bounds} bounds
+ * @param {{cx:number, cy:number, width:number, height:number}} bounds
  */
-function assignBounds(json, bounds) {
+function assignBoundsCM(json, bounds) {
   Object.assign(json, {
     x: bounds.x,
     y: bounds.y,
@@ -467,8 +495,8 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
   const drawBoundsCM = getDrawBoundsCMInBase(node, root)
   Object.assign(json, {
     image: '../symbol/' + fileName,
-    x: drawBoundsCM.x,
-    y: drawBoundsCM.y,
+    x: drawBoundsCM.cx,
+    y: drawBoundsCM.cy,
     w: drawBoundsCM.width,
     h: drawBoundsCM.height,
     opacity: 100,
@@ -542,14 +570,14 @@ async function assignImage(
   }
 
   let fileExtension = '.png'
-  if (checkBoolean(options[OPTION_NO_SLICE])) {
+  if (checkBoolean(options[OPTION_IMAGE_NO_SLICE])) {
     fileExtension = '-noslice.png'
   }
-  if (options[OPTION_9SLICE]) {
+  if (options[OPTION_IMAGE_SLICE]) {
     // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
     //var result = pattern.exec(options[OPTION_9SLICE])
-    const result = options[OPTION_9SLICE].match(pattern)
+    const result = options[OPTION_IMAGE_SLICE].match(pattern)
     /*
     省略については、CSSに準拠
     http://www.htmq.com/css3/border-image-slice.shtml
@@ -589,8 +617,8 @@ async function assignImage(
 
   const drawBounds = getDrawBoundsCMInBase(node, root)
   Object.assign(json, {
-    x: drawBounds.x,
-    y: drawBounds.y,
+    x: drawBounds.cx,
+    y: drawBounds.cy,
     w: drawBounds.width,
     h: drawBounds.height,
     opacity: 100,
@@ -637,6 +665,8 @@ async function assignImage(
   }
 }
 
+const STR_HORIZONTAL = 'horizontal'
+
 /**
  * 削除予定 Viewportのオプションにする
  * @param json
@@ -677,11 +707,11 @@ async function assignScroller(
       行が1つ → 横スクロール
       それ以外 → Grid
       */
-      let scrollDirection = 'vertical'
+      let scrollDirection = STR_VERTICAL
       let item0
       if (node.numColumns === 1) {
         // vertical
-        scrollDirection = 'vertical'
+        scrollDirection = STR_VERTICAL
         // item[0]を一個だけコンバート
         await funcForEachChild(1)
         // アイテムの作成
@@ -690,7 +720,7 @@ async function assignScroller(
         item0 = json.elements[0]
       } else if (node.numRows === 1) {
         // Horizontal
-        scrollDirection = 'horizontal'
+        scrollDirection = STR_HORIZONTAL
         // item[0]を一個だけコンバート
         await funcForEachChild(1)
         // items = [json.elements[0]] // TODO 対応する
@@ -700,7 +730,7 @@ async function assignScroller(
           type: 'Group',
           name: 'item0',
           layout: {
-            method: 'horizontal',
+            method: STR_HORIZONTAL,
             padding: {
               left: 0,
               right: 0,
@@ -782,8 +812,8 @@ async function assignScroller(
           spacing_x: spacing_x,
           spacing_y: spacing_y,
         },
-        x: drawBounds.x,
-        y: drawBounds.y,
+        x: drawBounds.cx,
+        y: drawBounds.cy,
         w: drawBounds.width,
         h: drawBounds.height,
         opacity: 100,
@@ -806,19 +836,15 @@ function getSizeFitterParam(option) {
   let horizontalFit = null
   let verticalFit = null
   if (option === true) {
-    horizontalFit = 'preferred'
-    verticalFit = 'preferred'
+    horizontalFit = STR_PREFERRED
+    verticalFit = STR_PREFERRED
   } else {
-    const optionStr = option
-      .toString()
-      .toLowerCase()
-      .replace(/-/g, '')
-      .toLowerCase()
-    if (optionStr.includes('childrenh') || hasOptionParam(optionStr, 'h')) {
-      horizontalFit = 'preferred'
+    const optionStr = option.toString().toLowerCase()
+    if (optionStr.includes(STR_HORIZONTAL) || hasOptionParam(optionStr, 'x')) {
+      horizontalFit = STR_PREFERRED
     }
-    if (optionStr.includes('childrenv') || hasOptionParam(optionStr, 'v')) {
-      verticalFit = 'preferred'
+    if (optionStr.includes(STR_VERTICAL) || hasOptionParam(optionStr, 'y')) {
+      verticalFit = STR_PREFERRED
     }
   }
 
@@ -845,15 +871,13 @@ function getSizeFitterParam(option) {
  * @param options
  */
 function assignContentSizeFit(json, options) {
-  let optionContentSizeFit = options[OPTION_CONTENT_SIZE_FIT]
-  if (!optionContentSizeFit) {
-    return
-  }
-  optionContentSizeFit = optionContentSizeFit.toLowerCase().replace(/-/g, '')
-  let jsonContent = json['content']
+  let optionContentSizeFit = getContentOption(options, OPTION_SIZE_FIT)
+  if (optionContentSizeFit == null) return
+  optionContentSizeFit = optionContentSizeFit.toLowerCase()
+  let jsonContent = json[STR_CONTENT]
   if (jsonContent == null) {
-    json['content'] = {}
-    jsonContent = json['content']
+    json[STR_CONTENT] = {}
+    jsonContent = json[STR_CONTENT]
   }
   const sizeFitterParam = getSizeFitterParam(optionContentSizeFit)
   if (sizeFitterParam != null) {
@@ -930,18 +954,18 @@ async function assignViewport(
   let scrollDirection = null
   let optionScroll = options[OPTION_SCROLL]
   if (optionScroll != null) {
-    optionScroll = optionScroll.toLowerCase().replace(/-/g, '')
+    optionScroll = optionScroll.toLowerCase()
     if (
-      optionScroll.includes('vertical') ||
-      hasOptionParam(optionScroll, 'v')
+      optionScroll.includes(STR_VERTICAL) ||
+      hasOptionParam(optionScroll, 'y')
     ) {
-      scrollDirection = 'vertical'
+      scrollDirection = STR_VERTICAL
     }
     if (
-      optionScroll.includes('horizontal') ||
-      hasOptionParam(optionScroll, 'h')
+      optionScroll.includes(STR_HORIZONTAL) ||
+      hasOptionParam(optionScroll, 'x')
     ) {
-      scrollDirection = 'horizontal'
+      scrollDirection = STR_HORIZONTAL
     }
   }
   if (node.constructor.name === 'Group') {
@@ -984,8 +1008,8 @@ async function assignViewport(
     Object.assign(json, {
       type: 'Viewport',
       name: name,
-      x: maskBoundsCM.x,
-      y: maskBoundsCM.y,
+      x: maskBoundsCM.cx,
+      y: maskBoundsCM.cy,
       w: maskBoundsCM.width,
       h: maskBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
@@ -993,36 +1017,7 @@ async function assignViewport(
       content: getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     })
 
-    let contentJson = json['content']
-
-    /*
-    if (options[OPTION_LAYOUT] != null) {
-      const optionLayout = options[OPTION_LAYOUT].toString().toLowerCase()
-      if (
-        optionLayout.includes('vertical') ||
-        hasOptionParam(optionLayout, 'v')
-      ) {
-        let vLayoutJson = calcLayout(json, node, maskNode, node.children)
-        vLayoutJson['method'] = 'vertical'
-        Object.assign(contentJson, {
-          layout: vLayoutJson,
-        })
-      }
-      if (options[OPTION_GRID_LAYOUT]) {
-        calcGridLayout(json, node)
-        let gridLayoutJson = calcLayout(json, node, maskNode, node.children)
-        gridLayoutJson['method'] = 'grid'
-        if (options[OPTION_PADDING_BOTTOM] != null) {
-          gridLayoutJson['padding']['bottom'] =
-            parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-        }
-        Object.assign(contentJson, {
-          layout: gridLayoutJson,
-        })
-      }
-    }
-    */
-    assignLayout(contentJson, node, maskNode, node.children, options)
+    assignContentLayout(json, node, maskNode, node.children, options)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -1054,13 +1049,13 @@ async function assignViewport(
 
     const cellWidth = viewportNode.cellSize.width * scale
     // item[0] がY方向へ移動している分
-    const cellHeight = child0BoundsCM.y + viewportNode.cellSize.height * scale
+    const cellHeight = child0BoundsCM.cy + viewportNode.cellSize.height * scale
 
     Object.assign(json, {
       type: 'Viewport',
       name: name,
-      x: viewportBoundsCM.x,
-      y: viewportBoundsCM.y,
+      x: viewportBoundsCM.cx,
+      y: viewportBoundsCM.cy,
       w: viewportBoundsCM.width,
       h: viewportBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
@@ -1068,21 +1063,24 @@ async function assignViewport(
       content: getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     })
 
-    let contentJson = json['content']
+    let contentJson = json[STR_CONTENT]
 
     if (options[OPTION_LAYOUT] != null) {
       const optionLayout = options[OPTION_LAYOUT].toString()
       if (optionLayout.includes('grid') || hasOptionParam(optionLayout, 'g')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
 
-        if (scrollDirection === 'vertical') {
+        // スクロールの方向が横なら、並びは縦から
+        if (scrollDirection === STR_VERTICAL) {
           Object.assign(gridLayoutJson, {
-            start_axis: 'horizontal',
+            start_axis: STR_HORIZONTAL,
           })
         }
-        if (scrollDirection === 'horizontal') {
+
+        // スクロールの方向が縦なら、並びは横から
+        if (scrollDirection === STR_HORIZONTAL) {
           Object.assign(gridLayoutJson, {
-            start_axis: 'vertical',
+            start_axis: STR_VERTICAL,
           })
         }
 
@@ -1112,10 +1110,10 @@ async function assignViewport(
     })
   }
 
-  if (options[OPTION_CONTENT_FIX] != null) {
-    let contentJson = json['content']
-    Object.assign(contentJson, {
-      fix: options[OPTION_CONTENT_FIX],
+  const contentFix = getContentOption(options, OPTION_CONTENT)
+  if (contentFix != null) {
+    Object.assign(contentFix, {
+      fix: getOptionFix(contentFix),
     })
   }
 
@@ -1407,7 +1405,7 @@ function calcVLayout(json, viewportNode, maskNode, children) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   sortElementsByPositionAsc(json.elements)
   let jsonVLayout = calcLayout(json, viewportNode, maskNode, children)
-  jsonVLayout['method'] = 'vertical'
+  jsonVLayout['method'] = STR_VERTICAL
   return jsonVLayout
 }
 
@@ -1422,7 +1420,7 @@ function calcHLayout(json, viewportNode, maskNode, children) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
   //sortElementsByPositionAsc(json.elements)
   let jsonHLayout = calcLayout(json, viewportNode, maskNode, children)
-  jsonHLayout['method'] = 'horizontal'
+  jsonHLayout['method'] = STR_HORIZONTAL
   return jsonHLayout
 }
 
@@ -1447,6 +1445,49 @@ function calcGridLayout(json, viewportNode, maskNode, children) {
   return jsonLayout
 }
 
+function getLayoutJson(
+  optionLayoutString,
+  json,
+  viewportNode,
+  maskNode,
+  children,
+) {
+  let layoutJson = null
+  if (
+    optionLayoutString.includes(STR_VERTICAL) ||
+    hasOptionParam(optionLayoutString, 'y')
+  ) {
+    layoutJson = calcVLayout(json, viewportNode, maskNode, children)
+  } else if (
+    optionLayoutString.includes(STR_HORIZONTAL) ||
+    hasOptionParam(optionLayoutString, 'x')
+  ) {
+    layoutJson = calcHLayout(json, viewportNode, maskNode, children)
+  } else if (
+    optionLayoutString.includes('grid') ||
+    hasOptionParam(optionLayoutString, 'g')
+  ) {
+    layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
+  }
+  if (layoutJson != null) {
+    Object.assign(layoutJson, {
+      control_child_size_width: true,
+      control_child_size_height: true,
+    })
+    if (optionLayoutString.includes('expand-x')) {
+      Object.assign(layoutJson, {
+        child_force_expand_width: true,
+      })
+    }
+    if (optionLayoutString.includes('expand-y')) {
+      Object.assign(layoutJson, {
+        child_force_expand_height: true,
+      })
+    }
+  }
+  return layoutJson
+}
+
 /**
  *
  * @param json
@@ -1459,40 +1500,38 @@ function assignLayout(json, viewportNode, maskNode, children, options) {
   if (options == null || options[OPTION_LAYOUT] == null) return
   let optionLayout = options[OPTION_LAYOUT]
   const optionLayoutString = optionLayout.toString().toLowerCase()
-  let layoutJson = null
-  if (
-    optionLayoutString.includes('vertical') ||
-    hasOptionParam(optionLayoutString, 'v')
-  ) {
-    layoutJson = calcVLayout(json, viewportNode, maskNode, children)
-  } else if (
-    optionLayoutString.includes('horizontal') ||
-    hasOptionParam(optionLayoutString, 'h')
-  ) {
-    layoutJson = calcHLayout(json, viewportNode, maskNode, children)
-  } else if (
-    optionLayoutString.includes('grid') ||
-    hasOptionParam(optionLayoutString, 'g')
-  ) {
-    layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
-  }
-  if (layoutJson == null) return
-  Object.assign(layoutJson, {
-    control_child_size_width: true,
-    control_child_size_height: true,
-  })
-  if (optionLayoutString.includes('expand-w')) {
-    Object.assign(layoutJson, {
-      child_force_expand_width: true,
-    })
-  }
-  if (optionLayoutString.includes('expand-h')) {
-    Object.assign(layoutJson, {
-      child_force_expand_height: true,
-    })
-  }
+  let layoutJson = getLayoutJson(
+    optionLayoutString,
+    json,
+    viewportNode,
+    maskNode,
+    children,
+  )
 
   Object.assign(json, {
+    layout: layoutJson,
+  })
+}
+
+function assignContentLayout(json, viewportNode, maskNode, children, options) {
+  let optionLayout = getContentOption(options, OPTION_LAYOUT)
+  if (optionLayout == null) return
+  const optionLayoutString = optionLayout.toString().toLowerCase()
+  let layoutJson = getLayoutJson(
+    optionLayoutString,
+    json,
+    viewportNode,
+    maskNode,
+    children,
+  )
+
+  let jsonContent = json[STR_CONTENT]
+  if (jsonContent == null) {
+    json[STR_CONTENT] = {}
+    jsonContent = json[STR_CONTENT]
+  }
+
+  Object.assign(jsonContent, {
     layout: layoutJson,
   })
 }
@@ -1506,7 +1545,10 @@ function hasVerticalLayout(elementJson) {
   if (type === 'Text') {
     return true
   }
-  if (elementJson['layout'] && elementJson['layout']['method'] === 'vertical') {
+  if (
+    elementJson['layout'] &&
+    elementJson['layout']['method'] === STR_VERTICAL
+  ) {
     return true
   }
   return !!elementJson['preferred_height']
@@ -1557,8 +1599,8 @@ async function assignGroup(
   Object.assign(json, {
     type: type,
     name: name,
-    x: boundsCM.x, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
-    y: boundsCM.y, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
+    x: boundsCM.cx, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
+    y: boundsCM.cy, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
     w: boundsCM.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
     h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
@@ -1630,7 +1672,7 @@ async function nodeGroup(
       name: name,
     })
     assignDrawResponsiveParameter(json, node)
-    assignBounds(json, getDrawBoundsCMInBase(node, root))
+    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1654,15 +1696,15 @@ async function nodeGroup(
     })
     let scroll = options[OPTION_SCROLL]
     if (scroll != null) {
-      scroll = scroll.toLowerCase().replace(/-/g, '')
-      if (scroll === 'vertical' || scroll === 'v') {
+      scroll = scroll.toLowerCase()
+      if (scroll === STR_VERTICAL || scroll === 'y') {
         Object.assign(json, {
-          scroll_direction: 'vertical',
+          scroll_direction: STR_VERTICAL,
         })
       }
-      if (scroll === 'horizontal' || scroll === 'h') {
+      if (scroll === STR_HORIZONTAL || scroll === 'x') {
         Object.assign(json, {
-          scroll_direction: 'horizontal',
+          scroll_direction: STR_HORIZONTAL,
         })
       }
     }
@@ -1688,7 +1730,7 @@ async function nodeGroup(
       })
     }
     assignDrawResponsiveParameter(json, node)
-    assignBounds(json, getDrawBoundsCMInBase(node, root))
+    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
     await funcForEachChild()
     return type
   }
@@ -1812,9 +1854,67 @@ class CalcBounds {
 function hasOptionParam(optionStr, paramStr) {
   if (optionStr == null || paramStr == null) return null
   if (optionStr === paramStr) return true
-  if (optionStr.startsWith(`${paramStr},`)) return true
-  if (optionStr.indexOf(`,${paramStr},`) >= 0) return true
-  return optionStr.endsWith(`,${paramStr}`)
+  if (optionStr.startsWith(`${paramStr} `)) return true
+  if (optionStr.indexOf(` ${paramStr} `) >= 0) return true
+  return optionStr.endsWith(` ${paramStr}`)
+}
+
+/**
+ * @param {string} optionFix
+ * @return {{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
+ */
+function getOptionFix(optionFix) {
+  let fixOption = optionFix.toLowerCase()
+  let fixOptionWidth = false
+  let fixOptionHeight = false
+  let fixOptionTop = false
+  let fixOptionBottom = false
+  let fixOptionLeft = false
+  let fixOptionRight = false
+
+  if (
+    hasOptionParam(fixOption, 'w') ||
+    fixOption.indexOf('width') >= 0 ||
+    fixOption.indexOf('size') >= 0
+  ) {
+    fixOptionWidth = true
+  }
+  if (
+    hasOptionParam(fixOption, 'h') ||
+    fixOption.indexOf('height') >= 0 ||
+    fixOption.indexOf('size') >= 0
+  ) {
+    fixOptionHeight = true
+  }
+  if (hasOptionParam(fixOption, 't') || fixOption.indexOf('top') >= 0) {
+    fixOptionTop = true
+  }
+  if (hasOptionParam(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
+    fixOptionBottom = true
+  }
+  if (hasOptionParam(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
+    fixOptionLeft = true
+  }
+  if (hasOptionParam(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
+    fixOptionRight = true
+  }
+  if (hasOptionParam(fixOption, 'x')) {
+    fixOptionLeft = true
+    fixOptionRight = true
+  }
+  if (hasOptionParam(fixOption, 'y')) {
+    fixOptionTop = true
+    fixOptionBottom = true
+  }
+
+  return {
+    left: fixOptionLeft,
+    right: fixOptionRight,
+    top: fixOptionTop,
+    bottom: fixOptionBottom,
+    width: fixOptionWidth,
+    height: fixOptionHeight,
+  }
 }
 
 /**
@@ -1862,50 +1962,14 @@ function calcResponsiveParameter(
 
   const optionFix = options[OPTION_FIX]
   if (optionFix != null) {
-    // オプションが設定されたら、全ての設定が決まる
-    fixOptionWidth = false
-    fixOptionHeight = false
-    fixOptionTop = false
-    fixOptionBottom = false
-    fixOptionLeft = false
-    fixOptionRight = false
-
-    let fixOption = optionFix.toLowerCase()
-
-    if (
-      hasOptionParam(fixOption, 'w') ||
-      fixOption.indexOf('width') >= 0 ||
-      fixOption.indexOf('size') >= 0
-    ) {
-      fixOptionWidth = true
-    }
-    if (
-      hasOptionParam(fixOption, 'h') ||
-      fixOption.indexOf('height') >= 0 ||
-      fixOption.indexOf('size') >= 0
-    ) {
-      fixOptionHeight = true
-    }
-    if (hasOptionParam(fixOption, 't') || fixOption.indexOf('top') >= 0) {
-      fixOptionTop = true
-    }
-    if (hasOptionParam(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
-      fixOptionBottom = true
-    }
-    if (hasOptionParam(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
-      fixOptionLeft = true
-    }
-    if (hasOptionParam(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
-      fixOptionRight = true
-    }
-    if (hasOptionParam(fixOption, 'x')) {
-      fixOptionLeft = true
-      fixOptionRight = true
-    }
-    if (hasOptionParam(fixOption, 'y')) {
-      fixOptionTop = true
-      fixOptionBottom = true
-    }
+    // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
+    const options = getOptionFix(optionFix)
+    fixOptionWidth = options.width
+    fixOptionHeight = options.height
+    fixOptionTop = options.top
+    fixOptionBottom = options.bottom
+    fixOptionLeft = options.left
+    fixOptionRight = options.right
   }
 
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
@@ -2433,8 +2497,8 @@ async function nodeText(
     size: node.fontSize * scale,
     color: getRGB(node.fill.value),
     align: hAlign + vAlign,
-    x: boundsCM.x,
-    y: boundsCM.y,
+    x: boundsCM.cx,
+    y: boundsCM.cy,
     w: boundsCM.width,
     h: boundsCM.height,
     vh: boundsCM.height,
@@ -2543,11 +2607,166 @@ function checkEndsTypeName(type, name) {
 }
 
 /**
+ * @param {string} key
+ * @param {string} value
+ * @return {null|{layout: string, "size-fit": string}}
+ */
+function openMacro(key, value) {
+  if (key === 'list') {
+    if (value === 'y') {
+      return {
+        layout: 'y expand-x',
+        'size-fit': 'y',
+      }
+    }
+  }
+  return null
+}
+
+const OPTION_MACRO = 'macro'
+
+/**
  * node.nameをパースしオプションに分解する
  * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
  * @param {SceneNode} node
+ * @return {null|{name: string, options: {}}}
  */
 function parseNameOptions(node) {
+  if (node == null) {
+    return null
+  }
+
+  let name = node.name
+  let options = {}
+  const cssJson = parseCss(node.name)
+  if (cssJson.length > 0) {
+    // パースに成功した場合
+    // macroの展開
+    for (let cssJsonElement in cssJson) {
+      for (const optionKey in cssJsonElement.options) {
+        const optionValue = cssJsonElement.options[optionKey]
+        const macroOptions = openMacro(optionKey, optionValue)
+        if (macroOptions != null) {
+          Object.assign(cssJsonElement.options, macroOptions)
+        }
+      }
+    }
+    // 名前とオプションの上書き
+    name = cssJson[0].name
+    options = cssJson[0].options
+  }
+
+  // 名前の最初1文字目が#ならコメントNode
+  if (name.startsWith('#')) {
+    options[OPTION_COMMENT_OUT] = true
+    name = name.substring(1)
+  }
+
+  // そのレイヤーをラスタライズする
+  if (name.startsWith('*')) {
+    options[OPTION_IMAGE] = true
+    name = name.substring(1)
+  }
+
+  // Unityでコンポーネント化する
+  if (name.startsWith('+')) {
+    options[OPTION_COMPONENT] = true
+    name = name.substring(1)
+  }
+
+  // 最初の1文字が.なら親の名前を利用する
+  /*
+  if (name.startsWith(".")) {
+    name = parentNameOptions.name + name
+  }
+  */
+
+  // 名前の最後が/であれば､サブPrefabのオプションをONにする
+  if (name.endsWith('/')) {
+    options[OPTION_SUB_PREFAB] = true
+    name = name.slice(0, -1)
+  }
+
+  if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
+    options[OPTION_IMAGE] = true
+  }
+
+  if (name.endsWith('Button') || checkEndsTypeName('button', name)) {
+    options[OPTION_BUTTON] = true
+  }
+
+  if (name.endsWith('Slider') || checkEndsTypeName('slider', name)) {
+    options[OPTION_SLIDER] = true
+  }
+
+  if (name.endsWith('Scrollbar') || checkEndsTypeName('scrollbar', name)) {
+    options[OPTION_SCROLLBAR] = true
+  }
+
+  if (name.endsWith('Text') || checkEndsTypeName('text', name)) {
+    if (optionDefaultTextMP) {
+      options[OPTION_TEXTMP] = true
+    } else {
+      options[OPTION_TEXT] = true
+    }
+  }
+
+  if (name.endsWith('Toggle') || checkEndsTypeName('toggle', name)) {
+    options[OPTION_TOGGLE] = true
+  }
+
+  // 拡張モード有効時のみ
+  if (optionEnableExtended) {
+    if (name.endsWith('Input') || checkEndsTypeName('input', name)) {
+      options[OPTION_INPUT] = true
+    }
+
+    if (name.endsWith('List') || checkEndsTypeName('list', name)) {
+      options[OPTION_SCROLLER] = true
+    }
+
+    if (name.endsWith('Viewport') || checkEndsTypeName('viewport', name)) {
+      options[OPTION_VIEWPORT] = true
+    }
+  }
+
+  if (cssJson.length > 1) {
+    options[OPTION_CONTENT] = {
+      name: cssJson[1].name,
+      options: cssJson[1].options,
+    }
+  }
+
+  return {
+    name: name,
+    options: options,
+  }
+}
+
+/**
+ * options内のcontentのnameとoptionsを取得する
+ * @param options
+ * @return {null|{name: *, options: ({}|PushSubscriptionOptions|HTMLOptionsCollection|HTMLCollectionOf<HTMLOptionElement>)}}
+ */
+function getContentNameOptions(options) {
+  if (options == null || options[OPTION_CONTENT] == null) {
+    return null
+  }
+  const contentName = options[OPTION_CONTENT].name
+  const contentOptions = options[OPTION_CONTENT].options
+  return {
+    name: contentName,
+    options: contentOptions,
+  }
+}
+
+function getContentOption(options, contentOption) {
+  const contentNameOptions = getContentNameOptions(options)
+  if (contentNameOptions == null) return null
+  return contentNameOptions.options[contentOption]
+}
+
+function parseNameOptionsOld(node) {
   if (node == null) {
     return null
   }
@@ -2730,8 +2949,8 @@ function makeLayoutJson(root) {
   let rootBounds
   if (root instanceof Artboard) {
     rootBounds = getGlobalDrawBounds(root)
-    rootBounds.x = 0
-    rootBounds.y = 0
+    rootBounds.cx = rootBounds.width / 2
+    rootBounds.cy = rootBounds.height / 2
   } else {
     rootBounds = getDrawBoundsCMInBase(root, root.parent)
   }
@@ -2749,8 +2968,8 @@ function makeLayoutJson(root) {
           h: rootBounds.height,
         },
         base: {
-          x: rootBounds.x,
-          y: rootBounds.y,
+          x: rootBounds.cx,
+          y: rootBounds.cy,
           w: rootBounds.width,
           h: rootBounds.height,
         },
@@ -3036,7 +3255,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       // 9SLICEであった場合、そのグループの不可視情報はそのまま活かすため
       // 自身は可視にし、子供の不可視情報は生かす
       // 本来は sourceImageをNaturalWidth,Heightで出力する
-      if (nameOptions.options[OPTION_9SLICE] != null) {
+      if (nameOptions.options[OPTION_IMAGE_SLICE] != null) {
         return false
       }
     })
