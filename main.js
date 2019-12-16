@@ -32,9 +32,11 @@ var optionForceTextToImage = false
 
 const STR_CONTENT = 'content'
 const STR_VERTICAL = 'vertical'
+const STR_HORIZONTAL = 'horizontal'
 const STR_PREFERRED = 'preferred'
 
-// オプション文字列　全て小文字 オプションは 大文字は小文字､-は消去し判定する
+// オプション文字列　全て小文字
+// OPTION名に H V　X Yといった、高さ方向をしめすものはできるだけ出さないようにする
 const OPTION_COMMENT_OUT = 'comment-out'
 const OPTION_SUB_PREFAB = 'sub-prefab'
 const OPTION_BUTTON = 'button'
@@ -52,14 +54,13 @@ const OPTION_TOGGLE_GROUP = 'toggle-group'
 const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVAS_GROUP = 'canvas-group' // 削除予定
 const OPTION_COMPONENT = 'component'
-const OPTION_MIN_HEIGHT = 'min-height'
-const OPTION_PREFERRED_HEIGHT = 'preferred-height'
+const OPTION_MIN_HEIGHT = 'min-height' // 削除予定
+const OPTION_PREFERRED_HEIGHT = 'preferred-height' // 削除予定
 const OPTION_PRESERVE_ASPECT = 'preserve-aspect'
 const OPTION_BLANK = 'blank'
 const OPTION_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
 const OPTION_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 const OPTION_RAYCAST_TARGET = 'raycast-target' // 削除予定
-const OPTION_PADDING_BOTTOM = 'padding-bottom' // layout設定に有効になるオプション
 const OPTION_IMAGE_SCALE = 'image-scale'
 const OPTION_IMAGE_TYPE = 'image-type'
 const OPTION_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
@@ -67,6 +68,7 @@ const OPTION_IMAGE_SLICE = 'image-slice' // 9スライス
 const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
 const OPTION_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
 const OPTION_CONTENT = 'content'
+const OPTION_DIRECTION = 'direction'
 
 /**
  * CSS Parser
@@ -665,168 +667,6 @@ async function assignImage(
   }
 }
 
-const STR_HORIZONTAL = 'horizontal'
-
-/**
- * 削除予定 Viewportのオプションにする
- * @param json
- * @param node
- * @param root
- * @param subFolder
- * @param renditions
- * @param name
- * @param options
- * @param funcForEachChild
- * @returns {Promise<string>}
- */
-async function assignScroller(
-  json,
-  node,
-  root,
-  subFolder,
-  renditions,
-  name,
-  options,
-  funcForEachChild,
-) {
-  let areaNodes = node.children.filter(child => {
-    const { name, options } = parseNameOptions(child)
-    return name === 'Area'
-  })
-
-  if (areaNodes.length === 0) {
-    if (node.constructor.name === 'RepeatGrid') {
-      /*
-      Areaがなくて､リピートグリッドだけでもScrollerを作成する
-      仕様:
-      一番目のアイテムをテンプレートとして､Baum2にわたす(item[0])
-      Itemはレスポンシブ設定自動取得できない
-        → RepeatGridは､サイズの変更で､アイテムの数が変わるもののため
-        → そのため､RepeatGridの中のアイテムは固定サイズになる
-      列が1つ → 縦スクロール
-      行が1つ → 横スクロール
-      それ以外 → Grid
-      */
-      let scrollDirection = STR_VERTICAL
-      let item0
-      if (node.numColumns === 1) {
-        // vertical
-        scrollDirection = STR_VERTICAL
-        // item[0]を一個だけコンバート
-        await funcForEachChild(1)
-        // アイテムの作成
-        // Scroller直下にはリピートグリッドで並べた分のitem[0]があり､
-        // もう1段したの子供がアイテムになる
-        item0 = json.elements[0]
-      } else if (node.numRows === 1) {
-        // Horizontal
-        scrollDirection = STR_HORIZONTAL
-        // item[0]を一個だけコンバート
-        await funcForEachChild(1)
-        // items = [json.elements[0]] // TODO 対応する
-      } else {
-        // Grid
-        item0 = {
-          type: 'Group',
-          name: 'item0',
-          layout: {
-            method: STR_HORIZONTAL,
-            padding: {
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 0,
-            },
-            spacing_x: 0,
-            spacing_y: 0,
-          },
-          elements: [],
-        }
-        // Column分のitem[0]をコンバートする
-        await funcForEachChild(node.numColumns)
-        // 一列はいっているitemを作成する
-        for (let i = 0; i < 1; i++) {
-          let elem = json.elements[i]
-          //elem.name = 'item0-' + (node.numColumns - i - 1)
-          elem.name = 'item0-' + i
-          item0.elements.push(elem)
-        }
-        let item0_0 = item0.elements[0]
-        // item0のRectTransform 縦スクロールは横にピッチリ　縦はitem0_0サイズ
-        Object.assign(item0, {
-          anchor_min: { x: 0, y: 1 },
-          anchor_max: { x: 1, y: 1 },
-          offset_min: { x: 0, y: -item0_0.h },
-          offset_max: { x: 0, y: 0 },
-        })
-      }
-
-      // item[0]のグループをlefttopにする
-      // items.forEach(item => {
-      //     item['pivot'] = 'lefttop'
-      // })
-
-      Object.assign(json, {
-        type: 'List',
-        name: name,
-        scroll: scrollDirection,
-      })
-
-      const child0 = node.children.at(0)
-      // cellのサイズはリピートグリッドの元になったもの全てのサイズ
-      const cellWidth = node.cellSize.width * scale
-      const cellHeight = node.cellSize.height * scale
-
-      const spacing_x = node.paddingX * scale
-      const spacing_y = node.paddingY * scale
-      const drawBounds = getDrawBoundsCMInBase(node, root)
-
-      // Paddingの計算
-      const paddingLeft = child0.topLeftInParent.x * scale
-      const paddingTop = child0.topLeftInParent.y * scale
-
-      const itemWidth =
-        paddingLeft + // 左のスペース
-        cellWidth * node.numColumns + // cellのサイズ*cellの個数
-        node.paddingX * scale * (node.numColumns - 1) // cellとcellの隙間*(cellの個数-1)
-      const itemHeight =
-        paddingTop + // 上のスペース
-        cellHeight * node.numRows + // cellのサイズ*cellの個数
-        node.paddingY * scale * (node.numRows - 1) // cellとcellの隙間*(cellの個数-1)
-
-      const paddingRight = drawBounds.width - itemWidth
-      let paddingBottom = null
-      if (options[OPTION_PADDING_BOTTOM] != null)
-        paddingBottom = parseFloat(options[OPTION_PADDING_BOTTOM]) * scale
-
-      // リピートグリッドなら子供はすべてScrollerにいれるものになっている
-      // 隙間のパラメータ
-      Object.assign(json, {
-        layout: {
-          padding: {
-            left: paddingLeft,
-            right: paddingRight,
-            top: paddingTop,
-            bottom: paddingBottom,
-          },
-          spacing_x: spacing_x,
-          spacing_y: spacing_y,
-        },
-        x: drawBounds.cx,
-        y: drawBounds.cy,
-        w: drawBounds.width,
-        h: drawBounds.height,
-        opacity: 100,
-        elements: [item0], // トップの一個だけ
-      })
-      assignDrawResponsiveParameter(json, node)
-    } else {
-      console.log('***error not found Area')
-    }
-  }
-  return 'Scroller'
-}
-
 /**
  *
  * @param option
@@ -908,8 +748,6 @@ function assignSizeFit(json, options) {
   const optionSizeFit = options[OPTION_SIZE_FIT]
   if (optionSizeFit != null) {
     const sizeFitterParam = getSizeFitterParam(optionSizeFit)
-    console.log('----------------------------------------', optionSizeFit)
-    console.log(sizeFitterParam)
     if (sizeFitterParam != null) {
       Object.assign(json, {
         size_fitter: sizeFitterParam,
@@ -938,7 +776,7 @@ function assignSizeFit(json, options) {
  * Content内、すべて変換が基本(XDの見た目そのままコンバートが基本)
  * Item化する場合は指定する
  */
-async function assignViewport(
+async function createViewport(
   json,
   node,
   root,
@@ -955,17 +793,18 @@ async function assignViewport(
   let optionScroll = options[OPTION_SCROLL]
   if (optionScroll != null) {
     optionScroll = optionScroll.toLowerCase()
+    scrollDirection = ''
     if (
       optionScroll.includes(STR_VERTICAL) ||
       hasOptionParam(optionScroll, 'y')
     ) {
-      scrollDirection = STR_VERTICAL
+      scrollDirection += STR_VERTICAL
     }
     if (
       optionScroll.includes(STR_HORIZONTAL) ||
       hasOptionParam(optionScroll, 'x')
     ) {
-      scrollDirection = STR_HORIZONTAL
+      scrollDirection += STR_HORIZONTAL
     }
   }
   if (node.constructor.name === 'Group') {
@@ -1097,9 +936,7 @@ async function assignViewport(
     }
   }
 
-  assignContentSizeFit(json, options)
   assignSizeFit(json, options)
-
   // scrollオプションが設定されていれば、scroll情報を埋め込む
   if (optionScroll) {
     Object.assign(json, {
@@ -1109,15 +946,41 @@ async function assignViewport(
       },
     })
   }
-
-  const contentFix = getContentOption(options, OPTION_CONTENT)
-  if (contentFix != null) {
-    Object.assign(contentFix, {
-      fix: getOptionFix(contentFix),
-    })
-  }
-
   assignDrawResponsiveParameter(json, node)
+
+  // Content系
+
+  // SizeFit
+  assignContentSizeFit(json, options)
+
+  // ContentのRectTransformを決める
+  const contentWidth = json['content']['width']
+  const contentHeight = json['content']['height']
+  const contentFix = getContentOption(options, OPTION_FIX)
+  const contentOptionFix = getOptionFix(contentFix)
+  let pivot = { x: 0, y: 1 } // top-left
+  let anchorMin = { x: 0, y: 1 }
+  let anchorMax = { x: 0, y: 1 }
+  let offsetMin = { x: 0, y: -contentHeight }
+  let offsetMax = { x: contentWidth, y: 0 }
+  if (contentOptionFix.top === true && contentOptionFix.bottom === true) {
+    // 親と縦を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
+    anchorMin.y = 0
+    offsetMin.y = 0
+  }
+  if (contentOptionFix.left === true && contentOptionFix.right === true) {
+    // 親と横を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
+    anchorMax.x = 1
+    offsetMax.x = 0
+  }
+  Object.assign(json['content'], {
+    fix: contentOptionFix,
+    pivot: pivot, // ここのPivotはX,Yで渡す　他のところは文字列になっている
+    anchor_min: anchorMin,
+    anchor_max: anchorMax,
+    offset_min: offsetMin,
+    offset_max: offsetMax,
+  })
 }
 
 /**
@@ -1208,23 +1071,19 @@ function getNodeListBounds(nodeList, withoutNode) {
 
 /**
  * Viewport内の、オブジェクトリストから Paddingを計算する
- * @param {SceneNodeClass} viewportNode
+ * @param {SceneNodeClass} parentNode
  * @param {SceneNodeClass} maskNode
  * @param {SceneNodeList} nodeChildren
  * @returns {{padding: {top: number, left: number, bottom: number, right: number}, cell_max_height: number, cell_max_width: number}}
  */
-function getViewportPaddingAndCellMaxSize(
-  viewportNode,
-  maskNode,
-  nodeChildren,
-) {
+function getPaddingAndCellMaxSize(parentNode, maskNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･maskを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   let childrenCalcBounds = getNodeListBounds(nodeChildren, maskNode)
   //
   let jsonVLayout = {}
   // Paddingの計算
-  let viewportBounds = getGlobalDrawBounds(viewportNode) // 描画でのサイズを取得する
+  let viewportBounds = getGlobalDrawBounds(parentNode) // 描画でのサイズを取得する　影など増えた分も考慮したPaddingを取得する
   const childrenBounds = childrenCalcBounds.bounds
   let paddingLeft = childrenBounds.x - viewportBounds.x
   if (paddingLeft < 0) paddingLeft = 0
@@ -1264,7 +1123,7 @@ function getViewportPaddingAndCellMaxSize(
  * @param {SceneNodeList} nodeChildren
  */
 function calcLayout(json, viewportNode, maskNode, nodeChildren) {
-  let jsonLayout = getViewportPaddingAndCellMaxSize(
+  let jsonLayout = getPaddingAndCellMaxSize(
     viewportNode,
     maskNode,
     nodeChildren,
@@ -1364,11 +1223,11 @@ function calcLayout(json, viewportNode, maskNode, nodeChildren) {
   // 横ズレ参考Elemと比較し、縦方向child_alignmentを計算する
   if (elem0 && elemH) {
     // left揃えか
-    if (approxEqual(elem0.y - elem0.h / 2, elemV.y - elemV.h / 2)) {
+    if (approxEqual(elem0.y - elem0.h / 2, elemH.y - elemH.h / 2)) {
       child_alignment += 'top'
-    } else if (approxEqual(elem0.y + elem0.h / 2, elemV.y + elemV.h / 2)) {
+    } else if (approxEqual(elem0.y + elem0.h / 2, elemH.y + elemH.h / 2)) {
       child_alignment += 'bottom'
-    } else if (approxEqual(elem0.y, elemV.y)) {
+    } else if (approxEqual(elem0.y, elemH.y)) {
       child_alignment += 'middle'
     }
   }
@@ -1583,7 +1442,7 @@ function forEachReverseElements(elements, func) {
  * @param depth
  * @return {Promise<string>}
  */
-async function assignGroup(
+async function createGroup(
   json,
   node,
   root,
@@ -1631,6 +1490,65 @@ async function assignGroup(
   return type
 }
 
+async function createScrollbar(options, json, name, node, funcForEachChild) {
+  const type = 'Scrollbar'
+  Object.assign(json, {
+    type: type,
+    name: name,
+  })
+  let direction = options[OPTION_DIRECTION]
+  if (direction != null) {
+    direction = direction.toLowerCase()
+    if (direction === STR_VERTICAL || direction === 'y') {
+      Object.assign(json, {
+        scroll_direction: STR_VERTICAL,
+      })
+    }
+    if (direction === STR_HORIZONTAL || direction === 'x') {
+      Object.assign(json, {
+        scroll_direction: STR_HORIZONTAL,
+      })
+    }
+  }
+
+  assignSizeFit(json, options)
+  assignLayout(json, node, node, node.children, options)
+
+  assignDrawResponsiveParameter(json, node)
+  await funcForEachChild()
+  //return type
+}
+
+async function createToggle(json, name, options, node, root, funcForEachChild) {
+  const type = 'Toggle'
+  Object.assign(json, {
+    type: type,
+    name: name,
+  })
+  // Toggle group
+  if (options[OPTION_TOGGLE_GROUP]) {
+    Object.assign(json, {
+      group: options[OPTION_TOGGLE_GROUP],
+    })
+  }
+  assignDrawResponsiveParameter(json, node)
+  assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  await funcForEachChild()
+  return type
+}
+
+async function createButton(json, name, node, root, funcForEachChild) {
+  const type = 'Button'
+  Object.assign(json, {
+    type: type,
+    name: name,
+  })
+  assignDrawResponsiveParameter(json, node)
+  assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  await funcForEachChild()
+  return type
+}
+
 /**
  * Groupの処理 戻り値は処理したType
  * 注意:ここで､子供の処理もしてしまう
@@ -1661,20 +1579,12 @@ async function nodeGroup(
     return 'subPrefab'
   }
   if (checkOptionImage(options)) {
-    await nodeDrawing(json, node, root, subFolder, renditions, name, options)
+    await createImage(json, node, root, subFolder, renditions, name, options)
     return 'Image'
   }
 
   if (checkOptionButton(options)) {
-    const type = 'Button'
-    Object.assign(json, {
-      type: type,
-      name: name,
-    })
-    assignDrawResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
-    await funcForEachChild()
-    return type
+    return await createButton(json, name, node, root, funcForEachChild)
   }
 
   if (checkOptionSlider(options)) {
@@ -1689,54 +1599,16 @@ async function nodeGroup(
   }
 
   if (checkOptionScrollbar(options)) {
-    const type = 'Scrollbar'
-    Object.assign(json, {
-      type: type,
-      name: name,
-    })
-    let scroll = options[OPTION_SCROLL]
-    if (scroll != null) {
-      scroll = scroll.toLowerCase()
-      if (scroll === STR_VERTICAL || scroll === 'y') {
-        Object.assign(json, {
-          scroll_direction: STR_VERTICAL,
-        })
-      }
-      if (scroll === STR_HORIZONTAL || scroll === 'x') {
-        Object.assign(json, {
-          scroll_direction: STR_HORIZONTAL,
-        })
-      }
-    }
-
-    assignSizeFit(json, options)
-    assignLayout(json, node, node, node.children, options)
-
-    assignDrawResponsiveParameter(json, node)
-    await funcForEachChild()
-    return type
+    await createScrollbar(options, json, name, node, funcForEachChild)
+    return 'Scrollbar'
   }
 
   if (checkOptionToggle(options)) {
-    const type = 'Toggle'
-    Object.assign(json, {
-      type: type,
-      name: name,
-    })
-    // Toggle group
-    if (options[OPTION_TOGGLE_GROUP]) {
-      Object.assign(json, {
-        group: options[OPTION_TOGGLE_GROUP],
-      })
-    }
-    assignDrawResponsiveParameter(json, node)
-    assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
-    await funcForEachChild()
-    return type
+    return await createToggle(json, name, options, node, root, funcForEachChild)
   }
 
   if (checkOptionScroller(options)) {
-    return await assignScroller(
+    return await createScroller(
       json,
       node,
       root,
@@ -1749,7 +1621,7 @@ async function nodeGroup(
   }
 
   if (checkOptionViewport(options)) {
-    return await assignViewport(
+    return await createViewport(
       json,
       node,
       root,
@@ -1762,7 +1634,7 @@ async function nodeGroup(
   }
 
   // 通常のグループ
-  return await assignGroup(
+  return await createGroup(
     json,
     node,
     root,
@@ -1952,7 +1824,7 @@ function calcResponsiveParameter(
     const nameOptions = parseNameOptions(node)
     options = nameOptions.options
   }
-  //console.log(`----------------------${node.name}----------------------`)
+  console.log(`----------------------${node.name}----------------------`)
   let fixOptionWidth = null
   let fixOptionHeight = null
   let fixOptionTop = null
@@ -1971,6 +1843,7 @@ function calcResponsiveParameter(
     fixOptionLeft = options.left
     fixOptionRight = options.right
   }
+  console.log(fixOptionTop, fixOptionBottom)
 
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
 
@@ -1999,19 +1872,20 @@ function calcResponsiveParameter(
     }
   }
 
-  if (
-    fixOptionLeft == null &&
-    approxEqual(
-      beforeBounds.x - parentBeforeBounds.x,
-      afterBounds.x - parentAfterBounds.x,
-    )
-  ) {
-    // ロックされている
-    fixOptionLeft = true
-  } else {
-    // 親のX座標･Widthをもとに､Left座標がきまる
-    fixOptionLeft =
-      (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
+  if (fixOptionLeft == null) {
+    if (
+      approxEqual(
+        beforeBounds.x - parentBeforeBounds.x,
+        afterBounds.x - parentAfterBounds.x,
+      )
+    ) {
+      // ロックされている
+      fixOptionLeft = true
+    } else {
+      // 親のX座標･Widthをもとに､Left座標がきまる
+      fixOptionLeft =
+        (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
+    }
   }
 
   const beforeRight =
@@ -2023,13 +1897,15 @@ function calcResponsiveParameter(
     parentAfterBounds.width -
     (afterBounds.x + afterBounds.width)
 
-  if (fixOptionRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
-    // ロックされている 0.001以下の誤差が起きることを確認した
-    fixOptionRight = true
-  } else {
-    // 親のX座標･Widthをもとに､割合でRight座標がきまる
-    fixOptionRight =
-      (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
+  if (fixOptionRight == null) {
+    if (fixOptionRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
+      // ロックされている 0.001以下の誤差が起きることを確認した
+      fixOptionRight = true
+    } else {
+      // 親のX座標･Widthをもとに､割合でRight座標がきまる
+      fixOptionRight =
+        (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
+    }
   }
 
   // Y座標
@@ -2041,31 +1917,34 @@ function calcResponsiveParameter(
     }
   }
 
-  if (
-    fixOptionTop == null &&
-    approxEqual(
-      beforeBounds.y - parentBeforeBounds.y,
-      afterBounds.y - parentAfterBounds.y,
-    )
-  ) {
-    fixOptionTop = true
-  } else {
-    // 親のY座標･heightをもとに､Top座標がきまる
-    fixOptionTop =
-      (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
+  if (fixOptionTop == null) {
+    if (
+      approxEqual(
+        beforeBounds.y - parentBeforeBounds.y,
+        afterBounds.y - parentAfterBounds.y,
+      )
+    ) {
+      fixOptionTop = true
+    } else {
+      // 親のY座標･heightをもとに､Top座標がきまる
+      fixOptionTop =
+        (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
+    }
   }
 
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
   const afterBottom = parentAfterBounds.ey - afterBounds.ey
-  if (
-    fixOptionBottom == null &&
-    approxEqual(beforeBottom, afterBottom, 0.0005)
-  ) {
-    fixOptionBottom = true
-  } else {
-    // 親のY座標･Heightをもとに､Bottom座標がきまる
-    fixOptionBottom =
-      (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+  if (fixOptionBottom == null) {
+    if (
+      fixOptionBottom == null &&
+      approxEqual(beforeBottom, afterBottom, 0.0005)
+    ) {
+      fixOptionBottom = true
+    } else {
+      // 親のY座標･Heightをもとに､Bottom座標がきまる
+      fixOptionBottom =
+        (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+    }
   }
 
   // anchorの値を決める
@@ -2422,7 +2301,7 @@ async function nodeText(
 ) {
   // ラスタライズオプションチェック
   if (optionForceTextToImage || checkOptionImage(options)) {
-    await nodeDrawing(
+    await createImage(
       json,
       node,
       artboard,
@@ -2439,7 +2318,7 @@ async function nodeText(
     !checkOptionInput(options) &&
     !checkOptionTextMeshPro(options)
   ) {
-    await nodeDrawing(
+    await createImage(
       json,
       node,
       artboard,
@@ -2519,7 +2398,7 @@ async function nodeText(
  * @param {string} name
  * @param {string[]} options
  */
-async function nodeDrawing(
+async function createImage(
   json,
   node,
   root,
@@ -2536,7 +2415,7 @@ async function nodeDrawing(
       elements: [
         {
           type: 'Image',
-          name: name + ' - image',
+          name: name + '-image',
         },
       ],
     })
@@ -2613,6 +2492,12 @@ function checkEndsTypeName(type, name) {
  */
 function openMacro(key, value) {
   if (key === 'list') {
+    if (value === 'x') {
+      return {
+        layout: 'x expand-y',
+        'size-fit': 'x',
+      }
+    }
     if (value === 'y') {
       return {
         layout: 'y expand-x',
@@ -2622,8 +2507,6 @@ function openMacro(key, value) {
   }
   return null
 }
-
-const OPTION_MACRO = 'macro'
 
 /**
  * node.nameをパースしオプションに分解する
@@ -2642,7 +2525,7 @@ function parseNameOptions(node) {
   if (cssJson.length > 0) {
     // パースに成功した場合
     // macroの展開
-    for (let cssJsonElement in cssJson) {
+    for (let cssJsonElement of cssJson) {
       for (const optionKey in cssJsonElement.options) {
         const optionValue = cssJsonElement.options[optionKey]
         const macroOptions = openMacro(optionKey, optionValue)
@@ -2657,16 +2540,18 @@ function parseNameOptions(node) {
   }
 
   // 名前の最初1文字目が#ならコメントNode
-  if (name.startsWith('#')) {
+  if (name.startsWith('//')) {
     options[OPTION_COMMENT_OUT] = true
-    name = name.substring(1)
+    name = name.substring(2)
   }
 
+  /*
   // そのレイヤーをラスタライズする
   if (name.startsWith('*')) {
     options[OPTION_IMAGE] = true
     name = name.substring(1)
   }
+  */
 
   // Unityでコンポーネント化する
   if (name.startsWith('+')) {
@@ -2675,17 +2560,18 @@ function parseNameOptions(node) {
   }
 
   // 最初の1文字が.なら親の名前を利用する
-  /*
-  if (name.startsWith(".")) {
+  if (name.startsWith('&')) {
+    name = name.substring(1)
     name = parentNameOptions.name + name
   }
-  */
 
+  /*
   // 名前の最後が/であれば､サブPrefabのオプションをONにする
   if (name.endsWith('/')) {
     options[OPTION_SUB_PREFAB] = true
     name = name.slice(0, -1)
   }
+  */
 
   if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
     options[OPTION_IMAGE] = true
@@ -2771,6 +2657,9 @@ function parseNameOptionsOld(node) {
     return null
   }
 
+  /**
+   * @type {null|string}
+   */
   let name = null
   let options = {}
 
@@ -2810,7 +2699,7 @@ function parseNameOptionsOld(node) {
     // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
     let commentOut = true
     node.children.forEach(child => {
-      if (!child.name.startsWith('#')) {
+      if (!child.name.startsWith('//')) {
         commentOut = false
       }
     })
@@ -2829,6 +2718,7 @@ function parseNameOptionsOld(node) {
     */
   }
 
+  /*
   let optionArray = nameStr.split('@')
   if (optionArray != null && optionArray.length > 0) {
     name = optionArray[0].trim()
@@ -2855,18 +2745,21 @@ function parseNameOptionsOld(node) {
   } else {
     name = nameStr.trim()
   }
+  */
 
   // 名前の最初1文字目が#ならコメントNode
-  if (name.startsWith('#')) {
+  if (name.startsWith('//')) {
     options[OPTION_COMMENT_OUT] = true
     name = name.substring(1)
   }
 
+  /*
   // そのレイヤーをラスタライズする
   if (name.startsWith('*')) {
     options[OPTION_IMAGE] = true
     name = name.substring(1)
   }
+  */
 
   // Unityでコンポーネント化する
   if (name.startsWith('+')) {
@@ -2874,16 +2767,20 @@ function parseNameOptionsOld(node) {
     name = name.substring(1)
   }
 
+  /*
   // 最初の1文字が.なら親の名前を利用する
   if (name.startsWith('.')) {
     name = parentNameOptions.name + name
   }
+  */
 
+  /*
   // 名前の最後が/であれば､サブPrefabのオプションをONにする
   if (name.endsWith('/')) {
     options[OPTION_SUB_PREFAB] = true
     name = name.slice(0, -1)
   }
+  */
 
   if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
     options[OPTION_IMAGE] = true
@@ -3140,7 +3037,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'Rectangle':
       case 'Path':
       case 'Polygon':
-        await nodeDrawing(
+        await createImage(
           layoutJson,
           node,
           root,
