@@ -7,6 +7,9 @@ const fs = require('uxp').storage.localFileSystem
 var scale = 1.0
 
 // レスポンシブパラメータを保存する
+/**
+ * @type {{}}
+ */
 var responsiveBounds = {}
 
 // 出力するフォルダ
@@ -71,31 +74,15 @@ const OPTION_LAYOUT_ELEMENT = 'layout-element'
  */
 let cssRules = null
 
-async function loadCssJson() {
+async function loadCssRules() {
   if (cssRules != null) return
   cssRules = []
   const folder = await fs.getPluginFolder()
   const file = await folder.getEntry('xd-unity.css')
   const contents = await file.read()
   const rules = parseCss(contents)
-  /**
-   * opの種類は　'', ' '(スペース), '>'
-   * .a.b -> selector_ops:[ {name:".a","op":""}, {name:".b","op":""} ]
-   * .a > .b -> selector_ops:[ {name:".a","op":">"}, {name:".b","op":""} ]
-   */
   for (const rule of rules) {
-    const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]*)/gi
-    let token
-    // セレクターを分解
-    let nameOps = []
-    while ((token = regexSelector.exec(rule.selector))) {
-      let op = token.groups.op
-      if (op != null || op !== '') {
-        op = op.trim()
-        if (op === '') op = ' ' // 空白が全部きえてしまった　→ ' '
-      }
-      nameOps.push({ op, name: token.groups.name })
-    }
+    let nameOps = parseCssSelector(rule.selector)
     cssRules.push({ selector_ops: nameOps, style: rule.style })
   }
 }
@@ -112,14 +99,18 @@ function parseCss(text) {
     token
   text = text.replace(/\/\*[\s\S]*?\*\//g, '')
   while ((token = tokenizer.exec(text))) {
-    let style = parseRule(token[2].trim())
+    let style = parseCssRule(token[2].trim())
     const selector = token[1].trim().replace(/\s*\,\s*/, ', ')
     rules.push({ selector, style })
   }
   return rules
 }
 
-function parseRule(css) {
+/**
+ * @param css
+ * @return {{}}
+ */
+function parseCssRule(css) {
   let tokenizer = /\s*([a-z\-]+)\s*:\s*((?:[^;]*url\(.*?\)[^;]*|[^;]*)*)\s*(?:;|$)/gi,
     obj = {},
     token
@@ -127,6 +118,34 @@ function parseRule(css) {
     obj[token[1].toLowerCase()] = token[2]
   }
   return obj
+}
+
+/**
+ * @param selector
+ * @return {[{op:string, name:string}]}
+ */
+function parseCssSelector(selector) {
+  selector = selector.trim()
+  const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]+)?/gi
+  let token
+  // セレクターを分解
+  let nameOps = []
+  while ((token = regexSelector.exec(selector))) {
+    let op = token.groups.op
+    /**
+     * opの種類は　'', ' '(スペース), '>'
+     * .a.b -> selector_ops:[ {name:".a","op":""}, {name:".b","op":""} ]
+     * .a > .b -> selector_ops:[ {name:".a","op":">"}, {name:".b","op":""} ]
+     */
+    if (!op) {
+      op = ''
+    } else {
+      op = op.trim()
+      if (op === '') op = '%20' // 空白が全部きえてしまった場合　→ '%20'(スペース)
+    }
+    nameOps.push({ op, name: token.groups.name })
+  }
+  return nameOps
 }
 
 function checkOptionCommentOut(options) {
@@ -599,9 +618,7 @@ async function assignImage(
     fileExtension = '-noslice.png'
   }
   const image9Slice = options[OPTION_IMAGE_9SLICE]
-  console.log('------------------image------------------------', options)
   if (image9Slice) {
-    console.log('------------------9slice------------------------', image9Slice)
     // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
     //var result = pattern.exec(options[OPTION_9SLICE])
@@ -694,8 +711,8 @@ async function assignImage(
 }
 
 /**
- *
  * @param option
+ * @return {{}|null}
  */
 function getSizeFitterParam(option) {
   if (option == null) return null
@@ -840,7 +857,7 @@ async function createViewport(
 
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
-  let contentName = 'content'
+  let contentName = '.content'
   Object.assign(json, {
     content: {
       name: contentName,
@@ -848,7 +865,7 @@ async function createViewport(
   })
 
   let contentJson = json[STR_CONTENT]
-  const contentOptions = getOptionsFromName(contentName, node)
+  const contentStyle = getStyleFromNodeName(contentName, node, cssRules)
 
   if (node.constructor.name === 'Group') {
     /** @type {Group} */
@@ -903,13 +920,7 @@ async function createViewport(
       getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     )
 
-    assignLayout(
-      json[STR_CONTENT],
-      node,
-      maskNode,
-      node.children,
-      contentOptions,
-    )
+    assignLayout(json[STR_CONTENT], node, maskNode, node.children, contentStyle)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -959,7 +970,7 @@ async function createViewport(
       getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     )
 
-    const contentOptionLayout = contentOptions[OPTION_LAYOUT]
+    const contentOptionLayout = contentStyle[OPTION_LAYOUT]
     if (contentOptionLayout != null) {
       if (hasOptionParam(contentOptionLayout, 'grid')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
@@ -1005,12 +1016,12 @@ async function createViewport(
 
   // Content系
   // SizeFit
-  assignSizeFit(contentJson, contentOptions)
+  assignSizeFit(contentJson, contentStyle)
 
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentOptionFix = getOptionFix(contentOptions[OPTION_FIX])
+  const contentOptionFix = getOptionFix(contentStyle[OPTION_FIX])
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
@@ -1041,6 +1052,7 @@ async function createViewport(
 /**
  * Viewportの子供の整理をする
  * ･Y順に並べる
+ * @param jsonElements
  */
 function sortElementsByPositionAsc(jsonElements) {
   // 子供のリスト用ソート 上から順に並ぶように　(コンポーネント化するものをは一番下 例:Image Component)
@@ -1074,6 +1086,7 @@ function sortElementsByPositionDesc(jsonElements) {
 /**
  * リピートグリッドから、GridLayoutGroup用パラメータを取得する
  * @param {RepeatGrid} repeatGrid
+ * @return {{}}
  */
 function getGridLayoutFromRepeatGrid(repeatGrid) {
   let layoutJson = {}
@@ -1359,6 +1372,14 @@ function calcGridLayout(json, viewportNode, maskNode, children) {
   return jsonLayout
 }
 
+/**
+ * @param optionLayoutString
+ * @param json
+ * @param viewportNode
+ * @param maskNode
+ * @param children
+ * @return {null}
+ */
 function getLayoutJson(
   optionLayoutString,
   json,
@@ -1491,22 +1512,6 @@ async function createGroup(
   assignLayout(json, node, node, node.children, options)
   assignSizeFit(json, options)
 
-  /*
-  if (options[OPTION_CONTENT_SIZE_FIT]) {
-    Object.assign(json, {
-      content_size_fit_vertical: "preferred" // 子供の推奨サイズでこのグループの高さは決まる
-    })
-    forEachReverseElements(json.elements, elementJson => {
-      if (!hasVerticalLayout(elementJson)) {
-        // preferred-heightをつける
-        Object.assign(elementJson, {
-          preferred_height: elementJson.h
-        })
-      }
-    })
-  }
-  */
-
   return type
 }
 
@@ -1631,7 +1636,6 @@ async function nodeGroup(
   }
 
   if (checkOptionScrollbar(options)) {
-    console.log('-----------------------------scrollbar')
     await createScrollbar(options, json, name, node, funcForEachChild)
     return 'Scrollbar'
   }
@@ -1755,6 +1759,7 @@ class CalcBounds {
  * option = ,x
  * @param {string} optionStr
  * @param {string} paramStr
+ * @return {null|boolean}
  */
 function hasOptionParam(optionStr, paramStr) {
   if (optionStr == null || paramStr == null) return null
@@ -1843,10 +1848,11 @@ function getOptionFix(optionFix) {
  anchor_max: anchorMax,
  offset_min: offsetMin,
  offset_max: offsetMax,
- * @param node
+ * @param {SceneNodeClass} node
  * @param hashBounds
  * @param options
  * @param calcDrawBounds
+ * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
 function calcResponsiveParameter(
   node,
@@ -2129,14 +2135,8 @@ function nodeWalker(node, func) {
 
 /**
  * root以下のノードのレスポンシブパラメータ作成
- * {
- *  "node":{},
- *  "before":{},
- *  "after":{},
- *  "restore":{},
- *  "responsiveParameter":{}
- * }
- * @param {*} root
+ * @param root
+ * @return {{node:{}, before:{}, after:{}, restore:{} responsiveParameter:{}}}
  */
 function makeResponsiveParameter(root) {
   let hashBounds = {}
@@ -2207,6 +2207,11 @@ function makeResponsiveParameter(root) {
   return hashBounds
 }
 
+/**
+ * @param beforeBounds
+ * @param restoreBounds
+ * @return {boolean}
+ */
 function checkBounds(beforeBounds, restoreBounds) {
   return (
     approxEqual(beforeBounds.x, restoreBounds.x) &&
@@ -2508,6 +2513,9 @@ async function createImage(
 
 /**
  * 名前後ろに機能が入っているかどうかのチェック
+ * @param type
+ * @param name
+ * @return {boolean}
  */
 function checkEndsTypeName(type, name) {
   return (
@@ -2524,49 +2532,67 @@ function checkEndsTypeName(type, name) {
  * @param {SceneNodeClass} node
  * @returns {*}
  */
-function getName(node) {
+function getNodeName(node) {
   return node.name.trim()
+}
+
+function getIdFromNodeName(nodeName) {
+  const css = parseCss(nodeName)
+  const selector = parseCssSelector(css[0].selector)
+  for (let selectorElement of selector) {
+    if (selectorElement.name.startsWith('#')) {
+      return selectorElement.name
+    }
+  }
+  return null
 }
 
 /**
  * 現時点での仕様では、XDのnameはClass
  * ・重複OK(idは重複なし)
  * ・複数持てる 例 "viewport-x list-x"
- * @param name
- * @returns {[]}
+ * TODO: この関数はSelectorのマッチ用によく呼び出されるため、キャッシュの生成が必要
+ * @param nodeName
+ * @returns {string[]}
  */
-function getClasses(name) {
+function getClassesFromNodeName(nodeName) {
   // 分解
-  const names = name.trim().split(' ')
-  // .をつける
+  const names = nodeName.trim().split(' ')
+  // .がついているもの（Class名）を探す
   const classes = []
   for (const arg of names) {
-    classes.push('.' + arg)
+    if (arg.startsWith('.')) {
+      classes.push(arg)
+    }
   }
   return classes
 }
 
 /**
  *
- * @param {string} name
+ * @param {string} nodeName
  * @param {SceneNodeClass} parent
+ * @param cssRules
  * @returns {*}
  */
-function getOptionsFromName(name, parent) {
-  let classes = getClasses(name)
+function getStyleFromNodeName(nodeName, parent, cssRules) {
   const style = {}
   for (const rule of cssRules) {
-    const ops = rule.selector_ops
+    const selectorOps = rule.selector_ops
     let selectorMatch = true
+    let tmpParent = parent // セレクタチェック用のParent
     for (
-      let currentIndexOp = ops.length - 1;
-      currentIndexOp >= 0;
-      currentIndexOp--
+      let indexSelectorOp = selectorOps.length - 1;
+      indexSelectorOp >= 0 && selectorMatch; // selectorOpのトップまでいくか、このルールにマッチしなかったことが確定したら停止
+      indexSelectorOp--
     ) {
-      const currentOp = ops[currentIndexOp]
-      switch (currentOp.op) {
+      const currentSelectorOp = selectorOps[indexSelectorOp]
+      switch (currentSelectorOp.op) {
         case '': {
-          const found = classes.find(className => className === currentOp.name)
+          let classes = getClassesFromNodeName(nodeName)
+          const found = classes.find(
+            className => className === currentSelectorOp.name,
+          )
           if (found == null) {
             // 見つからなかった
             selectorMatch = false
@@ -2575,14 +2601,15 @@ function getOptionsFromName(name, parent) {
           break
         }
         case '>': {
-          console.log('-------------------------------->', currentOp)
-          if (parent == null) {
+          if (tmpParent == null) {
             selectorMatch = false
             break
           }
-          classes = getClasses(getName(parent))
-          parent = parent.parent
-          const found = classes.find(className => className === currentOp.name)
+          let classes = getClassesFromNodeName(getNodeName(tmpParent))
+          tmpParent = tmpParent.parent
+          const found = classes.find(
+            className => className === currentSelectorOp.name,
+          )
           if (found == null) {
             // 見つからなかった
             selectorMatch = false
@@ -2591,6 +2618,7 @@ function getOptionsFromName(name, parent) {
           break
         }
         default:
+          console.log('***error unknown selector.op:', currentSelectorOp.op)
           break
       }
     }
@@ -2613,8 +2641,8 @@ function getNameOptions(node) {
   }
 
   let parentNode = node.parent
-  let name = getName(node)
-  const options = getOptionsFromName(name, parentNode)
+  let nodeName = getNodeName(node)
+  const style = getStyleFromNodeName(nodeName, parentNode, cssRules)
 
   if (parentNode.constructor.name === 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
@@ -2633,11 +2661,11 @@ function getNameOptions(node) {
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    name = 'child0'
+    nodeName = 'child0'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parentNode.children.length; i++) {
       if (parentNode.children.at(i) === node) {
-        name = '&child' + i
+        nodeName = '&child' + i
         break
       }
     }
@@ -2650,31 +2678,31 @@ function getNameOptions(node) {
       }
     })
     if (commentOut) {
-      options[OPTION_COMMENT_OUT] = true
+      style[OPTION_COMMENT_OUT] = true
     }
   }
 
   // 名前の最初1文字目が//ならコメントNode
-  if (name.startsWith('//')) {
-    options[OPTION_COMMENT_OUT] = true
-    name = name.substring(2)
+  if (nodeName.startsWith('//')) {
+    style[OPTION_COMMENT_OUT] = true
+    nodeName = nodeName.substring(2)
   }
 
   // 最初の1文字が.なら親の名前を利用する
   //TODO: まだ機能していない
-  if (name.startsWith('&')) {
-    name = name.substring(1)
+  if (nodeName.startsWith('&')) {
+    nodeName = nodeName.substring(1)
     //name = parentNameOptions.name + name
   }
 
   return {
-    name: name,
-    options: options,
+    name: nodeName,
+    options: style,
   }
 }
 
 function getContentName(node) {
-  return getName(node) + ' > content'
+  return getNodeName(node) + ' > content'
 }
 
 function makeLayoutJson(root) {
@@ -3116,7 +3144,7 @@ function getExportRootNodes(selection, root) {
  * @returns {Promise<void>}
  */
 async function pluginExportBaum2Command(selection, root) {
-  await loadCssJson()
+  await loadCssRules()
 
   let inputFolder
   let inputScale

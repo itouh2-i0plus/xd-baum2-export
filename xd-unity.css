@@ -46,14 +46,6 @@
   fix: x;
 }
 
-.dots-scrollbar {
-  scrollbar: true;
-  direction: ltr;
-  layout: x;
-  layout-spacing-x: 9px;
-  size-fit: x y;
-}
-
 .scrollbar-y {
   scrollbar: true;
   direction: btt;
@@ -72,8 +64,15 @@
   fix: l r t b;
 }
 
+.dots-scrollbar {
+  scrollbar: true;
+  direction: ltr;
+  layout: x;
+  layout-spacing-x: 9px;
+  size-fit: x y;
+}
 
-.dot-toggle {
+.dots-scrollbar > .toggle {
   toggle: true;
   layout-element: min;
 }
