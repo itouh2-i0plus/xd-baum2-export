@@ -12,14 +12,8 @@ var responsiveBounds = {}
 // 出力するフォルダ
 var outputFolder = null
 
-// 拡張要素を有効にするかどうか TextMeshPro/EnhancedScroller/TextInput対応
-var optionEnableExtended = true
-
 // エキスポートフラグを見るかどうか
 var optionCheckMarkedForExport = true
-
-// レスポンシブパラメータを取得するオプション
-var optionNeedResponsiveParameter = true
 
 // レスポンシブパラメータを取得するオプション
 var optionEnableSubPrefab = true
@@ -37,21 +31,22 @@ const STR_PREFERRED = 'preferred'
 
 // オプション文字列　全て小文字
 // OPTION名に H V　X Yといった、高さ方向をしめすものはできるだけ出さないようにする
+const OPTION_TYPE_BUTTON = 'button'
+const OPTION_TYPE_SLIDER = 'slider'
+const OPTION_TYPE_SCROLLBAR = 'scrollbar'
+const OPTION_TYPE_IMAGE = 'image'
+const OPTION_TYPE_INPUT = 'input'
+const OPTION_TYPE_TOGGLE = 'toggle'
+const OPTION_TYPE_SCROLLER = 'scroller'
+const OPTION_TYPE_TEXT = 'text'
+const OPTION_TYPE_TEXTMP = 'textmp' // textmeshpro
+const OPTION_TYPE_VIEWPORT = 'viewport'
+
 const OPTION_COMMENT_OUT = 'comment-out'
-const OPTION_SUB_PREFAB = 'sub-prefab'
-const OPTION_BUTTON = 'button'
-const OPTION_SLIDER = 'slider'
-const OPTION_SCROLLBAR = 'scrollbar'
+const OPTION_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
 const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
-const OPTION_IMAGE = 'image'
-const OPTION_INPUT = 'input'
-const OPTION_TOGGLE = 'toggle'
-const OPTION_SCROLLER = 'scroller'
 const OPTION_FIX = 'fix'
-const OPTION_TEXT = 'text'
-const OPTION_TEXTMP = 'textmp' // textmeshpro
 const OPTION_TOGGLE_GROUP = 'toggle-group'
-const OPTION_VIEWPORT = 'viewport'
 const OPTION_CANVAS_GROUP = 'canvas-group' // 削除予定
 const OPTION_COMPONENT = 'component'
 const OPTION_MIN_HEIGHT = 'min-height' // 削除予定
@@ -64,17 +59,52 @@ const OPTION_RAYCAST_TARGET = 'raycast-target' // 削除予定
 const OPTION_IMAGE_SCALE = 'image-scale'
 const OPTION_IMAGE_TYPE = 'image-type'
 const OPTION_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
-const OPTION_IMAGE_SLICE = 'image-slice' // 9スライス
+const OPTION_IMAGE_9SLICE = 'image-slice' // 9スライス
 const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
 const OPTION_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
 const OPTION_CONTENT = 'content'
 const OPTION_DIRECTION = 'direction'
+const OPTION_LAYOUT_ELEMENT = 'layout-element'
+
+/**
+ * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
+ */
+let cssRules = null
+
+async function loadCssJson() {
+  if (cssRules != null) return
+  cssRules = []
+  const folder = await fs.getPluginFolder()
+  const file = await folder.getEntry('xd-unity.css')
+  const contents = await file.read()
+  const rules = parseCss(contents)
+  /**
+   * opの種類は　'', ' '(スペース), '>'
+   * .a.b -> selector_ops:[ {name:".a","op":""}, {name:".b","op":""} ]
+   * .a > .b -> selector_ops:[ {name:".a","op":">"}, {name:".b","op":""} ]
+   */
+  for (const rule of rules) {
+    const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]*)/gi
+    let token
+    // セレクターを分解
+    let nameOps = []
+    while ((token = regexSelector.exec(rule.selector))) {
+      let op = token.groups.op
+      if (op != null || op !== '') {
+        op = op.trim()
+        if (op === '') op = ' ' // 空白が全部きえてしまった　→ ' '
+      }
+      nameOps.push({ op, name: token.groups.name })
+    }
+    cssRules.push({ selector_ops: nameOps, style: rule.style })
+  }
+}
 
 /**
  * CSS Parser
  * @author Jason Miller https://jsfiddle.net/user/developit/fiddles/ https://jsfiddle.net/developit/vzkckrw4/
  * @param {string} text
- * @return {[]}
+ * @return {[{selector:string, rules:{}}]}
  */
 function parseCss(text) {
   let tokenizer = /([\s\S]+?)\{([\s\S]*?)\}/gi,
@@ -84,8 +114,7 @@ function parseCss(text) {
   while ((token = tokenizer.exec(text))) {
     let style = parseRule(token[2].trim())
     const selector = token[1].trim().replace(/\s*\,\s*/, ', ')
-    //Object.assign( rules[selector], style)
-    rules.push({ name: selector, options: style })
+    rules.push({ selector, style })
   }
   return rules
 }
@@ -109,46 +138,46 @@ function checkOptionSubPrefab(options) {
 }
 
 function checkOptionButton(options) {
-  return checkBoolean(options[OPTION_BUTTON])
+  return checkBoolean(options[OPTION_TYPE_BUTTON])
 }
 
 function checkOptionSlider(options) {
-  return checkBoolean(options[OPTION_SLIDER])
+  return checkBoolean(options[OPTION_TYPE_SLIDER])
 }
 
 function checkOptionScrollbar(options) {
-  return checkBoolean(options[OPTION_SCROLLBAR])
+  return checkBoolean(options[OPTION_TYPE_SCROLLBAR])
 }
 
 function checkOptionImage(options) {
-  if (checkBoolean(options[OPTION_IMAGE_SLICE])) {
+  if (checkBoolean(options[OPTION_IMAGE_9SLICE])) {
     return true
   }
-  return checkBoolean(options[OPTION_IMAGE])
+  return checkBoolean(options[OPTION_TYPE_IMAGE])
 }
 
 function checkOptionText(options) {
-  return checkBoolean(options[OPTION_TEXT])
+  return checkBoolean(options[OPTION_TYPE_TEXT])
 }
 
 function checkOptionTextMeshPro(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_TEXTMP])
+  return checkBoolean(options[OPTION_TYPE_TEXTMP])
 }
 
 function checkOptionInput(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_INPUT])
+  return checkBoolean(options[OPTION_TYPE_INPUT])
 }
 
 function checkOptionToggle(options) {
-  return checkBoolean(options[OPTION_TOGGLE])
+  return checkBoolean(options[OPTION_TYPE_TOGGLE])
 }
 
 function checkOptionScroller(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_SCROLLER])
+  return checkBoolean(options[OPTION_TYPE_SCROLLER])
 }
 
 function checkOptionViewport(options) {
-  return optionEnableExtended && checkBoolean(options[OPTION_VIEWPORT])
+  return checkBoolean(options[OPTION_TYPE_VIEWPORT])
 }
 
 /**
@@ -396,9 +425,6 @@ function assignCanvasGroup(json, node, options) {
  * @param {SceneNode} node
  */
 function assignDrawResponsiveParameter(json, node) {
-  if (!optionNeedResponsiveParameter) {
-    return null
-  }
   let param = getDrawResponsiveParameter(node)
   if (param != null) {
     Object.assign(json, param)
@@ -422,9 +448,6 @@ function assignDrawResponsiveParameter(json, node) {
  * @returns {null}
  */
 function assignResponsiveParameter(json, node) {
-  if (!optionNeedResponsiveParameter) {
-    return null
-  }
   let param = getResponsiveParameter(node)
   if (param != null) {
     Object.assign(json, param)
@@ -470,10 +493,10 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
   let symbolId = node.symbolId
 
   // 今回出力するためのユニークな名前をつける
-  const { name: parentName, options: parentOptions } = parseNameOptions(
+  const { name: parentName, options: parentOptions } = getNameOptions(
     node.parent,
   )
-  const nameOptions = parseNameOptions(node)
+  const nameOptions = getNameOptions(node)
 
   let fileName = convertToFileName(symbolId, true)
   const found = searchFileName(renditions, '../symbol/' + fileName)
@@ -551,10 +574,10 @@ async function assignImage(
   //　ーーーーここまでーーーー
 
   // 今回出力するためのユニークな名前をつける
-  const { name: parentName, options: parentOptions } = parseNameOptions(
+  const { name: parentName, options: parentOptions } = getNameOptions(
     node.parent,
   )
-  const nameOptions = parseNameOptions(node)
+  const nameOptions = getNameOptions(node)
 
   let length = 5
   // ファイル名が長すぎるとエラーになる可能性もある
@@ -575,11 +598,14 @@ async function assignImage(
   if (checkBoolean(options[OPTION_IMAGE_NO_SLICE])) {
     fileExtension = '-noslice.png'
   }
-  if (options[OPTION_IMAGE_SLICE]) {
+  const image9Slice = options[OPTION_IMAGE_9SLICE]
+  console.log('------------------image------------------------', options)
+  if (image9Slice) {
+    console.log('------------------9slice------------------------', image9Slice)
     // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
     //var result = pattern.exec(options[OPTION_9SLICE])
-    const result = options[OPTION_IMAGE_SLICE].match(pattern)
+    const result = image9Slice.match(pattern)
     /*
     省略については、CSSに準拠
     http://www.htmq.com/css3/border-image-slice.shtml
@@ -710,8 +736,7 @@ function getSizeFitterParam(option) {
  * @param json
  * @param options
  */
-function assignContentSizeFit(json, options) {
-  let optionContentSizeFit = getContentOption(options, OPTION_SIZE_FIT)
+function assignContentSizeFit(json, optionContentSizeFit) {
   if (optionContentSizeFit == null) return
   optionContentSizeFit = optionContentSizeFit.toLowerCase()
   let jsonContent = json[STR_CONTENT]
@@ -744,6 +769,11 @@ function assignContentSizeFit(json, options) {
   */
 }
 
+/**
+ *
+ * @param json
+ * @param {{}} options
+ */
 function assignSizeFit(json, options) {
   const optionSizeFit = options[OPTION_SIZE_FIT]
   if (optionSizeFit != null) {
@@ -807,6 +837,19 @@ async function createViewport(
       scrollDirection += STR_HORIZONTAL
     }
   }
+
+  // Viewportは必ずcontentを持つ
+  // contentのアサインと名前設定
+  let contentName = 'content'
+  Object.assign(json, {
+    content: {
+      name: contentName,
+    },
+  })
+
+  let contentJson = json[STR_CONTENT]
+  const contentOptions = getOptionsFromName(contentName, node)
+
   if (node.constructor.name === 'Group') {
     /** @type {Group} */
     let groupNode = node
@@ -829,7 +872,7 @@ async function createViewport(
         // maskはElement処理をしない
         return false
       }
-      const nameOptions = parseNameOptions(child)
+      const nameOptions = getNameOptions(child)
       // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
       if (maskNode == null && nameOptions.name.toLowerCase() === 'area') {
         maskNode = child
@@ -853,10 +896,20 @@ async function createViewport(
       h: maskBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content: getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     })
 
-    assignContentLayout(json, node, maskNode, node.children, options)
+    Object.assign(
+      contentJson,
+      getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
+    )
+
+    assignLayout(
+      json[STR_CONTENT],
+      node,
+      maskNode,
+      node.children,
+      contentOptions,
+    )
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -871,7 +924,7 @@ async function createViewport(
     // そういったものを省くための処理
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
-      const nameOptions = parseNameOptions(child)
+      const nameOptions = getNameOptions(child)
       const bounds = getGlobalDrawBounds(child)
       if (!testBounds(viewportBounds, bounds)) {
         console.log(nameOptions.name + 'はViewportにはいっていない')
@@ -899,14 +952,16 @@ async function createViewport(
       h: viewportBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
-      content: getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     })
 
-    let contentJson = json[STR_CONTENT]
+    Object.assign(
+      contentJson,
+      getBoundsInBase(calcContentBounds.bounds, viewportBounds),
+    )
 
-    const contentOptionLayout = getContentOption(options,OPTION_LAYOUT)
+    const contentOptionLayout = contentOptions[OPTION_LAYOUT]
     if (contentOptionLayout != null) {
-      if (contentOptionLayout.includes('grid') || hasOptionParam(contentOptionLayout, 'g')) {
+      if (hasOptionParam(contentOptionLayout, 'grid')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
 
         // スクロールの方向が横なら、並びは縦から
@@ -949,31 +1004,31 @@ async function createViewport(
   assignDrawResponsiveParameter(json, node)
 
   // Content系
-
   // SizeFit
-  assignContentSizeFit(json, options)
+  assignSizeFit(contentJson, contentOptions)
 
   // ContentのRectTransformを決める
-  const contentWidth = json['content']['width']
-  const contentHeight = json['content']['height']
-  const contentFix = getContentOption(options, OPTION_FIX)
-  const contentOptionFix = getOptionFix(contentFix)
+  const contentWidth = contentJson['width']
+  const contentHeight = contentJson['height']
+  const contentOptionFix = getOptionFix(contentOptions[OPTION_FIX])
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
   let offsetMin = { x: 0, y: -contentHeight }
   let offsetMax = { x: contentWidth, y: 0 }
-  if (contentOptionFix.top === true && contentOptionFix.bottom === true) {
-    // 親と縦を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
-    anchorMin.y = 0
-    offsetMin.y = 0
+  if (contentOptionFix != null) {
+    if (contentOptionFix.top === true && contentOptionFix.bottom === true) {
+      // 親と縦を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
+      anchorMin.y = 0
+      offsetMin.y = 0
+    }
+    if (contentOptionFix.left === true && contentOptionFix.right === true) {
+      // 親と横を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
+      anchorMax.x = 1
+      offsetMax.x = 0
+    }
   }
-  if (contentOptionFix.left === true && contentOptionFix.right === true) {
-    // 親と横を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
-    anchorMax.x = 1
-    offsetMax.x = 0
-  }
-  Object.assign(json['content'], {
+  Object.assign(contentJson, {
     fix: contentOptionFix,
     pivot: pivot, // ここのPivotはX,Yで渡す　他のところは文字列になっている
     anchor_min: anchorMin,
@@ -1053,7 +1108,7 @@ function getNodeListBounds(nodeList, withoutNode) {
   // セルサイズを決めるため最大サイズを取得する
   let childrenMinMaxSize = new MinMaxSize()
   nodeList.forEach(node => {
-    const nameOptions = parseNameOptions(node)
+    const nameOptions = getNameOptions(node)
     // コンポーネントにする場合は除く
     if (nameOptions.options['component']) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
@@ -1358,59 +1413,24 @@ function getLayoutJson(
 function assignLayout(json, viewportNode, maskNode, children, options) {
   if (options == null || options[OPTION_LAYOUT] == null) return
   let optionLayout = options[OPTION_LAYOUT]
-  const optionLayoutString = optionLayout.toString().toLowerCase()
   let layoutJson = getLayoutJson(
-    optionLayoutString,
+    optionLayout,
     json,
     viewportNode,
     maskNode,
     children,
   )
+
+  const layoutSpacingX = options['layout-spacing-x']
+  if (layoutSpacingX != null) {
+    Object.assign(layoutJson, {
+      spacing_x: parseInt(layoutSpacingX), //TODO: pxやenを無視している
+    })
+  }
 
   Object.assign(json, {
     layout: layoutJson,
   })
-}
-
-function assignContentLayout(json, viewportNode, maskNode, children, options) {
-  let optionLayout = getContentOption(options, OPTION_LAYOUT)
-  if (optionLayout == null) return
-  const optionLayoutString = optionLayout.toString().toLowerCase()
-  let layoutJson = getLayoutJson(
-    optionLayoutString,
-    json,
-    viewportNode,
-    maskNode,
-    children,
-  )
-
-  let jsonContent = json[STR_CONTENT]
-  if (jsonContent == null) {
-    json[STR_CONTENT] = {}
-    jsonContent = json[STR_CONTENT]
-  }
-
-  Object.assign(jsonContent, {
-    layout: layoutJson,
-  })
-}
-
-/**
- * Heightレイアウトするための情報をもっているElementか
- * @param {*} elementJson
- */
-function hasVerticalLayout(elementJson) {
-  const type = elementJson['type']
-  if (type === 'Text') {
-    return true
-  }
-  if (
-    elementJson['layout'] &&
-    elementJson['layout']['method'] === STR_VERTICAL
-  ) {
-    return true
-  }
-  return !!elementJson['preferred_height']
 }
 
 /**
@@ -1498,17 +1518,9 @@ async function createScrollbar(options, json, name, node, funcForEachChild) {
   })
   let direction = options[OPTION_DIRECTION]
   if (direction != null) {
-    direction = direction.toLowerCase()
-    if (direction === STR_VERTICAL || direction === 'y') {
-      Object.assign(json, {
-        scroll_direction: STR_VERTICAL,
-      })
-    }
-    if (direction === STR_HORIZONTAL || direction === 'x') {
-      Object.assign(json, {
-        scroll_direction: STR_HORIZONTAL,
-      })
-    }
+    Object.assign(json, {
+      scroll_direction: direction,
+    })
   }
 
   assignSizeFit(json, options)
@@ -1517,6 +1529,25 @@ async function createScrollbar(options, json, name, node, funcForEachChild) {
   assignDrawResponsiveParameter(json, node)
   await funcForEachChild()
   //return type
+}
+
+/**
+ *
+ * @param {} json
+ * @param {SceneNodeClass} node
+ */
+function assignLayoutElement(json, node, options) {
+  if (options[OPTION_LAYOUT_ELEMENT] == null) return
+  const option = options[OPTION_LAYOUT_ELEMENT]
+  if (hasOptionParam(option, 'min')) {
+    const bounds = getGlobalDrawBounds(node)
+    Object.assign(json, {
+      layout_element: {
+        min_width: bounds.width,
+        min_height: bounds.height,
+      },
+    })
+  }
 }
 
 async function createToggle(json, name, options, node, root, funcForEachChild) {
@@ -1531,6 +1562,7 @@ async function createToggle(json, name, options, node, root, funcForEachChild) {
       group: options[OPTION_TOGGLE_GROUP],
     })
   }
+  assignLayoutElement(json, node, options)
   assignDrawResponsiveParameter(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
@@ -1599,6 +1631,7 @@ async function nodeGroup(
   }
 
   if (checkOptionScrollbar(options)) {
+    console.log('-----------------------------scrollbar')
     await createScrollbar(options, json, name, node, funcForEachChild)
     return 'Scrollbar'
   }
@@ -1733,9 +1766,12 @@ function hasOptionParam(optionStr, paramStr) {
 
 /**
  * @param {string} optionFix
- * @return {{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
+ * @returns {null|{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
  */
 function getOptionFix(optionFix) {
+  if (optionFix == null) {
+    return null
+  }
   let fixOption = optionFix.toLowerCase()
   let fixOptionWidth = false
   let fixOptionHeight = false
@@ -1821,7 +1857,7 @@ function calcResponsiveParameter(
   if (!node || !node.parent) return null
   if (!options) {
     // @Pivot @Stretchを取得するため
-    const nameOptions = parseNameOptions(node)
+    const nameOptions = getNameOptions(node)
     options = nameOptions.options
   }
   // console.log(`----------------------${node.name}----------------------`)
@@ -2485,26 +2521,84 @@ function checkEndsTypeName(type, name) {
 }
 
 /**
- * @param {string} key
- * @param {string} value
- * @return {null|{layout: string, "size-fit": string}}
+ * @param {SceneNodeClass} node
+ * @returns {*}
  */
-function openMacro(key, value) {
-  if (key === 'list') {
-    if (value === 'x') {
-      return {
-        layout: 'x expand-y',
-        'size-fit': 'x',
+function getName(node) {
+  return node.name.trim()
+}
+
+/**
+ * 現時点での仕様では、XDのnameはClass
+ * ・重複OK(idは重複なし)
+ * ・複数持てる 例 "viewport-x list-x"
+ * @param name
+ * @returns {[]}
+ */
+function getClasses(name) {
+  // 分解
+  const names = name.trim().split(' ')
+  // .をつける
+  const classes = []
+  for (const arg of names) {
+    classes.push('.' + arg)
+  }
+  return classes
+}
+
+/**
+ *
+ * @param {string} name
+ * @param {SceneNodeClass} parent
+ * @returns {*}
+ */
+function getOptionsFromName(name, parent) {
+  let classes = getClasses(name)
+  const style = {}
+  for (const rule of cssRules) {
+    const ops = rule.selector_ops
+    let selectorMatch = true
+    for (
+      let currentIndexOp = ops.length - 1;
+      currentIndexOp >= 0;
+      currentIndexOp--
+    ) {
+      const currentOp = ops[currentIndexOp]
+      switch (currentOp.op) {
+        case '': {
+          const found = classes.find(className => className === currentOp.name)
+          if (found == null) {
+            // 見つからなかった
+            selectorMatch = false
+            break // 次のルール
+          }
+          break
+        }
+        case '>': {
+          console.log('-------------------------------->', currentOp)
+          if (parent == null) {
+            selectorMatch = false
+            break
+          }
+          classes = getClasses(getName(parent))
+          parent = parent.parent
+          const found = classes.find(className => className === currentOp.name)
+          if (found == null) {
+            // 見つからなかった
+            selectorMatch = false
+            break // 次のルール
+          }
+          break
+        }
+        default:
+          break
       }
     }
-    if (value === 'y') {
-      return {
-        layout: 'y expand-x',
-        'size-fit': 'y',
-      }
+    if (selectorMatch) {
+      Object.assign(style, rule.style)
     }
   }
-  return null
+  return style
 }
 
 /**
@@ -2513,163 +2607,16 @@ function openMacro(key, value) {
  * @param {SceneNode} node
  * @return {null|{name: string, options: {}}}
  */
-function parseNameOptions(node) {
+function getNameOptions(node) {
   if (node == null) {
     return null
   }
 
-  let name = node.name
-  let options = {}
-  const cssJson = parseCss(node.name)
-  if (cssJson.length > 0) {
-    // パースに成功した場合
-    // macroの展開
-    for (let cssJsonElement of cssJson) {
-      for (const optionKey in cssJsonElement.options) {
-        const optionValue = cssJsonElement.options[optionKey]
-        const macroOptions = openMacro(optionKey, optionValue)
-        if (macroOptions != null) {
-          Object.assign(cssJsonElement.options, macroOptions)
-        }
-      }
-    }
-    // 名前とオプションの上書き
-    name = cssJson[0].name
-    options = cssJson[0].options
-  }
+  let parentNode = node.parent
+  let name = getName(node)
+  const options = getOptionsFromName(name, parentNode)
 
-  // 名前の最初1文字目が#ならコメントNode
-  if (name.startsWith('//')) {
-    options[OPTION_COMMENT_OUT] = true
-    name = name.substring(2)
-  }
-
-  /*
-  // そのレイヤーをラスタライズする
-  if (name.startsWith('*')) {
-    options[OPTION_IMAGE] = true
-    name = name.substring(1)
-  }
-  */
-
-  // Unityでコンポーネント化する
-  if (name.startsWith('+')) {
-    options[OPTION_COMPONENT] = true
-    name = name.substring(1)
-  }
-
-  // 最初の1文字が.なら親の名前を利用する
-  if (name.startsWith('&')) {
-    name = name.substring(1)
-    name = parentNameOptions.name + name
-  }
-
-  /*
-  // 名前の最後が/であれば､サブPrefabのオプションをONにする
-  if (name.endsWith('/')) {
-    options[OPTION_SUB_PREFAB] = true
-    name = name.slice(0, -1)
-  }
-  */
-
-  if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
-    options[OPTION_IMAGE] = true
-  }
-
-  if (name.endsWith('Button') || checkEndsTypeName('button', name)) {
-    options[OPTION_BUTTON] = true
-  }
-
-  if (name.endsWith('Slider') || checkEndsTypeName('slider', name)) {
-    options[OPTION_SLIDER] = true
-  }
-
-  if (name.endsWith('Scrollbar') || checkEndsTypeName('scrollbar', name)) {
-    options[OPTION_SCROLLBAR] = true
-  }
-
-  if (name.endsWith('Text') || checkEndsTypeName('text', name)) {
-    if (optionDefaultTextMP) {
-      options[OPTION_TEXTMP] = true
-    } else {
-      options[OPTION_TEXT] = true
-    }
-  }
-
-  if (name.endsWith('Toggle') || checkEndsTypeName('toggle', name)) {
-    options[OPTION_TOGGLE] = true
-  }
-
-  // 拡張モード有効時のみ
-  if (optionEnableExtended) {
-    if (name.endsWith('Input') || checkEndsTypeName('input', name)) {
-      options[OPTION_INPUT] = true
-    }
-
-    if (name.endsWith('List') || checkEndsTypeName('list', name)) {
-      options[OPTION_SCROLLER] = true
-    }
-
-    if (name.endsWith('Viewport') || checkEndsTypeName('viewport', name)) {
-      options[OPTION_VIEWPORT] = true
-    }
-  }
-
-  if (cssJson.length > 1) {
-    options[OPTION_CONTENT] = {
-      name: cssJson[1].name,
-      options: cssJson[1].options,
-    }
-  }
-
-  return {
-    name: name,
-    options: options,
-  }
-}
-
-/**
- * options内のcontentのnameとoptionsを取得する
- * @param options
- * @return {null|{name: *, options: ({}|PushSubscriptionOptions|HTMLOptionsCollection|HTMLCollectionOf<HTMLOptionElement>)}}
- */
-function getContentNameOptions(options) {
-  if (options == null || options[OPTION_CONTENT] == null) {
-    return null
-  }
-  const contentName = options[OPTION_CONTENT].name
-  const contentOptions = options[OPTION_CONTENT].options
-  return {
-    name: contentName,
-    options: contentOptions,
-  }
-}
-
-function getContentOption(options, contentOption) {
-  const contentNameOptions = getContentNameOptions(options)
-  if (contentNameOptions == null) return null
-  return contentNameOptions.options[contentOption]
-}
-
-function parseNameOptionsOld(node) {
-  if (node == null) {
-    return null
-  }
-
-  /**
-   * @type {null|string}
-   */
-  let name = null
-  let options = {}
-
-  let nameStr = node.name
-  let parent = node.parent
-
-  // 親の属性をみてオプションを定義する
-  const parentNameOptions = parseNameOptions(parent)
-  const parentName = parentNameOptions == null ? '' : parentNameOptions.name
-
-  if (parent != null && parent.constructor.name === 'RepeatGrid') {
+  if (parentNode.constructor.name === 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
     // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
     // item_button
@@ -2686,11 +2633,11 @@ function parseNameOptionsOld(node) {
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    nameStr = 'child0'
+    name = 'child0'
     // 自身のChildインデックスを名前に利用する
-    for (let i = 0; i < parent.children.length; i++) {
-      if (parent.children.at(i) === node) {
-        nameStr = parentName + '.child' + i
+    for (let i = 0; i < parentNode.children.length; i++) {
+      if (parentNode.children.at(i) === node) {
+        name = '&child' + i
         break
       }
     }
@@ -2705,123 +2652,19 @@ function parseNameOptionsOld(node) {
     if (commentOut) {
       options[OPTION_COMMENT_OUT] = true
     }
-
-    /*
-    // 親がVGroup属性をもったリピートグリッドの場合､itemもVGroupオプションを持つようにする
-    // viewport　(Unityではここで､vgroupはもたない)
-    //   content +vgroup +content_size_fitter (これらはBaum2で付与される)
-    //     item0 +vgroup
-    if (parentNameOptions.options[OPTION_V_LAYOUT] != null) {
-      options[OPTION_V_LAYOUT] = true
-    }
-    */
   }
 
-  /*
-  let optionArray = nameStr.split('@')
-  if (optionArray != null && optionArray.length > 0) {
-    name = optionArray[0].trim()
-    // 名前の部分を除去
-    optionArray.shift()
-    optionArray.forEach(option => {
-      let args = option.split('=')
-      if (args.length > 1) {
-        options[
-          args[0]
-            .trim()
-            .toLowerCase()
-            .replace(/[-|_]/g, '')
-        ] = args[1].trim().toLowerCase()
-      } else {
-        options[
-          option
-            .trim()
-            .toLowerCase()
-            .replace(/[-|_]/g, '')
-        ] = true
-      }
-    })
-  } else {
-    name = nameStr.trim()
-  }
-  */
-
-  // 名前の最初1文字目が#ならコメントNode
+  // 名前の最初1文字目が//ならコメントNode
   if (name.startsWith('//')) {
     options[OPTION_COMMENT_OUT] = true
-    name = name.substring(1)
+    name = name.substring(2)
   }
 
-  /*
-  // そのレイヤーをラスタライズする
-  if (name.startsWith('*')) {
-    options[OPTION_IMAGE] = true
-    name = name.substring(1)
-  }
-  */
-
-  // Unityでコンポーネント化する
-  if (name.startsWith('+')) {
-    options[OPTION_COMPONENT] = true
-    name = name.substring(1)
-  }
-
-  /*
   // 最初の1文字が.なら親の名前を利用する
-  if (name.startsWith('.')) {
-    name = parentNameOptions.name + name
-  }
-  */
-
-  /*
-  // 名前の最後が/であれば､サブPrefabのオプションをONにする
-  if (name.endsWith('/')) {
-    options[OPTION_SUB_PREFAB] = true
-    name = name.slice(0, -1)
-  }
-  */
-
-  if (name.endsWith('Image') || checkEndsTypeName('image', name)) {
-    options[OPTION_IMAGE] = true
-  }
-
-  if (name.endsWith('Button') || checkEndsTypeName('button', name)) {
-    options[OPTION_BUTTON] = true
-  }
-
-  if (name.endsWith('Slider') || checkEndsTypeName('slider', name)) {
-    options[OPTION_SLIDER] = true
-  }
-
-  if (name.endsWith('Scrollbar') || checkEndsTypeName('scrollbar', name)) {
-    options[OPTION_SCROLLBAR] = true
-  }
-
-  if (name.endsWith('Text') || checkEndsTypeName('text', name)) {
-    if (optionDefaultTextMP) {
-      options[OPTION_TEXTMP] = true
-    } else {
-      options[OPTION_TEXT] = true
-    }
-  }
-
-  if (name.endsWith('Toggle') || checkEndsTypeName('toggle', name)) {
-    options[OPTION_TOGGLE] = true
-  }
-
-  // 拡張モード有効時のみ
-  if (optionEnableExtended) {
-    if (name.endsWith('Input') || checkEndsTypeName('input', name)) {
-      options[OPTION_INPUT] = true
-    }
-
-    if (name.endsWith('List') || checkEndsTypeName('list', name)) {
-      options[OPTION_SCROLLER] = true
-    }
-
-    if (name.endsWith('Viewport') || checkEndsTypeName('viewport', name)) {
-      options[OPTION_VIEWPORT] = true
-    }
+  //TODO: まだ機能していない
+  if (name.startsWith('&')) {
+    name = name.substring(1)
+    //name = parentNameOptions.name + name
   }
 
   return {
@@ -2830,15 +2673,8 @@ function parseNameOptionsOld(node) {
   }
 }
 
-function concatNameOptions(name, options) {
-  let str = '' + name
-
-  for (const key in options) {
-    let val = options[key]
-    str += '@' + key + '=' + val
-  }
-
-  return str
+function getContentName(node) {
+  return getName(node) + ' > content'
 }
 
 function makeLayoutJson(root) {
@@ -2886,7 +2722,7 @@ function makeLayoutJson(root) {
  */
 async function nodeRoot(renditions, outputFolder, root) {
   let subFolder
-  let nameOptions = parseNameOptions(root)
+  let nameOptions = getNameOptions(root)
 
   let subFolderName = nameOptions.name
 
@@ -2912,7 +2748,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     let node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = parseNameOptions(node)
+    let { name, options } = getNameOptions(node)
 
     const indent = (() => {
       let sp = ''
@@ -3000,7 +2836,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'BooleanGroup':
         {
           // BooleanGroupは強制的にラスタライズする
-          options[OPTION_IMAGE] = true
+          options[OPTION_TYPE_IMAGE] = true
           const type = await nodeGroup(
             layoutJson,
             node,
@@ -3104,11 +2940,9 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
 
   // レスポンシブパラメータの作成
   responsiveBounds = {}
-  if (optionNeedResponsiveParameter) {
-    for (const i in responsiveCheckArtboards) {
-      let artboard = responsiveCheckArtboards[i]
-      Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
-    }
+  for (const i in responsiveCheckArtboards) {
+    let artboard = responsiveCheckArtboards[i]
+    Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
   }
 
   checkHashBounds(responsiveBounds, true)
@@ -3131,7 +2965,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   for (const i in roots) {
     let root = roots[i]
     nodeWalker(root, node => {
-      const nameOptions = parseNameOptions(node)
+      const nameOptions = getNameOptions(node)
       if (checkOptionCommentOut(nameOptions.options)) {
         return false // 子供には行かないようにする
       }
@@ -3151,7 +2985,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       // 9SLICEであった場合、そのグループの不可視情報はそのまま活かすため
       // 自身は可視にし、子供の不可視情報は生かす
       // 本来は sourceImageをNaturalWidth,Heightで出力する
-      if (nameOptions.options[OPTION_IMAGE_SLICE] != null) {
+      if (nameOptions.options[OPTION_IMAGE_9SLICE] != null) {
         return false
       }
     })
@@ -3282,11 +3116,11 @@ function getExportRootNodes(selection, root) {
  * @returns {Promise<void>}
  */
 async function pluginExportBaum2Command(selection, root) {
+  await loadCssJson()
+
   let inputFolder
   let inputScale
   let errorLabel
-  let checkEnableExtended
-  let checkGetResponsiveParameter
   let checkEnableSubPrefab
   let checkTextToTMP
   let checkForceTextToImage
@@ -3381,45 +3215,6 @@ async function pluginExportBaum2Command(selection, root) {
             alignItems: 'center',
           },
         },
-        (checkEnableExtended = h('input', {
-          type: 'checkbox',
-        })),
-        h('span', '拡張モード有効(TextMeshPro/EnhancedScroller/TextInput)'),
-      ),
-      h(
-        'label',
-        {
-          style: {
-            flexDirection: 'row',
-            alignItems: 'center',
-          },
-        },
-        (checkGetResponsiveParameter = h('input', {
-          type: 'checkbox',
-        })),
-        h('span', 'レスポンシブパラメータの出力'),
-      ),
-      h(
-        'label',
-        {
-          style: {
-            flexDirection: 'row',
-            alignItems: 'center',
-          },
-        },
-        (checkEnableSubPrefab = h('input', {
-          type: 'checkbox',
-        })),
-        h('span', '名前の最後に/がついている以下を独立したPrefabにする'),
-      ),
-      h(
-        'label',
-        {
-          style: {
-            flexDirection: 'row',
-            alignItems: 'center',
-          },
-        },
         (checkTextToTMP = h('input', {
           type: 'checkbox',
         })),
@@ -3478,12 +3273,8 @@ async function pluginExportBaum2Command(selection, root) {
                 errorLabel.textContent = 'invalid output folder'
                 return
               }
-              optionEnableExtended = checkEnableExtended.checked
-              // レスポンシブパラメータ
-              optionNeedResponsiveParameter =
-                checkGetResponsiveParameter.checked
               // サブPrefab
-              optionEnableSubPrefab = checkEnableSubPrefab.checked
+              // optionEnableSubPrefab = checkEnableSubPrefab.checked
               //
               optionDefaultTextMP = checkTextToTMP.checked
               //
@@ -3511,9 +3302,7 @@ async function pluginExportBaum2Command(selection, root) {
     inputFolder.value = outputFolder.nativePath
   }
   // Responsive Parameter
-  checkEnableExtended.checked = optionEnableExtended
-  checkGetResponsiveParameter.checked = optionNeedResponsiveParameter
-  checkEnableSubPrefab.checked = optionEnableSubPrefab
+  // checkEnableSubPrefab.checked = optionEnableSubPrefab
   checkTextToTMP.checked = optionDefaultTextMP
   checkForceTextToImage.checked = optionForceTextToImage
   checkCheckMarkedForExport.checked = optionCheckMarkedForExport
@@ -3538,7 +3327,7 @@ async function pluginExportBaum2Command(selection, root) {
     let currentArtboard = null
     let funcForEach = nodes => {
       nodes.forEach(node => {
-        let nameOptions = parseNameOptions(node)
+        let nameOptions = getNameOptions(node)
         const isArtboard = node instanceof Artboard
         if (
           isArtboard ||

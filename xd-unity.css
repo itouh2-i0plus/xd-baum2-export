@@ -1,0 +1,124 @@
+/*
+デザイン要素はできるだけXDにやらせる
+こちらで定義にするのはUnityでの挙動になるようにする
+ */
+
+.list-x {
+  layout: x expand-y;
+  size-fit: x;
+}
+
+.list-y {
+  layout: y expand-x;
+  size-fit: y;
+}
+
+.viewport-x {
+  viewport: true;
+  scroll: x;
+}
+
+.viewport-y {
+  viewport: true;
+  scroll: y;
+}
+
+.viewport-x-y {
+  viewport: true;
+  scroll: x y;
+}
+
+.content-grid-x > .content {
+  layout: grid;
+  size-fit: x;
+  fix: y;
+}
+
+.content-grid-y > .content {
+  layout: grid;
+  size-fit: y;
+  fix: x;
+}
+
+.content-list-y > .content {
+  layout: y expand-x;
+  size-fit: y;
+  fix: x;
+}
+
+.dots-scrollbar {
+  scrollbar: true;
+  direction: ltr;
+  layout: x;
+  layout-spacing-x: 9px;
+  size-fit: x y;
+}
+
+.scrollbar-y {
+  scrollbar: true;
+  direction: btt;
+}
+
+.scrollbar-x {
+  scrollbar: true;
+  direction: ltr;
+}
+
+.scrollbar-x > .handle {
+  fix: l r t b;
+}
+
+.scrollbar-y > .handle {
+  fix: l r t b;
+}
+
+
+.dot-toggle {
+  toggle: true;
+  layout-element: min;
+}
+
+.comp-image {
+  image: true;
+  component: true;
+}
+
+/**
+textはtext mesh proとして出力する
+ */
+.text {
+  textmp: true;
+}
+
+.button {
+  button: true;
+}
+
+
+/**
+property 名に数字があってはいけない
+ */
+.image-0-30 {
+  image: true;
+  image-slice: 0px 30px;
+}
+
+.image-0-40 {
+  image: true;
+  image-slice: 0px 40px;
+}
+
+.image-0-80 {
+  image: true;
+  image-slice: 0px 80px;
+}
+
+.image-30 {
+  image: true;
+  image-slice: 30px;
+}
+
+.image-0-100-0 {
+  image: true;
+  image-slice: 0px 100px 0px
+}
