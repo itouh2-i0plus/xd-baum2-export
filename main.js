@@ -34,40 +34,40 @@ const STR_PREFERRED = 'preferred'
 
 // オプション文字列　全て小文字
 // OPTION名に H V　X Yといった、高さ方向をしめすものはできるだけ出さないようにする
-const OPTION_TYPE_BUTTON = 'button'
-const OPTION_TYPE_SLIDER = 'slider'
-const OPTION_TYPE_SCROLLBAR = 'scrollbar'
-const OPTION_TYPE_IMAGE = 'image'
-const OPTION_TYPE_INPUT = 'input'
-const OPTION_TYPE_TOGGLE = 'toggle'
-const OPTION_TYPE_SCROLLER = 'scroller'
-const OPTION_TYPE_TEXT = 'text'
-const OPTION_TYPE_TEXTMP = 'textmp' // textmeshpro
-const OPTION_TYPE_VIEWPORT = 'viewport'
+const STYLE_TYPE_BUTTON = 'button'
+const STYLE_TYPE_SLIDER = 'slider'
+const STYLE_TYPE_SCROLLBAR = 'scrollbar'
+const STYLE_TYPE_IMAGE = 'image'
+const STYLE_TYPE_INPUT = 'input'
+const STYLE_TYPE_TOGGLE = 'toggle'
+const STYLE_TYPE_SCROLLER = 'scroller'
+const STYLE_TYPE_TEXT = 'text'
+const STYLE_TYPE_TEXTMP = 'textmp' // textmeshpro
+const STYLE_TYPE_VIEWPORT = 'viewport'
 
-const OPTION_COMMENT_OUT = 'comment-out'
-const OPTION_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
-const OPTION_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
-const OPTION_FIX = 'fix'
-const OPTION_TOGGLE_GROUP = 'toggle-group'
-const OPTION_CANVAS_GROUP = 'canvas-group' // 削除予定
-const OPTION_COMPONENT = 'component'
-const OPTION_MIN_HEIGHT = 'min-height' // 削除予定
-const OPTION_PREFERRED_HEIGHT = 'preferred-height' // 削除予定
-const OPTION_PRESERVE_ASPECT = 'preserve-aspect'
-const OPTION_BLANK = 'blank'
-const OPTION_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
-const OPTION_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
-const OPTION_RAYCAST_TARGET = 'raycast-target' // 削除予定
-const OPTION_IMAGE_SCALE = 'image-scale'
-const OPTION_IMAGE_TYPE = 'image-type'
-const OPTION_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
-const OPTION_IMAGE_9SLICE = 'image-slice' // 9スライス
-const OPTION_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
-const OPTION_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
+const STYLE_COMMENT_OUT = 'comment-out'
+const STYLE_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
+const STYLE_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
+const STYLE_FIX = 'fix'
+const STYLE_TOGGLE_GROUP = 'toggle-group'
+const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
+const STYLE_COMPONENT = 'component'
+const STYLE_MIN_HEIGHT = 'min-height' // 削除予定
+const STYLE_PREFERRED_HEIGHT = 'preferred-height' // 削除予定
+const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
+const STYLE_BLANK = 'blank'
+const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
+const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
+const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
+const STYLE_IMAGE_SCALE = 'image-scale'
+const STYLE_IMAGE_TYPE = 'image-type'
+const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
+const STYLE_IMAGE_9SLICE = 'image-slice' // 9スライス
+const STYLE_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
+const STYLE_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
 const OPTION_CONTENT = 'content'
-const OPTION_DIRECTION = 'direction'
-const OPTION_LAYOUT_ELEMENT = 'layout-element'
+const STYLE_DIRECTION = 'direction'
+const STYLE_LAYOUT_ELEMENT = 'layout-element'
 
 /**
  * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
@@ -148,55 +148,55 @@ function parseCssSelector(selector) {
   return nameOps
 }
 
-function checkOptionCommentOut(options) {
-  return checkBoolean(options[OPTION_COMMENT_OUT])
+function checkStyleCommentOut(style) {
+  return checkBoolean(style[STYLE_COMMENT_OUT])
 }
 
-function checkOptionSubPrefab(options) {
-  return optionEnableSubPrefab && checkBoolean(options[OPTION_SUB_PREFAB])
+function checkStyleSubPrefab(style) {
+  return optionEnableSubPrefab && checkBoolean(style[STYLE_SUB_PREFAB])
 }
 
-function checkOptionButton(options) {
-  return checkBoolean(options[OPTION_TYPE_BUTTON])
+function checkStyleButton(style) {
+  return checkBoolean(style[STYLE_TYPE_BUTTON])
 }
 
-function checkOptionSlider(options) {
-  return checkBoolean(options[OPTION_TYPE_SLIDER])
+function checkStyleSlider(style) {
+  return checkBoolean(style[STYLE_TYPE_SLIDER])
 }
 
-function checkOptionScrollbar(options) {
-  return checkBoolean(options[OPTION_TYPE_SCROLLBAR])
+function checkStyleScrollbar(style) {
+  return checkBoolean(style[STYLE_TYPE_SCROLLBAR])
 }
 
-function checkOptionImage(options) {
-  if (checkBoolean(options[OPTION_IMAGE_9SLICE])) {
+function checkStyleImage(style) {
+  if (checkBoolean(style[STYLE_IMAGE_9SLICE])) {
     return true
   }
-  return checkBoolean(options[OPTION_TYPE_IMAGE])
+  return checkBoolean(style[STYLE_TYPE_IMAGE])
 }
 
-function checkOptionText(options) {
-  return checkBoolean(options[OPTION_TYPE_TEXT])
+function checkStyleText(style) {
+  return checkBoolean(style[STYLE_TYPE_TEXT])
 }
 
-function checkOptionTextMeshPro(options) {
-  return checkBoolean(options[OPTION_TYPE_TEXTMP])
+function checkStyleTextMeshPro(style) {
+  return checkBoolean(style[STYLE_TYPE_TEXTMP])
 }
 
-function checkOptionInput(options) {
-  return checkBoolean(options[OPTION_TYPE_INPUT])
+function checkStyleInput(style) {
+  return checkBoolean(style[STYLE_TYPE_INPUT])
 }
 
-function checkOptionToggle(options) {
-  return checkBoolean(options[OPTION_TYPE_TOGGLE])
+function checkStyleToggle(style) {
+  return checkBoolean(style[STYLE_TYPE_TOGGLE])
 }
 
-function checkOptionScroller(options) {
-  return checkBoolean(options[OPTION_TYPE_SCROLLER])
+function checkStyleScroller(style) {
+  return checkBoolean(style[STYLE_TYPE_SCROLLER])
 }
 
-function checkOptionViewport(options) {
-  return checkBoolean(options[OPTION_TYPE_VIEWPORT])
+function checkStyleViewport(style) {
+  return checkBoolean(style[STYLE_TYPE_VIEWPORT])
 }
 
 /**
@@ -427,10 +427,10 @@ function testBounds(a, b) {
  * CanvasGroupオプション
  * @param {*} json
  * @param {SceneNode} node
- * @param options
+ * @param style
  */
-function assignCanvasGroup(json, node, options) {
-  let canvasGroup = options[OPTION_CANVAS_GROUP]
+function assignCanvasGroup(json, node, style) {
+  let canvasGroup = style[STYLE_CANVAS_GROUP]
   if (canvasGroup != null) {
     Object.assign(json, {
       canvas_group: { alpha: 0 },
@@ -443,20 +443,10 @@ function assignCanvasGroup(json, node, options) {
  * @param {*} json
  * @param {SceneNode} node
  */
-function assignDrawResponsiveParameter(json, node) {
-  let param = getDrawResponsiveParameter(node)
+function assignDrawRectTransform(json, node) {
+  let param = getDrawRectTransform(node)
   if (param != null) {
     Object.assign(json, param)
-    /*
-    // 高さが固定されているところに min_heightをいれる
-    // 問題:リピートグリッドの中など自動だと高さがフィックスされるところに不必要についてる
-    if (param != null && param['fix']['height'] === true) {
-      var bounds = getGlobalDrawBounds(node)
-      Object.assign(json, {
-        min_height: bounds.height,
-      })
-    }
-    */
   }
 }
 
@@ -466,21 +456,29 @@ function assignDrawResponsiveParameter(json, node) {
  * @param {SceneNode} node
  * @returns {null}
  */
-function assignResponsiveParameter(json, node) {
-  let param = getResponsiveParameter(node)
+function assignRectTransform(json, node) {
+  let param = getRectTransform(node)
   if (param != null) {
     Object.assign(json, param)
-    /*
-    // 高さが固定されているところに min_heightをいれる
-    // 問題:リピートグリッドの中など自動だと高さがフィックスされるところに不必要についてる
-    if (param != null && param['fix']['height'] === true) {
-      var bounds = getGlobalDrawBounds(node)
-      Object.assign(json, {
-        min_height: bounds.height,
-      })
-    }
-    */
   }
+}
+
+/**
+ *
+ * @param json
+ * @param style
+ */
+function assignState(json, style) {
+  /**
+   * @type {string}
+   */
+  const styleState = style['state']
+  console.log('-------------------', style)
+  if (!styleState) return
+  const state = styleState.split(',').map(value => value.trim())
+  Object.assign(json, {
+    state,
+  })
 }
 
 /**
@@ -488,14 +486,14 @@ function assignResponsiveParameter(json, node) {
  * CenterMiddle座標と､サイズをアサインする
  * XY座標によるElementsソートなどに使われる
  * @param {*} json
- * @param {{cx:number, cy:number, width:number, height:number}} bounds
+ * @param {{cx:number, cy:number, width:number, height:number}} boundsCm
  */
-function assignBoundsCM(json, bounds) {
+function assignBoundsCM(json, boundsCm) {
   Object.assign(json, {
-    x: bounds.x,
-    y: bounds.y,
-    w: bounds.width,
-    h: bounds.height,
+    x: boundsCm.cx,
+    y: boundsCm.cy,
+    w: boundsCm.width,
+    h: boundsCm.height,
   })
 }
 
@@ -503,56 +501,6 @@ function searchFileName(renditions, fileName) {
   return renditions.find(entry => {
     return entry.fileName === fileName
   })
-}
-
-async function symbolImage(json, node, root, subFolder, renditions, name) {
-  console.log('symbol----------------------')
-  printAllProperties(node)
-
-  let symbolId = node.symbolId
-
-  // 今回出力するためのユニークな名前をつける
-  const { name: parentName, options: parentOptions } = getNameOptions(
-    node.parent,
-  )
-  const nameOptions = getNameOptions(node)
-
-  let fileName = convertToFileName(symbolId, true)
-  const found = searchFileName(renditions, '../symbol/' + fileName)
-  if (!found) {
-    console.log('add rendition')
-    // 出力画像ファイル
-    const file = await symbolSubFolder.createFile(fileName + '.png', {
-      overwrite: true,
-    })
-
-    // 画像出力登録
-    renditions.push({
-      fileName: '../symbol/' + fileName,
-      node: node,
-      outputFile: file,
-      type: application.RenditionType.PNG,
-      scale: scale,
-    })
-  }
-
-  const drawBoundsCM = getDrawBoundsCMInBase(node, root)
-  Object.assign(json, {
-    image: '../symbol/' + fileName,
-    x: drawBoundsCM.cx,
-    y: drawBoundsCM.cy,
-    w: drawBoundsCM.width,
-    h: drawBoundsCM.height,
-    opacity: 100,
-  })
-
-  assignDrawResponsiveParameter(json, node)
-
-  if (nameOptions.options[OPTION_PRESERVE_ASPECT]) {
-    Object.assign(json, {
-      preserve_aspect: true,
-    })
-  }
 }
 
 /**
@@ -563,7 +511,7 @@ async function symbolImage(json, node, root, subFolder, renditions, name) {
  * @param subFolder
  * @param renditions
  * @param name
- * @param options
+ * @param style
  * @return {Promise<void>}
  */
 async function assignImage(
@@ -573,36 +521,17 @@ async function assignImage(
   subFolder,
   renditions,
   name,
-  options,
+  style,
 ) {
-  let current = node
-
-  // シンボルであれば､画像を再利用できるようにしたが､以下の理由でコメントアウト 2019/04/25
-  // ･APIでSymbolのオーバーライドをしているか否かがわからない
-  // ･Component待ち
-  //　ーーーーここからーーーー
-  // // 親がSymbolでないか調査する
-  // while (current != null) {
-  //   if (current.symbolId != null) {
-  //     // 親にシンボルがいた
-  //     await symbolImage(json, node, root, subFolder, renditions, name)
-  //     return
-  //   }
-  //   current = current.parent
-  // }
-  //　ーーーーここまでーーーー
-
   // 今回出力するためのユニークな名前をつける
-  const { name: parentName, options: parentOptions } = getNameOptions(
-    node.parent,
-  )
-  const nameOptions = getNameOptions(node)
+  const parentName = getNodeName(node.parent)
+  const nodeNameAndStyle = getNodeNameAndStyle(node)
 
-  let length = 5
+  let hashStringLength = 5
   // ファイル名が長すぎるとエラーになる可能性もある
   let fileName = convertToFileName(parentName + '-' + name, true)
   while (true) {
-    const guidStr = '-' + node.guid.slice(0, length)
+    const guidStr = '-' + node.guid.slice(0, hashStringLength)
     // すでに同じものがあるか検索
     const found = searchFileName(renditions, fileName + guidStr)
     if (!found) {
@@ -610,14 +539,14 @@ async function assignImage(
       fileName += guidStr
       break
     }
-    length++
+    hashStringLength++
   }
 
   let fileExtension = '.png'
-  if (checkBoolean(options[OPTION_IMAGE_NO_SLICE])) {
+  if (checkBoolean(style[STYLE_IMAGE_NO_SLICE])) {
     fileExtension = '-noslice.png'
   }
-  const image9Slice = options[OPTION_IMAGE_9SLICE]
+  const image9Slice = style[STYLE_IMAGE_9SLICE]
   if (image9Slice) {
     // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
@@ -669,16 +598,16 @@ async function assignImage(
     opacity: 100,
   })
 
-  assignDrawResponsiveParameter(json, node)
+  assignDrawRectTransform(json, node)
 
-  const optionPreserveAspect = nameOptions.options[OPTION_PRESERVE_ASPECT]
+  const optionPreserveAspect = nodeNameAndStyle.options[STYLE_PRESERVE_ASPECT]
   if (optionPreserveAspect != null) {
     Object.assign(json, {
       preserve_aspect: checkBoolean(optionPreserveAspect),
     })
   }
 
-  const optionRayCastTarget = nameOptions.options[OPTION_RAYCAST_TARGET]
+  const optionRayCastTarget = nodeNameAndStyle.options[STYLE_RAYCAST_TARGET]
   if (optionRayCastTarget != null) {
     Object.assign(json, {
       raycast_target: checkBoolean(optionRayCastTarget),
@@ -686,14 +615,14 @@ async function assignImage(
   }
 
   let localScale = 1.0
-  if (options[OPTION_IMAGE_SCALE] != null) {
-    const scaleImage = parseFloat(options[OPTION_IMAGE_SCALE])
+  if (style[STYLE_IMAGE_SCALE] != null) {
+    const scaleImage = parseFloat(style[STYLE_IMAGE_SCALE])
     if (Number.isFinite(scaleImage)) {
       localScale = scaleImage
     }
   }
 
-  if (!checkBoolean(options[OPTION_BLANK])) {
+  if (!checkBoolean(style[STYLE_BLANK])) {
     Object.assign(json, {
       image: fileName,
     })
@@ -751,7 +680,7 @@ function getSizeFitterParam(option) {
 /**
  * content-size-fit は content内のオプションになる
  * @param json
- * @param options
+ * @param optionContentSizeFit
  */
 function assignContentSizeFit(json, optionContentSizeFit) {
   if (optionContentSizeFit == null) return
@@ -789,10 +718,10 @@ function assignContentSizeFit(json, optionContentSizeFit) {
 /**
  *
  * @param json
- * @param {{}} options
+ * @param {{}} style
  */
-function assignSizeFit(json, options) {
-  const optionSizeFit = options[OPTION_SIZE_FIT]
+function assignSizeFit(json, style) {
+  const optionSizeFit = style[STYLE_SIZE_FIT]
   if (optionSizeFit != null) {
     const sizeFitterParam = getSizeFitterParam(optionSizeFit)
     if (sizeFitterParam != null) {
@@ -811,7 +740,7 @@ function assignSizeFit(json, options) {
  * @param {*} subFolder
  * @param {*} renditions
  * @param {*} name
- * @param {*} options
+ * @param {*} style
  * @param {*} funcForEachChild
  * @param {*} depth=undefined
  * 出力構成
@@ -830,26 +759,25 @@ async function createViewport(
   subFolder,
   renditions,
   name,
-  options,
+  style,
   funcForEachChild,
   depth,
 ) {
   // スクロールする方向を取得する
   // これがNULLのままなら、Unity上ではスクロールしない
   let scrollDirection = null
-  let optionScroll = options[OPTION_SCROLL]
-  if (optionScroll != null) {
-    optionScroll = optionScroll.toLowerCase()
+  const styleScroll = style[STYLE_SCROLL]
+  if (styleScroll != null) {
     scrollDirection = ''
     if (
-      optionScroll.includes(STR_VERTICAL) ||
-      hasOptionParam(optionScroll, 'y')
+      styleScroll.includes(STR_VERTICAL) ||
+      hasOptionParam(styleScroll, 'y')
     ) {
       scrollDirection += STR_VERTICAL
     }
     if (
-      optionScroll.includes(STR_HORIZONTAL) ||
-      hasOptionParam(optionScroll, 'x')
+      styleScroll.includes(STR_HORIZONTAL) ||
+      hasOptionParam(styleScroll, 'x')
     ) {
       scrollDirection += STR_HORIZONTAL
     }
@@ -889,9 +817,9 @@ async function createViewport(
         // maskはElement処理をしない
         return false
       }
-      const nameOptions = getNameOptions(child)
+      const nodeName = getNodeName(child)
       // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
-      if (maskNode == null && nameOptions.name.toLowerCase() === 'area') {
+      if (maskNode == null && nodeName.toLowerCase() === 'area') {
         maskNode = child
         return false //処理しない(Elementに含まれない)
       }
@@ -906,7 +834,7 @@ async function createViewport(
 
     Object.assign(json, {
       type: 'Viewport',
-      name: name,
+      name: getUnityName(node),
       x: maskBoundsCM.cx,
       y: maskBoundsCM.cy,
       w: maskBoundsCM.width,
@@ -935,10 +863,10 @@ async function createViewport(
     // そういったものを省くための処理
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
-      const nameOptions = getNameOptions(child)
+      const nodeName = getNodeName(child)
       const bounds = getGlobalDrawBounds(child)
       if (!testBounds(viewportBounds, bounds)) {
-        console.log(nameOptions.name + 'はViewportにはいっていない')
+        console.log(nodeName + 'はViewportにはいっていない')
         return false // 処理しない
       }
       calcContentBounds.addBounds(bounds)
@@ -956,7 +884,7 @@ async function createViewport(
 
     Object.assign(json, {
       type: 'Viewport',
-      name: name,
+      name: getUnityName(node),
       x: viewportBoundsCM.cx,
       y: viewportBoundsCM.cy,
       w: viewportBoundsCM.width,
@@ -970,7 +898,7 @@ async function createViewport(
       getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     )
 
-    const contentOptionLayout = contentStyle[OPTION_LAYOUT]
+    const contentOptionLayout = contentStyle[STYLE_LAYOUT]
     if (contentOptionLayout != null) {
       if (hasOptionParam(contentOptionLayout, 'grid')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
@@ -1002,9 +930,11 @@ async function createViewport(
     }
   }
 
-  assignSizeFit(json, options)
+  assignDrawRectTransform(json, node)
+
+  assignSizeFit(json, style)
   // scrollオプションが設定されていれば、scroll情報を埋め込む
-  if (optionScroll) {
+  if (styleScroll) {
     Object.assign(json, {
       scroll: {
         direction: scrollDirection,
@@ -1012,7 +942,6 @@ async function createViewport(
       },
     })
   }
-  assignDrawResponsiveParameter(json, node)
 
   // Content系
   // SizeFit
@@ -1021,7 +950,7 @@ async function createViewport(
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentOptionFix = getOptionFix(contentStyle[OPTION_FIX])
+  const contentOptionFix = getOptionFix(contentStyle[STYLE_FIX])
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
@@ -1121,9 +1050,9 @@ function getNodeListBounds(nodeList, withoutNode) {
   // セルサイズを決めるため最大サイズを取得する
   let childrenMinMaxSize = new MinMaxSize()
   nodeList.forEach(node => {
-    const nameOptions = getNameOptions(node)
+    const nodeNameAndStyle = getNodeNameAndStyle(node)
     // コンポーネントにする場合は除く
-    if (nameOptions.options['component']) return
+    if (nodeNameAndStyle.options[STYLE_COMPONENT]) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
     if (node === withoutNode) return
     const childBounds = getGlobalBounds(node)
@@ -1212,7 +1141,9 @@ function calcLayout(json, viewportNode, maskNode, nodeChildren) {
 
   if (elem0 == null) return jsonLayout
 
+  /** @type { {x:number, y:number, w:number, h:number}|null } */
   let elemV = null
+  /** @type { {x:number, y:number, w:number, h:number}|null } */
   let elemH = null
 
   let spacing_x = null
@@ -1300,7 +1231,7 @@ function calcLayout(json, viewportNode, maskNode, nodeChildren) {
     }
   }
 
-  if (child_alignment != '') {
+  if (child_alignment !== '') {
     Object.assign(jsonLayout, {
       child_alignment: child_alignment,
     })
@@ -1429,20 +1360,20 @@ function getLayoutJson(
  * @param {SceneNodeClass} viewportNode
  * @param {SceneNodeClass} maskNode
  * @param {SceneNodeList} children
- * @param options
+ * @param style
  */
-function assignLayout(json, viewportNode, maskNode, children, options) {
-  if (options == null || options[OPTION_LAYOUT] == null) return
-  let optionLayout = options[OPTION_LAYOUT]
+function assignLayout(json, viewportNode, maskNode, children, style) {
+  if (style == null || style[STYLE_LAYOUT] == null) return
+  let styleLayout = style[STYLE_LAYOUT]
   let layoutJson = getLayoutJson(
-    optionLayout,
+    styleLayout,
     json,
     viewportNode,
     maskNode,
     children,
   )
 
-  const layoutSpacingX = options['layout-spacing-x']
+  const layoutSpacingX = style['layout-spacing-x']
   if (layoutSpacingX != null) {
     Object.assign(layoutJson, {
       spacing_x: parseInt(layoutSpacingX), //TODO: pxやenを無視している
@@ -1471,6 +1402,18 @@ function forEachReverseElements(elements, func) {
 }
 
 /**
+ * @param {SceneNodeClass} node
+ */
+function getUnityName(node) {
+  const nodeName = getNodeName(node)
+  const id = getIdFromNodeName(nodeName)
+  if (id != null) {
+    return id
+  }
+  return nodeName
+}
+
+/**
  *
  * @param json
  * @param {SceneNode} node
@@ -1478,7 +1421,7 @@ function forEachReverseElements(elements, func) {
  * @param subFolder
  * @param renditions
  * @param name
- * @param options
+ * @param style
  * @param funcForEachChild
  * @param depth
  * @return {Promise<string>}
@@ -1490,7 +1433,7 @@ async function createGroup(
   subFolder,
   renditions,
   name,
-  options,
+  style,
   funcForEachChild,
   depth,
 ) {
@@ -1498,40 +1441,48 @@ async function createGroup(
   let boundsCM = getDrawBoundsCMInBase(node, root)
   Object.assign(json, {
     type: type,
-    name: name,
+    name: getUnityName(node),
     x: boundsCM.cx, // Baum2では使わないが､　VGROUPなど､レイアウトの情報としてもつ
     y: boundsCM.cy, // Baum2では使わないが､ VGroupなど､レイアウトの情報としてもつ
     w: boundsCM.width, // Baum2ではつかわないが､情報としていれる RectElementで使用
     h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
-  assignDrawResponsiveParameter(json, node)
-  assignCanvasGroup(json, node, options)
+  assignDrawRectTransform(json, node)
+  assignCanvasGroup(json, node, style)
   await funcForEachChild()
 
-  assignLayout(json, node, node, node.children, options)
-  assignSizeFit(json, options)
+  assignLayout(json, node, node, node.children, style)
+  assignSizeFit(json, style)
 
   return type
 }
 
-async function createScrollbar(options, json, name, node, funcForEachChild) {
+/**
+ * @param style
+ * @param json
+ * @param name
+ * @param node
+ * @param funcForEachChild
+ * @returns {Promise<void>}
+ */
+async function createScrollbar(style, json, name, node, funcForEachChild) {
   const type = 'Scrollbar'
   Object.assign(json, {
     type: type,
-    name: name,
+    name: getUnityName(node),
   })
-  let direction = options[OPTION_DIRECTION]
+  let direction = style[STYLE_DIRECTION]
   if (direction != null) {
     Object.assign(json, {
       scroll_direction: direction,
     })
   }
 
-  assignSizeFit(json, options)
-  assignLayout(json, node, node, node.children, options)
+  assignSizeFit(json, style)
+  assignLayout(json, node, node, node.children, style)
 
-  assignDrawResponsiveParameter(json, node)
+  assignDrawRectTransform(json, node)
   await funcForEachChild()
   //return type
 }
@@ -1540,10 +1491,11 @@ async function createScrollbar(options, json, name, node, funcForEachChild) {
  *
  * @param {} json
  * @param {SceneNodeClass} node
+ * @param {} style
  */
-function assignLayoutElement(json, node, options) {
-  if (options[OPTION_LAYOUT_ELEMENT] == null) return
-  const option = options[OPTION_LAYOUT_ELEMENT]
+function assignLayoutElement(json, node, style) {
+  if (style[STYLE_LAYOUT_ELEMENT] == null) return
+  const option = style[STYLE_LAYOUT_ELEMENT]
   if (hasOptionParam(option, 'min')) {
     const bounds = getGlobalDrawBounds(node)
     Object.assign(json, {
@@ -1555,33 +1507,53 @@ function assignLayoutElement(json, node, options) {
   }
 }
 
-async function createToggle(json, name, options, node, root, funcForEachChild) {
+/**
+ * @param json
+ * @param name
+ * @param style
+ * @param node
+ * @param root
+ * @param funcForEachChild
+ * @returns {Promise<string>}
+ */
+async function createToggle(json, name, style, node, root, funcForEachChild) {
   const type = 'Toggle'
   Object.assign(json, {
     type: type,
-    name: name,
+    name: getUnityName(node),
   })
   // Toggle group
-  if (options[OPTION_TOGGLE_GROUP]) {
+  if (style[STYLE_TOGGLE_GROUP]) {
     Object.assign(json, {
-      group: options[OPTION_TOGGLE_GROUP],
+      group: style[STYLE_TOGGLE_GROUP],
     })
   }
-  assignLayoutElement(json, node, options)
-  assignDrawResponsiveParameter(json, node)
+  assignLayoutElement(json, node, style)
+  assignDrawRectTransform(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  assignState(json, style)
   await funcForEachChild()
   return type
 }
 
+/**
+ *
+ * @param json
+ * @param name
+ * @param node
+ * @param root
+ * @param funcForEachChild
+ * @returns {Promise<string>}
+ */
 async function createButton(json, name, node, root, funcForEachChild) {
   const type = 'Button'
   Object.assign(json, {
     type: type,
-    name: name,
+    name: getNodeName(node),
   })
-  assignDrawResponsiveParameter(json, node)
+  assignDrawRectTransform(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  assignState(json, getNodeNameAndStyle(node))
   await funcForEachChild()
   return type
 }
@@ -1596,8 +1568,9 @@ async function createButton(json, name, node, root, funcForEachChild) {
  * @param renditions
  * @param {*} funcForEachChild
  * @param {string} name
- * @param {string[]} options
+ * @param {} style
  * @param depth
+ * @returns {Promise<string|void|*>}
  */
 async function nodeGroup(
   json,
@@ -1606,45 +1579,45 @@ async function nodeGroup(
   subFolder,
   renditions,
   name,
-  options,
+  style,
   funcForEachChild,
   depth,
 ) {
-  if (depth > 0 && checkOptionSubPrefab(options)) {
+  if (depth > 0 && checkStyleSubPrefab(style)) {
     // SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
     // 深度が0以上というのは､必要か　→　必要 出力ノードになっている場合､depth==0なので
     return 'subPrefab'
   }
-  if (checkOptionImage(options)) {
-    await createImage(json, node, root, subFolder, renditions, name, options)
+  if (checkStyleImage(style)) {
+    await createImage(json, node, root, subFolder, renditions, name, style)
     return 'Image'
   }
 
-  if (checkOptionButton(options)) {
+  if (checkStyleButton(style)) {
     return await createButton(json, name, node, root, funcForEachChild)
   }
 
-  if (checkOptionSlider(options)) {
+  if (checkStyleSlider(style)) {
     const type = 'Slider'
     Object.assign(json, {
       type: type,
-      name: name,
+      name: getNodeName(node),
     })
-    assignDrawResponsiveParameter(json, node)
+    assignDrawRectTransform(json, node)
     await funcForEachChild()
     return type
   }
 
-  if (checkOptionScrollbar(options)) {
-    await createScrollbar(options, json, name, node, funcForEachChild)
+  if (checkStyleScrollbar(style)) {
+    await createScrollbar(style, json, name, node, funcForEachChild)
     return 'Scrollbar'
   }
 
-  if (checkOptionToggle(options)) {
-    return await createToggle(json, name, options, node, root, funcForEachChild)
+  if (checkStyleToggle(style)) {
+    return await createToggle(json, name, style, node, root, funcForEachChild)
   }
 
-  if (checkOptionScroller(options)) {
+  if (checkStyleScroller(style)) {
     return await createScroller(
       json,
       node,
@@ -1652,12 +1625,12 @@ async function nodeGroup(
       subFolder,
       renditions,
       name,
-      options,
+      style,
       funcForEachChild,
     )
   }
 
-  if (checkOptionViewport(options)) {
+  if (checkStyleViewport(style)) {
     return await createViewport(
       json,
       node,
@@ -1665,7 +1638,7 @@ async function nodeGroup(
       subFolder,
       renditions,
       name,
-      options,
+      style,
       funcForEachChild,
     )
   }
@@ -1678,7 +1651,7 @@ async function nodeGroup(
     subFolder,
     renditions,
     name,
-    options,
+    style,
     funcForEachChild,
   )
 }
@@ -1850,21 +1823,16 @@ function getOptionFix(optionFix) {
  offset_max: offsetMax,
  * @param {SceneNodeClass} node
  * @param hashBounds
- * @param options
+ * @param style
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
-function calcResponsiveParameter(
-  node,
-  hashBounds,
-  options,
-  calcDrawBounds = true,
-) {
+function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   if (!node || !node.parent) return null
-  if (!options) {
+  if (!style) {
     // @Pivot @Stretchを取得するため
-    const nameOptions = getNameOptions(node)
-    options = nameOptions.options
+    const nodeNameAndStyle = getNodeNameAndStyle(node)
+    style = nodeNameAndStyle.options
   }
   // console.log(`----------------------${node.name}----------------------`)
   let fixOptionWidth = null
@@ -1874,7 +1842,7 @@ function calcResponsiveParameter(
   let fixOptionLeft = null
   let fixOptionRight = null
 
-  const optionFix = options[OPTION_FIX]
+  const optionFix = style[STYLE_FIX]
   if (optionFix != null) {
     // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
     const options = getOptionFix(optionFix)
@@ -2190,13 +2158,13 @@ function makeResponsiveParameter(root) {
   for (let key in hashBounds) {
     let value = hashBounds[key]
     // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    value['responsiveParameter'] = calcResponsiveParameter(
+    value['responsiveParameter'] = calcRectTransform(
       value['node'],
       hashBounds,
       null,
     )
     // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    value['responsiveParameterGlobal'] = calcResponsiveParameter(
+    value['responsiveParameterGlobal'] = calcRectTransform(
       value['node'],
       hashBounds,
       null,
@@ -2291,8 +2259,9 @@ function checkHashBounds(hashBounds, repair) {
 /**
  * 描画サイズでのレスポンシブパラメータの取得
  * @param {SceneNode} node
+ * @returns {*}
  */
-function getDrawResponsiveParameter(node) {
+function getDrawRectTransform(node) {
   let bounds = responsiveBounds[node.guid]
   return bounds ? bounds['responsiveParameter'] : null
 }
@@ -2301,7 +2270,7 @@ function getDrawResponsiveParameter(node) {
  * GlobalBoundsでのレスポンシブパラメータの取得
  * @param {SceneNode} node
  */
-function getResponsiveParameter(node) {
+function getRectTransform(node) {
   let bounds = responsiveBounds[node.guid]
   return bounds ? bounds['responsiveParameterGlobal'] : null
 }
@@ -2311,12 +2280,12 @@ function getResponsiveParameter(node) {
  * @param {*} node
  */
 function isFixWidth(node) {
-  const param = getDrawResponsiveParameter(node)
+  const param = getDrawRectTransform(node)
   return checkBoolean(param['fix']['width'])
 }
 
 function isFixHeight(node) {
-  const param = getDrawResponsiveParameter(node)
+  const param = getDrawRectTransform(node)
   return checkBoolean(param['fix']['height'])
 }
 
@@ -2328,7 +2297,7 @@ function isFixHeight(node) {
  * @param {*} subfolder
  * @param {[]} renditions
  * @param {string} name
- * @param {string[]} options
+ * @param {string[]} style
  */
 async function nodeText(
   json,
@@ -2337,36 +2306,20 @@ async function nodeText(
   subfolder,
   renditions,
   name,
-  options,
+  style,
 ) {
   // ラスタライズオプションチェック
-  if (optionForceTextToImage || checkOptionImage(options)) {
-    await createImage(
-      json,
-      node,
-      artboard,
-      subfolder,
-      renditions,
-      name,
-      options,
-    )
+  if (optionForceTextToImage || checkStyleImage(style)) {
+    await createImage(json, node, artboard, subfolder, renditions, name, style)
     return
   }
 
   if (
-    !checkOptionText(options) &&
-    !checkOptionInput(options) &&
-    !checkOptionTextMeshPro(options)
+    !checkStyleText(style) &&
+    !checkStyleInput(style) &&
+    !checkStyleTextMeshPro(style)
   ) {
-    await createImage(
-      json,
-      node,
-      artboard,
-      subfolder,
-      renditions,
-      name,
-      options,
-    )
+    await createImage(json, node, artboard, subfolder, renditions, name, style)
     return
   }
 
@@ -2375,10 +2328,10 @@ async function nodeText(
   /** @type {Text} */
   let nodeText = node
   let type = 'Text'
-  if (checkOptionTextMeshPro(options)) {
+  if (checkStyleTextMeshPro(style)) {
     type = 'TextMeshPro'
   }
-  if (checkOptionInput(options)) {
+  if (checkStyleInput(style)) {
     type = 'Input'
   }
 
@@ -2393,14 +2346,14 @@ async function nodeText(
   }
 
   // @ALIGN オプションがあった場合､上書きする
-  const optionAlign = options[OPTION_ALIGN]
+  const optionAlign = style[STYLE_ALIGN]
   if (optionAlign != null) {
     hAlign = optionAlign
   }
 
   // @v-align オプションがあった場合、上書きする
   // XDでは、left-center-rightは設定できるため
-  const optionVAlign = options[OPTION_V_ALIGN]
+  const optionVAlign = style[STYLE_V_ALIGN]
   if (optionVAlign != null) {
     vAlign = optionVAlign
   }
@@ -2408,7 +2361,7 @@ async function nodeText(
   // text.styleRangesの適応をしていない
   Object.assign(json, {
     type: type,
-    name: name,
+    name: getNodeName(node),
     text: node.text,
     textType: textType,
     font: node.fontFamily,
@@ -2425,7 +2378,7 @@ async function nodeText(
   })
 
   // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
-  assignResponsiveParameter(json, node)
+  assignRectTransform(json, node)
 }
 
 /**
@@ -2435,8 +2388,8 @@ async function nodeText(
  * @param {Artboard} root
  * @param {*} subFolder
  * @param {*} renditions
- * @param {string} name
- * @param {string[]} options
+ * @param {string} unityName
+ * @param {{}} style
  */
 async function createImage(
   json,
@@ -2444,30 +2397,31 @@ async function createImage(
   root,
   subFolder,
   renditions,
-  name,
-  options,
+  unityName,
+  style,
 ) {
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
-  if (checkOptionButton(options)) {
+  unityName = getUnityName(node)
+  if (checkStyleButton(style)) {
     Object.assign(json, {
       type: 'Button',
-      name: name,
+      name: unityName,
       elements: [
         {
           type: 'Image',
-          name: name + '-image',
+          name: unityName + '-image',
         },
       ],
     })
-    assignDrawResponsiveParameter(json, node)
+    assignDrawRectTransform(json, node)
     await assignImage(
       json.elements[0],
       node,
       root,
       subFolder,
       renditions,
-      name,
-      options,
+      unityName,
+      style,
     )
     //ボタン画像はボタンとぴったりサイズをあわせる
     let imageJson = json['elements'][0]
@@ -2480,32 +2434,33 @@ async function createImage(
   } else {
     Object.assign(json, {
       type: 'Image',
-      name: name,
+      name: unityName,
     })
-    assignDrawResponsiveParameter(json, node)
-    await assignImage(json, node, root, subFolder, renditions, name, options)
+    assignDrawRectTransform(json, node)
+    assignState(json, style)
+    await assignImage(json, node, root, subFolder, renditions, unityName, style)
     // assignComponent
-    if (options[OPTION_COMPONENT] != null) {
+    if (style[STYLE_COMPONENT] != null) {
       Object.assign(json, {
         component: {},
       })
     }
     // assignPreferredHeight
-    if (options[OPTION_PREFERRED_HEIGHT] != null) {
+    if (style[STYLE_PREFERRED_HEIGHT] != null) {
       Object.assign(json, {
         preferred_height: json.h, //assignImageでわりあてられている
       })
     }
     // assignMinHeight
-    if (options[OPTION_MIN_HEIGHT] != null) {
+    if (style[STYLE_MIN_HEIGHT] != null) {
       Object.assign(json, {
         min_height: json.h, //assignImageでわりあてられている
       })
     }
     // image type
-    if (options[OPTION_IMAGE_TYPE] != null) {
+    if (style[STYLE_IMAGE_TYPE] != null) {
       Object.assign(json, {
-        image_type: options[OPTION_IMAGE_TYPE],
+        image_type: style[STYLE_IMAGE_TYPE],
       })
     }
   }
@@ -2529,19 +2484,22 @@ function checkEndsTypeName(type, name) {
 }
 
 /**
+ * NodeNameはXDでつけられたものをTrimしただけ
  * @param {SceneNodeClass} node
- * @returns {*}
+ * @returns {string}
  */
 function getNodeName(node) {
   return node.name.trim()
 }
 
 function getIdFromNodeName(nodeName) {
-  const css = parseCss(nodeName)
-  const selector = parseCssSelector(css[0].selector)
+  if (nodeName == null) {
+    return null
+  }
+  const selector = parseCssSelector(nodeName)
   for (let selectorElement of selector) {
     if (selectorElement.name.startsWith('#')) {
-      return selectorElement.name
+      return selectorElement.name.substring(1)
     }
   }
   return null
@@ -2557,12 +2515,12 @@ function getIdFromNodeName(nodeName) {
  */
 function getClassesFromNodeName(nodeName) {
   // 分解
-  const names = nodeName.trim().split(' ')
+  const names = parseCssSelector(nodeName)
   // .がついているもの（Class名）を探す
   const classes = []
   for (const arg of names) {
-    if (arg.startsWith('.')) {
-      classes.push(arg)
+    if (arg.name.startsWith('.')) {
+      classes.push(arg.name)
     }
   }
   return classes
@@ -2576,6 +2534,7 @@ function getClassesFromNodeName(nodeName) {
  * @returns {*}
  */
 function getStyleFromNodeName(nodeName, parent, cssRules) {
+  // console.log('--------------------------------', nodeName)
   const style = {}
   for (const rule of cssRules) {
     const selectorOps = rule.selector_ops
@@ -2589,15 +2548,18 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
       const currentSelectorOp = selectorOps[indexSelectorOp]
       switch (currentSelectorOp.op) {
         case '': {
-          let classes = getClassesFromNodeName(nodeName)
-          const found = classes.find(
-            className => className === currentSelectorOp.name,
-          )
+          let nodeClasses = getClassesFromNodeName(nodeName)
+          const found = nodeClasses.find(nodeClass => {
+            // console.log('--------------------------------nodeClass', nodeClass)
+            // console.log("'" + currentSelectorOp.name + "'=='" + nodeClass + "'")
+            return nodeClass === currentSelectorOp.name
+          })
           if (found == null) {
             // 見つからなかった
             selectorMatch = false
             break // 次のルール
           }
+          // console.log('-----------------found---------------')
           break
         }
         case '>': {
@@ -2615,6 +2577,7 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
             selectorMatch = false
             break // 次のルール
           }
+          // console.log('---------------------------found')
           break
         }
         default:
@@ -2632,10 +2595,10 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
 /**
  * node.nameをパースしオプションに分解する
  * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
- * @param {SceneNode} node
- * @return {null|{name: string, options: {}}}
+ * @param {SceneNodeClass} node
+ * @returns {null|{node_name: string, name: string, options: *, style: *}}
  */
-function getNameOptions(node) {
+function getNodeNameAndStyle(node) {
   if (node == null) {
     return null
   }
@@ -2661,11 +2624,11 @@ function getNameOptions(node) {
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    nodeName = 'child0'
+    nodeName = '0'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parentNode.children.length; i++) {
       if (parentNode.children.at(i) === node) {
-        nodeName = '&child' + i
+        nodeName = i.toString()
         break
       }
     }
@@ -2678,33 +2641,28 @@ function getNameOptions(node) {
       }
     })
     if (commentOut) {
-      style[OPTION_COMMENT_OUT] = true
+      style[STYLE_COMMENT_OUT] = true
     }
   }
 
   // 名前の最初1文字目が//ならコメントNode
   if (nodeName.startsWith('//')) {
-    style[OPTION_COMMENT_OUT] = true
+    style[STYLE_COMMENT_OUT] = true
     nodeName = nodeName.substring(2)
   }
 
-  // 最初の1文字が.なら親の名前を利用する
-  //TODO: まだ機能していない
-  if (nodeName.startsWith('&')) {
-    nodeName = nodeName.substring(1)
-    //name = parentNameOptions.name + name
-  }
-
   return {
-    name: nodeName,
-    options: style,
+    node_name: nodeName,
+    name: nodeName, // 削除予定
+    style,
+    options: style, // 削除予定
   }
 }
 
-function getContentName(node) {
-  return getNodeName(node) + ' > content'
-}
-
+/**
+ * @param root
+ * @returns {{root: {name: *, type: string}, info: {canvas: {image: {w: number, h: number}, size: {w: number, h: number}, base: {w: number, x: number, h: number, y: number}}, version: string}}}
+ */
 function makeLayoutJson(root) {
   let rootBounds
   if (root instanceof Artboard) {
@@ -2750,9 +2708,9 @@ function makeLayoutJson(root) {
  */
 async function nodeRoot(renditions, outputFolder, root) {
   let subFolder
-  let nameOptions = getNameOptions(root)
+  let nodeNameAndStyle = getNodeNameAndStyle(root)
 
-  let subFolderName = nameOptions.name
+  let subFolderName = nodeNameAndStyle.name
 
   // フォルダ名に使えない文字を'_'に変換
   subFolderName = convertToFileName(subFolderName)
@@ -2776,7 +2734,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     let node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = getNameOptions(node)
+    let { name, options } = getNodeNameAndStyle(node)
 
     const indent = (() => {
       let sp = ''
@@ -2793,7 +2751,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     */
 
     // コメントアウトチェック
-    if (checkOptionCommentOut(options)) {
+    if (checkStyleCommentOut(options)) {
       return
     }
 
@@ -2864,7 +2822,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'BooleanGroup':
         {
           // BooleanGroupは強制的にラスタライズする
-          options[OPTION_TYPE_IMAGE] = true
+          options[STYLE_TYPE_IMAGE] = true
           const type = await nodeGroup(
             layoutJson,
             node,
@@ -2993,14 +2951,16 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   for (const i in roots) {
     let root = roots[i]
     nodeWalker(root, node => {
-      const nameOptions = getNameOptions(node)
-      if (checkOptionCommentOut(nameOptions.options)) {
+      const nodeNameAndStyle = getNodeNameAndStyle(node)
+      if (checkStyleCommentOut(nodeNameAndStyle.options)) {
         return false // 子供には行かないようにする
       }
       try {
         node.visible = true
       } catch (e) {
-        console.log('***error ' + nameOptions.name + ': visible true failed.')
+        console.log(
+          '***error ' + nodeNameAndStyle.name + ': visible true failed.',
+        )
       }
       try {
         if (node.blur != null) {
@@ -3008,12 +2968,12 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
           node.blur = null
         }
       } catch (e) {
-        console.log('***error ' + nameOptions.name + ': blur off failed.')
+        console.log('***error ' + nodeNameAndStyle.name + ': blur off failed.')
       }
       // 9SLICEであった場合、そのグループの不可視情報はそのまま活かすため
       // 自身は可視にし、子供の不可視情報は生かす
       // 本来は sourceImageをNaturalWidth,Heightで出力する
-      if (nameOptions.options[OPTION_IMAGE_9SLICE] != null) {
+      if (nodeNameAndStyle.options[STYLE_IMAGE_9SLICE] != null) {
         return false
       }
     })
@@ -3037,9 +2997,6 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     // 画像出力の必要がなければ終了
     // alert('no outputs')
   }
-
-  // データをもとに戻すため､意図的にエラーをスローする
-  throw 'throw error for UNDO'
 }
 
 /**
@@ -3118,7 +3075,7 @@ async function alert(message, title) {
  *
  * @param {Selection} selection
  * @param {RootNode} root
- * @returns {SceneNode}
+ * @returns {SceneNode[]}
  */
 function getExportRootNodes(selection, root) {
   // 選択されているものがない場合 全てが変換対象
@@ -3355,20 +3312,20 @@ async function pluginExportBaum2Command(selection, root) {
     let currentArtboard = null
     let funcForEach = nodes => {
       nodes.forEach(node => {
-        let nameOptions = getNameOptions(node)
+        let nodeNameAndStyle = getNodeNameAndStyle(node)
         const isArtboard = node instanceof Artboard
         if (
           isArtboard ||
-          checkOptionSubPrefab(nameOptions.options) //
+          checkStyleSubPrefab(nodeNameAndStyle.options) //
         ) {
           if (isArtboard) currentArtboard = node
           if (optionCheckMarkedForExport && !node.markedForExport) {
             // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
           } else {
             // 同じ名前のものは上書きされる
-            exports[nameOptions.name] = node
+            exports[nodeNameAndStyle.name] = node
             if (isArtboard) {
-              responsiveCheckArtboards[nameOptions.name] = node
+              responsiveCheckArtboards[nodeNameAndStyle.name] = node
             } else {
               // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
               if (currentArtboard != null) {
@@ -3390,7 +3347,15 @@ async function pluginExportBaum2Command(selection, root) {
       return
     }
 
-    await exportBaum2(exports, outputFolder, responsiveCheckArtboards)
+    try {
+      await exportBaum2(exports, outputFolder, responsiveCheckArtboards)
+    } catch (e) {
+      console.log(e)
+      console.log(e.stack)
+      await alert(e, 'error')
+    }
+    // データをもとに戻すため､意図的にエラーをスローする
+    throw 'throw error for UNDO'
   }
 }
 
@@ -3408,17 +3373,17 @@ async function pluginResponsiveParamName(selection, root) {
     Object.assign(responsiveBounds, makeResponsiveParameter(item))
     let func = node => {
       if (node.symbolId != null) return
-      const param = calcResponsiveParameter(node, responsiveBounds, {})
+      const param = calcRectTransform(node, responsiveBounds, {})
       if (param != null) {
-        let fixOptions = []
+        let styleFix = []
         for (let key in param.fix) {
           if (param.fix[key] === true) {
-            fixOptions.push(key[0])
+            styleFix.push(key[0])
           }
         }
-        if (fixOptions.length > 0) {
+        if (styleFix.length > 0) {
           let name = node.name.replace(/ +@fix=[a-z_\-]+/, '')
-          let optionStr = fixOptions
+          let optionStr = styleFix
             .join('-')
             .replace('l-r', 'x') // 左右固定
             .replace('t-b', 'y') // 上下固定
@@ -3440,7 +3405,7 @@ async function pluginResponsiveParamName(selection, root) {
 
   // データをもとに戻すため､意図的にエラーをスローすると､付加した情報も消えてしまう
   if (!checkHashBounds(responsiveBounds)) {
-    alert('bounds is changed. throwed error for UNDO', '@fix')
+    await alert('bounds is changed. throwed error for UNDO', '@fix')
   } else {
   }
 }

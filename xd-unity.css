@@ -1,7 +1,14 @@
 /*
 デザイン要素はできるだけXDにやらせる
 こちらで定義にするのはUnityでの挙動になるようにする
+
+CSSパーサは以下のものを利用
+https://jsfiddle.net/developit/vzkckrw4/
  */
+
+* {
+  layer: UI
+}
 
 .list-x {
   layout: x expand-y;
@@ -13,54 +20,82 @@
   size-fit: y;
 }
 
-.viewport-x {
+.viewport-xy {
   viewport: true;
+  scroll: x y;
+  content-name: ".content";
+}
+
+.viewport-list-x {
+  viewport: true;
+  content-name: ".content";
   scroll: x;
 }
 
-.viewport-y {
-  viewport: true;
-  scroll: y;
-}
-
-.viewport-x-y {
-  viewport: true;
-  scroll: x y;
-}
-
-.viewport-x.layout-grid > .content {
-  layout: grid;
+.viewport-list-x > .content {
+  layout: x expand-y;
   size-fit: x;
   fix: y;
 }
 
-.viewport-x.layout-grid > .content {
-  layout: grid;
-  size-fit: y;
-  fix: x;
+.viewport-list-y {
+  viewport: true;
+  content-name: ".content";
+  scroll: y;
 }
 
-.viewport-y.layout-list > .content {
+.viewport-list-y > .content {
   layout: y expand-x;
   size-fit: y;
   fix: x;
 }
 
+
+.viewport-grid-x {
+  viewport: true;
+  content-name: ".content";
+  scroll: x;
+}
+
+.viewport-grid-x > .content {
+  layout: grid expand-y;
+  size-fit: x;
+  fix: y;
+}
+
+
+.viewport-grid-y {
+  viewport: true;
+  content-name: ".content";
+  scroll: y;
+}
+
+.viewport-grid-y > .content {
+  layout: grid expand-x;
+  size-fit: y;
+  fix: x;
+}
+
+
 .scrollbar-y {
   scrollbar: true;
   direction: btt;
+  handle-rect-state: handle;
 }
 
 .scrollbar-x {
   scrollbar: true;
   direction: ltr;
+  handle-rect-state: handle;
 }
 
 .scrollbar-x > .handle {
+  state: scrollbar-handle-rect;
   fix: l r t b;
 }
 
 .scrollbar-y > .handle {
+  state: scrollbar-handle-rect;
   fix: l r t b;
 }
 
@@ -77,6 +112,28 @@
   layout-element: min;
 }
 
+.toggle > .image.off {
+  state: off;
+}
+
+/*
+ * こちらが定義されていれば、offとonでイメージ入れ替え
+ */
+.toggle > .image.on {
+  state: on;
+}
+
+/*
+ * こちらが定義されていれば、offにcheckedイメージが重なる
+ */
+.toggle > .image.checked {
+  state: checked;
+}
+
+.image {
+  image: true
+}
+
 .comp-image {
   image: true;
   component: true;
@@ -86,7 +143,7 @@
 textはtext mesh proとして出力する
  */
 .text {
-  textmp: true;
+  text: true;
 }
 
 .button {
