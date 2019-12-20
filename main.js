@@ -121,12 +121,13 @@ function parseCssRule(css) {
 }
 
 /**
+ * 正規表現テスト https://regex101.com/
  * @param selector
  * @return {[{op:string, name:string}]}
  */
 function parseCssSelector(selector) {
   selector = selector.trim()
-  const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]+)?/gi
+  const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)?(?<attr>\[(?<attr_name>[a-z]+)(?<attr_op>[$=]+)\"(?<attr_val>.*)\"\])?(?<op>[ >]+)?/gi
   let token
   // セレクターを分解
   let nameOps = []

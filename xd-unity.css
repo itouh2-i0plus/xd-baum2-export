@@ -150,6 +150,10 @@ textはtext mesh proとして出力する
   button: true;
 }
 
+[id $= "-button"] {
+  button: true;
+}
+
 
 /**
 property 名に数字があってはいけない
