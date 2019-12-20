@@ -28,19 +28,19 @@
   scroll: x y;
 }
 
-.content-grid-x > .content {
+.viewport-x.layout-grid > .content {
   layout: grid;
   size-fit: x;
   fix: y;
 }
 
-.content-grid-y > .content {
+.viewport-x.layout-grid > .content {
   layout: grid;
   size-fit: y;
   fix: x;
 }
 
-.content-list-y > .content {
+.viewport-y.layout-list > .content {
   layout: y expand-x;
   size-fit: y;
   fix: x;
