@@ -62,7 +62,7 @@ const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
 const STYLE_IMAGE_SCALE = 'image-scale'
 const STYLE_IMAGE_TYPE = 'image-type'
 const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
-const STYLE_IMAGE_9SLICE = 'image-slice' // 9スライス
+const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
 const STYLE_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
 const STYLE_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
 const OPTION_CONTENT = 'content'
@@ -91,7 +91,7 @@ async function loadCssRules() {
  * CSS Parser
  * @author Jason Miller https://jsfiddle.net/user/developit/fiddles/ https://jsfiddle.net/developit/vzkckrw4/
  * @param {string} text
- * @return {[{selector:string, rules:{}}]}
+ * @return {[{selector:string, style:{}}]}
  */
 function parseCss(text) {
   let tokenizer = /([\s\S]+?)\{([\s\S]*?)\}/gi,
@@ -169,7 +169,7 @@ function checkStyleScrollbar(style) {
 }
 
 function checkStyleImage(style) {
-  if (checkBoolean(style[STYLE_IMAGE_9SLICE])) {
+  if (checkBoolean(style[STYLE_IMAGE_SLICE])) {
     return true
   }
   return checkBoolean(style[STYLE_TYPE_IMAGE])
@@ -546,7 +546,7 @@ async function assignImage(
   if (checkBoolean(style[STYLE_IMAGE_NO_SLICE])) {
     fileExtension = '-noslice.png'
   }
-  const image9Slice = style[STYLE_IMAGE_9SLICE]
+  const image9Slice = style[STYLE_IMAGE_SLICE]
   if (image9Slice) {
     // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
@@ -1549,7 +1549,7 @@ async function createButton(json, name, node, root, funcForEachChild) {
   const type = 'Button'
   Object.assign(json, {
     type: type,
-    name: getNodeName(node),
+    name: getUnityName(node),
   })
   assignDrawRectTransform(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
@@ -1601,7 +1601,7 @@ async function nodeGroup(
     const type = 'Slider'
     Object.assign(json, {
       type: type,
-      name: getNodeName(node),
+      name: getUnityName(node),
     })
     assignDrawRectTransform(json, node)
     await funcForEachChild()
@@ -2361,7 +2361,7 @@ async function nodeText(
   // text.styleRangesの適応をしていない
   Object.assign(json, {
     type: type,
-    name: getNodeName(node),
+    name: getUnityName(node),
     text: node.text,
     textType: textType,
     font: node.fontFamily,
@@ -2649,6 +2649,13 @@ function getNodeNameAndStyle(node) {
   if (nodeName.startsWith('//')) {
     style[STYLE_COMMENT_OUT] = true
     nodeName = nodeName.substring(2)
+  }
+
+  const css = parseCss(nodeName)
+  if (css != null && css.length > 0) {
+    // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
+    Object.assign(style, css[0].style) // 上書きする
+    console.log('-----------style------------', style)
   }
 
   return {
@@ -2973,7 +2980,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
       // 9SLICEであった場合、そのグループの不可視情報はそのまま活かすため
       // 自身は可視にし、子供の不可視情報は生かす
       // 本来は sourceImageをNaturalWidth,Heightで出力する
-      if (nodeNameAndStyle.options[STYLE_IMAGE_9SLICE] != null) {
+      if (nodeNameAndStyle.options[STYLE_IMAGE_SLICE] != null) {
         return false
       }
     })
