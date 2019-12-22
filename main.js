@@ -68,6 +68,7 @@ const STYLE_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
 const OPTION_CONTENT = 'content'
 const STYLE_DIRECTION = 'direction'
 const STYLE_LAYOUT_ELEMENT = 'layout-element'
+const STYLE_LAYER = 'layer'
 
 /**
  * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
@@ -724,10 +725,10 @@ function getSizeFitterParam(style) {
     verticalFit = STR_PREFERRED
   } else {
     const optionStr = style.toString()
-    if (optionStr.includes(STR_HORIZONTAL) || hasParamInStr(optionStr, 'x')) {
+    if (hasAnyParamInStr(optionStr, 'x', STR_HORIZONTAL)) {
       horizontalFit = STR_PREFERRED
     }
-    if (optionStr.includes(STR_VERTICAL) || hasParamInStr(optionStr, 'y')) {
+    if (hasAnyParamInStr(optionStr, 'y', STR_VERTICAL)) {
       verticalFit = STR_PREFERRED
     }
   }
@@ -743,7 +744,7 @@ function getSizeFitterParam(style) {
       vertical_fit: verticalFit,
     })
   }
-  if (Object.keys(param).length == 0) {
+  if (Object.keys(param).length === 0) {
     return null
   }
   return param
@@ -842,7 +843,7 @@ async function createViewport(
   if (styleScroll != null) {
     scrollDirection = ''
     if (hasAnyParamInStr(styleScroll, 'y', STR_VERTICAL)) {
-      scrollDirection += STR_VERTICAL
+      scrollDirection += STR_VERTICAL + ' '
     }
     if (hasAnyParamInStr(styleScroll, 'x', STR_HORIZONTAL)) {
       scrollDirection += STR_HORIZONTAL
@@ -851,6 +852,7 @@ async function createViewport(
 
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
+  // TODO: content-nameに対応する
   let contentName = '.content'
   Object.assign(json, {
     content: {
@@ -1012,6 +1014,7 @@ async function createViewport(
   // Content系
   // SizeFit
   assignSizeFit(contentJson, contentStyle)
+  assignLayer(contentJson, contentStyle)
 
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
@@ -1385,20 +1388,11 @@ function getLayoutJson(
   children,
 ) {
   let layoutJson = null
-  if (
-    optionLayoutString.includes(STR_VERTICAL) ||
-    hasParamInStr(optionLayoutString, 'y')
-  ) {
+  if (hasAnyParamInStr(optionLayoutString, 'y', STR_VERTICAL)) {
     layoutJson = calcVLayout(json, viewportNode, maskNode, children)
-  } else if (
-    optionLayoutString.includes(STR_HORIZONTAL) ||
-    hasParamInStr(optionLayoutString, 'x')
-  ) {
+  } else if (hasAnyParamInStr(optionLayoutString, 'x', STR_HORIZONTAL)) {
     layoutJson = calcHLayout(json, viewportNode, maskNode, children)
-  } else if (
-    optionLayoutString.includes('grid') ||
-    hasParamInStr(optionLayoutString, 'g')
-  ) {
+  } else if (hasAnyParamInStr(optionLayoutString, 'grid')) {
     layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
   if (layoutJson != null) {
@@ -1557,14 +1551,13 @@ async function createScrollbar(style, json, name, node, funcForEachChild) {
 
 /**
  *
- * @param {} json
+ * @param {{}} json
  * @param {SceneNodeClass} node
- * @param {} style
+ * @param {{}} style
  */
 function assignLayoutElement(json, node, style) {
   const styleElement = style[STYLE_LAYOUT_ELEMENT]
   if (styleElement == null) return
-  console.log('-------------------------------le')
   if (hasParamInStr(styleElement, 'min')) {
     const bounds = getGlobalBounds(node)
     Object.assign(json, {
@@ -1575,8 +1568,6 @@ function assignLayoutElement(json, node, style) {
     })
   }
 }
-
-const STYLE_LAYER = 'layer'
 
 function assignLayer(json, style) {
   const styleLayer = style[STYLE_LAYER]
@@ -1823,10 +1814,16 @@ function hasParamInStr(str, param) {
   return str.endsWith(` ${param}`)
 }
 
+/**
+ * @param {string} str
+ * @param {...string} params
+ * @return {boolean}
+ */
 function hasAnyParamInStr(str, ...params) {
   for (let param of params) {
-    hasParamInStr(str, param)
+    if (hasParamInStr(str, param)) return true
   }
+  return false
 }
 
 /**
@@ -1845,30 +1842,22 @@ function getStyleFix(styleFix) {
   let fixOptionLeft = false
   let fixOptionRight = false
 
-  if (
-    hasParamInStr(fixOption, 'w') ||
-    fixOption.indexOf('width') >= 0 ||
-    fixOption.indexOf('size') >= 0
-  ) {
+  if (hasAnyParamInStr(fixOption, 'w', 'width', 'size')) {
     fixOptionWidth = true
   }
-  if (
-    hasParamInStr(fixOption, 'h') ||
-    fixOption.indexOf('height') >= 0 ||
-    fixOption.indexOf('size') >= 0
-  ) {
+  if (hasAnyParamInStr(fixOption, 'h', 'height', 'size')) {
     fixOptionHeight = true
   }
-  if (hasParamInStr(fixOption, 't') || fixOption.indexOf('top') >= 0) {
+  if (hasAnyParamInStr(fixOption, 't', 'top')) {
     fixOptionTop = true
   }
-  if (hasParamInStr(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
+  if (hasAnyParamInStr(fixOption, 'b', 'bottom')) {
     fixOptionBottom = true
   }
-  if (hasParamInStr(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
+  if (hasAnyParamInStr(fixOption, 'l', 'left')) {
     fixOptionLeft = true
   }
-  if (hasParamInStr(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
+  if (hasAnyParamInStr(fixOption, 'r', 'right')) {
     fixOptionRight = true
   }
   if (hasParamInStr(fixOption, 'x')) {
@@ -2135,10 +2124,7 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
     }
   }
 
-  if (
-    styleFix != null &&
-    (hasParamInStr(styleFix, 'c') || styleFix.indexOf('center') >= 0)
-  ) {
+  if (styleFix != null && hasAnyParamInStr(styleFix, 'c', 'center')) {
     anchorMin.x = 0.5
     anchorMax.x = 0.5
     const center = beforeBounds.x + beforeBounds.width / 2
@@ -2147,10 +2133,7 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
     offsetMax.x = center - parentCenter + beforeBounds.width / 2
   }
 
-  if (
-    styleFix != null &&
-    (hasParamInStr(styleFix, 'm') || styleFix.indexOf('middle') >= 0)
-  ) {
+  if (styleFix != null && hasAnyParamInStr(styleFix, 'm', 'middle')) {
     anchorMin.y = 0.5
     anchorMax.y = 0.5
     const middle = beforeBounds.y + beforeBounds.height / 2
@@ -2307,8 +2290,8 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
  */
 function checkHashBounds(hashBounds, repair) {
   let result = true
-  for (const key in hashBounds) {
-    const value = hashBounds[key]
+  for (let key in hashBounds) {
+    let value = hashBounds[key]
     if (value['before'] && value['restore']) {
       let beforeBounds = value['before']['bounds']
       let restoreBounds = value['restore']['bounds']
@@ -2386,7 +2369,7 @@ function isFixHeight(node) {
  * @param {string} name
  * @param {string[]} style
  */
-async function nodeText(
+async function createText(
   json,
   node,
   artboard,
@@ -2449,12 +2432,12 @@ async function nodeText(
   Object.assign(json, {
     type: type,
     name: getUnityName(node),
-    text: node.text,
+    text: nodeText.text,
     textType: textType,
-    font: node.fontFamily,
-    style: node.fontStyle,
-    size: node.fontSize * scale,
-    color: getRGB(node.fill.value),
+    font: nodeText.fontFamily,
+    style: nodeText.fontStyle,
+    size: nodeText.fontSize * scale,
+    color: nodeText.fill.toHex(true),
     align: hAlign + vAlign,
     x: boundsCM.cx,
     y: boundsCM.cy,
@@ -2466,6 +2449,7 @@ async function nodeText(
 
   // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
   assignRectTransform(json, node)
+  assignLayer(json, style)
 }
 
 /**
@@ -2587,36 +2571,6 @@ function getIdFromNodeName(nodeName) {
 }
 
 /**
- * nodeNameから、 .がついているものを抽出する
- * TODO: この関数はSelectorのマッチ用によく呼び出されるため、キャッシュの生成が必要
- * @param nodeName
- * @returns {string[]}
- */
-function getClassesFromNodeName(nodeName) {
-  // 分解
-  const names = parseNodeName(nodeName)
-  // .がついているもの（Class名）を探す
-  const classes = []
-  for (const name of names) {
-    if (name.startsWith('.')) {
-      classes.push(name)
-    }
-  }
-  return classes
-}
-
-/**
- *
- * @param nodeName
- * @param selector
- */
-function matchNodeNameSelector(nodeName, selector) {
-  const names = parseCssSelector(nodeName)
-  for (let name of names) {
-  }
-}
-
-/**
  *
  * @param {string} nodeName
  * @param {SceneNodeClass} parent
@@ -2733,7 +2687,7 @@ function getNodeNameAndStyle(node) {
     }
   }
 
-  // 名前の最初1文字目が//ならコメントNode
+  // 名前の最初が//ならコメントNode
   if (nodeName.startsWith('//')) {
     style[STYLE_COMMENT_OUT] = true
     nodeName = nodeName.substring(2)
@@ -2842,7 +2796,7 @@ async function nodeRoot(renditions, outputFolder, root) {
   let subFolderName = nodeNameAndStyle.name
 
   // フォルダ名に使えない文字を'_'に変換
-  subFolderName = convertToFileName(subFolderName)
+  subFolderName = convertToFileName(subFolderName, false)
 
   // アートボード毎にフォルダを作成する
   // TODO:他にやりかたはないだろうか
@@ -2923,7 +2877,7 @@ async function nodeRoot(renditions, outputFolder, root) {
         {
           // BooleanGroupは強制的にラスタライズする
           style[STYLE_TYPE_IMAGE] = true
-          const type = await nodeGroup(
+          await nodeGroup(
             layoutJson,
             node,
             root,
@@ -2940,7 +2894,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'RepeatGrid':
       case 'SymbolInstance':
         {
-          const type = await nodeGroup(
+          await nodeGroup(
             layoutJson,
             node,
             root,
@@ -2970,7 +2924,7 @@ async function nodeRoot(renditions, outputFolder, root) {
         await funcForEachChild()
         break
       case 'Text':
-        await nodeText(
+        await createText(
           layoutJson,
           node,
           root,
@@ -3041,14 +2995,14 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // }
 
   // アートボード毎の処理
-  for (const i in roots) {
+  for (let i in roots) {
     let root = roots[i]
     await nodeRoot(renditions, outputFolder, root)
   }
 
   // すべて可視にする
   // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
-  for (const i in roots) {
+  for (let i in roots) {
     let root = roots[i]
     nodeWalker(root, node => {
       const nodeNameAndStyle = getNodeNameAndStyle(node)
@@ -3504,7 +3458,7 @@ async function pluginResponsiveParamName(selection, root) {
   console.log('@fix:done')
 
   // データをもとに戻すため､意図的にエラーをスローすると､付加した情報も消えてしまう
-  if (!checkHashBounds(responsiveBounds)) {
+  if (!checkHashBounds(responsiveBounds, false)) {
     await alert('bounds is changed. throwed error for UNDO', '@fix')
   } else {
   }
