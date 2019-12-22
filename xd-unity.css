@@ -10,14 +10,22 @@ https://jsfiddle.net/developit/vzkckrw4/
   layer: UI
 }
 
-.list-x {
+.layout-x {
   layout: x expand-y;
   size-fit: x;
 }
 
-.list-y {
+.layout-y {
   layout: y expand-x;
   size-fit: y;
+}
+
+/**
+親が自動レイアウトをもっている場合に
+これ以下のグループが必要なMINサイズを設定する
+ */
+.layout-rect {
+  layout-element: min;
 }
 
 .viewport-xy {
@@ -26,25 +34,25 @@ https://jsfiddle.net/developit/vzkckrw4/
   content-name: ".content";
 }
 
-.viewport-list-x {
+.viewport-x {
   viewport: true;
   content-name: ".content";
   scroll: x;
 }
 
-.viewport-list-x > .content {
+.viewport-x > .content {
   layout: x expand-y;
   size-fit: x;
   fix: y;
 }
 
-.viewport-list-y {
+.viewport-y {
   viewport: true;
   content-name: ".content";
   scroll: y;
 }
 
-.viewport-list-y > .content {
+.viewport-y > .content {
   layout: y expand-x;
   size-fit: y;
   fix: x;
@@ -150,11 +158,6 @@ textはtext mesh proとして出力する
   button: true;
 }
 
-[id $= "-button"] {
-  button: true;
-}
-
-
 /**
 property 名に数字があってはいけない
  */
@@ -170,7 +173,7 @@ property 名に数字があってはいけない
 
 .image-0-80 {
   image: true;
-  image-slice: 0px 80px;
+  border: 0px 80px;
 }
 
 .image-30 {

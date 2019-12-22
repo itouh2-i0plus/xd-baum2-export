@@ -60,7 +60,7 @@ const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設�
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
 const STYLE_IMAGE_SCALE = 'image-scale'
-const STYLE_IMAGE_TYPE = 'image-type'
+const STYLE_IMAGE_TYPE = 'image-type' // sliced tiled simple filled
 const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
 const STYLE_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
@@ -121,20 +121,83 @@ function parseCssRule(css) {
 }
 
 /**
- * 正規表現テスト https://regex101.com/
- * @param selector
- * @return {[{op:string, name:string}]}
+ * NodeNameを分解
+ * 現在、スペース有りも無しも区別していない
+ * .a.b .c  -> [".a",".b",".c"]
+ * .a.b.c  -> [".a",".b",".c"]
+ * @param {string} nodeName
+ * @param nodeName
+ * @return {string[]}
  */
-function parseCssSelector(selector) {
-  selector = selector.trim()
-  const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)?(?<attr>\[(?<attr_name>[a-z]+)(?<attr_op>[$=]+)\"(?<attr_val>.*)\"\])?(?<op>[ >]+)?/gi
-  let token
+function parseNodeName(nodeName) {
+  const names = []
+  // nodeNameもCSS selectorフォーマットのため
+  const args = parseCssSelector(nodeName)
+  for (let arg of args) {
+    names.push(arg.selector_arg.name)
+  }
+  return names
+}
+
+class SelectorArg {
+  constructor(parsedTokenGroups) {
+    /*
+    pseudo_name 例: :not
+    pseudo_open
+    name　例: #aaa .bbb ccc
+    attr
+    attr_name 例:
+      attr_op 例: *= ^= $=
+      attr_val 例: dddd
+    bracket_close
+     */
+    this.name = parsedTokenGroups.name
+  }
+
+  /**
+   * @param {string} nodeName
+   * @return {boolean}
+   */
+  match(nodeName) {
+    if (this.name === '*') return true
+    const names = parseNodeName(nodeName)
+    return names.find(name => name === this.name) !== undefined
+  }
+}
+
+/**
+ * TODO:この関数にキャッシュを導入すると良いのでは
+ * @param {string} selectorString
+ * @return {[{op:string, selector_arg:SelectorArg}]}
+ */
+function parseCssSelector(selectorString) {
+  selectorString = selectorString.trim()
+  // 正規表現テスト https://regex101.com/
+  // 表現一覧 https://jsoup.org/apidocs/index.html?org/jsoup/select/Selector.html
+  // const regexSelector = /(?<name>[.#]?[a-zA-Z0-9_\-*]+)?(?<attr>\[(?<attr_name>[a-z]+)(?<attr_op>[$=]+)"?(?<attr_val>[a-zA-Z0-9_\-]*)"?])?(?<op>[ >]+)?/g
+  /*
+  pseudo_name 例: :not
+  pseudo_open
+  name　例: #aaa .bbb ccc
+  attr
+  attr_name 例:
+  attr_op 例: *= ^= $=
+  attr_val 例: dddd
+  bracket_close
+   */
+  const regexSelector = /((?<pseudo_name>:[a-zA-Z0-9_\-]+)(?<pseudo_open>\()?\s*)?(?<name>[.#]?[a-zA-Z0-9_\-*]+)?(?<attr>\[\s*(?<attr_name>[a-z]+)(\s*(?<attr_op>[$=]+)\s*)"?(?<attr_val>[a-zA-Z0-9_\-]*)"?\s*])?(\s*(?<bracket_close>\)))?(?<op>[ >]+)?/gi
+  //const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]+)?/gi
   // セレクターを分解
   let nameOps = []
-  while ((token = regexSelector.exec(selector))) {
+  while (true) {
+    let token = regexSelector.exec(selectorString)
+    if (!token || !token[0]) {
+      // マッチした文字列が空なら終了
+      break
+    }
     let op = token.groups.op
     /**
-     * opの種類は　'', ' '(スペース), '>'
+     * opの種類は　'', '%20'(スペース), '>'
      * .a.b -> selector_ops:[ {name:".a","op":""}, {name:".b","op":""} ]
      * .a > .b -> selector_ops:[ {name:".a","op":">"}, {name:".b","op":""} ]
      */
@@ -144,8 +207,9 @@ function parseCssSelector(selector) {
       op = op.trim()
       if (op === '') op = '%20' // 空白が全部きえてしまった場合　→ '%20'(スペース)
     }
-    nameOps.push({ op, name: token.groups.name })
+    nameOps.push({ op, selector_arg: new SelectorArg(token.groups) })
   }
+  // 最後の要素のopは'' であるべき
   return nameOps
 }
 
@@ -498,6 +562,11 @@ function assignBoundsCM(json, boundsCm) {
   })
 }
 
+/**
+ * @param renditions
+ * @param fileName
+ * @return {*|number|bigint}
+ */
 function searchFileName(renditions, fileName) {
   return renditions.find(entry => {
     return entry.fileName === fileName
@@ -549,9 +618,10 @@ async function assignImage(
   }
   const image9Slice = style[STYLE_IMAGE_SLICE]
   if (image9Slice) {
-    // var pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
+    //const pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
-    //var result = pattern.exec(options[OPTION_9SLICE])
+    //const result = pattern.exec(options[OPTION_9SLICE])
+
     const result = image9Slice.match(pattern)
     /*
     省略については、CSSに準拠
@@ -601,17 +671,17 @@ async function assignImage(
 
   assignDrawRectTransform(json, node)
 
-  const optionPreserveAspect = nodeNameAndStyle.options[STYLE_PRESERVE_ASPECT]
-  if (optionPreserveAspect != null) {
+  const stylePreserveAspect = style[STYLE_PRESERVE_ASPECT]
+  if (stylePreserveAspect != null) {
     Object.assign(json, {
-      preserve_aspect: checkBoolean(optionPreserveAspect),
+      preserve_aspect: checkBoolean(stylePreserveAspect),
     })
   }
 
-  const optionRayCastTarget = nodeNameAndStyle.options[STYLE_RAYCAST_TARGET]
-  if (optionRayCastTarget != null) {
+  const styleRayCastTarget = style[STYLE_RAYCAST_TARGET]
+  if (styleRayCastTarget != null) {
     Object.assign(json, {
-      raycast_target: checkBoolean(optionRayCastTarget),
+      raycast_target: checkBoolean(styleRayCastTarget),
     })
   }
 
@@ -641,22 +711,23 @@ async function assignImage(
 }
 
 /**
- * @param option
+ * @param style
  * @return {{}|null}
  */
-function getSizeFitterParam(option) {
-  if (option == null) return null
+function getSizeFitterParam(style) {
+  if (style == null) return null
   let horizontalFit = null
   let verticalFit = null
-  if (option === true) {
+  if (style === true) {
+    // trueであれば、縦横ともにPREFERREDにする
     horizontalFit = STR_PREFERRED
     verticalFit = STR_PREFERRED
   } else {
-    const optionStr = option.toString().toLowerCase()
-    if (optionStr.includes(STR_HORIZONTAL) || hasOptionParam(optionStr, 'x')) {
+    const optionStr = style.toString()
+    if (optionStr.includes(STR_HORIZONTAL) || hasParamInStr(optionStr, 'x')) {
       horizontalFit = STR_PREFERRED
     }
-    if (optionStr.includes(STR_VERTICAL) || hasOptionParam(optionStr, 'y')) {
+    if (optionStr.includes(STR_VERTICAL) || hasParamInStr(optionStr, 'y')) {
       verticalFit = STR_PREFERRED
     }
   }
@@ -770,16 +841,10 @@ async function createViewport(
   const styleScroll = style[STYLE_SCROLL]
   if (styleScroll != null) {
     scrollDirection = ''
-    if (
-      styleScroll.includes(STR_VERTICAL) ||
-      hasOptionParam(styleScroll, 'y')
-    ) {
+    if (hasAnyParamInStr(styleScroll, 'y', STR_VERTICAL)) {
       scrollDirection += STR_VERTICAL
     }
-    if (
-      styleScroll.includes(STR_HORIZONTAL) ||
-      hasOptionParam(styleScroll, 'x')
-    ) {
+    if (hasAnyParamInStr(styleScroll, 'x', STR_HORIZONTAL)) {
       scrollDirection += STR_HORIZONTAL
     }
   }
@@ -901,7 +966,7 @@ async function createViewport(
 
     const contentOptionLayout = contentStyle[STYLE_LAYOUT]
     if (contentOptionLayout != null) {
-      if (hasOptionParam(contentOptionLayout, 'grid')) {
+      if (hasParamInStr(contentOptionLayout, 'grid')) {
         let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
 
         // スクロールの方向が横なら、並びは縦から
@@ -951,7 +1016,7 @@ async function createViewport(
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentOptionFix = getOptionFix(contentStyle[STYLE_FIX])
+  const contentOptionFix = getStyleFix(contentStyle[STYLE_FIX])
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
@@ -1322,17 +1387,17 @@ function getLayoutJson(
   let layoutJson = null
   if (
     optionLayoutString.includes(STR_VERTICAL) ||
-    hasOptionParam(optionLayoutString, 'y')
+    hasParamInStr(optionLayoutString, 'y')
   ) {
     layoutJson = calcVLayout(json, viewportNode, maskNode, children)
   } else if (
     optionLayoutString.includes(STR_HORIZONTAL) ||
-    hasOptionParam(optionLayoutString, 'x')
+    hasParamInStr(optionLayoutString, 'x')
   ) {
     layoutJson = calcHLayout(json, viewportNode, maskNode, children)
   } else if (
     optionLayoutString.includes('grid') ||
-    hasOptionParam(optionLayoutString, 'g')
+    hasParamInStr(optionLayoutString, 'g')
   ) {
     layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
@@ -1408,10 +1473,10 @@ function forEachReverseElements(elements, func) {
 function getUnityName(node) {
   const nodeName = getNodeName(node)
   const id = getIdFromNodeName(nodeName)
-  if (id != null) {
-    return id
+  if (!id) {
+    return nodeName
   }
-  return nodeName
+  return id
 }
 
 /**
@@ -1453,8 +1518,10 @@ async function createGroup(
   assignCanvasGroup(json, node, style)
   await funcForEachChild()
 
+  assignLayoutElement(json, node, style)
   assignLayout(json, node, node, node.children, style)
   assignSizeFit(json, style)
+  assignLayer(json, style)
 
   return type
 }
@@ -1495,16 +1562,26 @@ async function createScrollbar(style, json, name, node, funcForEachChild) {
  * @param {} style
  */
 function assignLayoutElement(json, node, style) {
-  if (style[STYLE_LAYOUT_ELEMENT] == null) return
-  const option = style[STYLE_LAYOUT_ELEMENT]
-  if (hasOptionParam(option, 'min')) {
-    const bounds = getGlobalDrawBounds(node)
+  const styleElement = style[STYLE_LAYOUT_ELEMENT]
+  if (styleElement == null) return
+  console.log('-------------------------------le')
+  if (hasParamInStr(styleElement, 'min')) {
+    const bounds = getGlobalBounds(node)
     Object.assign(json, {
       layout_element: {
         min_width: bounds.width,
         min_height: bounds.height,
       },
     })
+  }
+}
+
+const STYLE_LAYER = 'layer'
+
+function assignLayer(json, style) {
+  const styleLayer = style[STYLE_LAYER]
+  if (styleLayer != null) {
+    Object.assign(json, { layer: styleLayer })
   }
 }
 
@@ -1533,6 +1610,7 @@ async function createToggle(json, name, style, node, root, funcForEachChild) {
   assignDrawRectTransform(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
   assignState(json, style)
+  assignLayer(json, style)
   await funcForEachChild()
   return type
 }
@@ -1552,9 +1630,11 @@ async function createButton(json, name, node, root, funcForEachChild) {
     type: type,
     name: getUnityName(node),
   })
+  const style = getNodeNameAndStyle(node).style
   assignDrawRectTransform(json, node)
+  assignLayer(json, style)
+  assignState(json, style)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
-  assignState(json, getNodeNameAndStyle(node))
   await funcForEachChild()
   return type
 }
@@ -1731,27 +1811,33 @@ class CalcBounds {
  * option = x
  * option = ,x,
  * option = ,x
- * @param {string} optionStr
- * @param {string} paramStr
+ * @param {string} str
+ * @param {string} param
  * @return {null|boolean}
  */
-function hasOptionParam(optionStr, paramStr) {
-  if (optionStr == null || paramStr == null) return null
-  if (optionStr === paramStr) return true
-  if (optionStr.startsWith(`${paramStr} `)) return true
-  if (optionStr.indexOf(` ${paramStr} `) >= 0) return true
-  return optionStr.endsWith(` ${paramStr}`)
+function hasParamInStr(str, param) {
+  if (str == null || param == null) return null
+  if (str === param) return true
+  if (str.startsWith(`${param} `)) return true
+  if (str.indexOf(` ${param} `) >= 0) return true
+  return str.endsWith(` ${param}`)
+}
+
+function hasAnyParamInStr(str, ...params) {
+  for (let param of params) {
+    hasParamInStr(str, param)
+  }
 }
 
 /**
- * @param {string} optionFix
+ * @param {string} styleFix
  * @returns {null|{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
  */
-function getOptionFix(optionFix) {
-  if (optionFix == null) {
+function getStyleFix(styleFix) {
+  if (styleFix == null) {
     return null
   }
-  let fixOption = optionFix.toLowerCase()
+  let fixOption = styleFix.toLowerCase()
   let fixOptionWidth = false
   let fixOptionHeight = false
   let fixOptionTop = false
@@ -1760,36 +1846,36 @@ function getOptionFix(optionFix) {
   let fixOptionRight = false
 
   if (
-    hasOptionParam(fixOption, 'w') ||
+    hasParamInStr(fixOption, 'w') ||
     fixOption.indexOf('width') >= 0 ||
     fixOption.indexOf('size') >= 0
   ) {
     fixOptionWidth = true
   }
   if (
-    hasOptionParam(fixOption, 'h') ||
+    hasParamInStr(fixOption, 'h') ||
     fixOption.indexOf('height') >= 0 ||
     fixOption.indexOf('size') >= 0
   ) {
     fixOptionHeight = true
   }
-  if (hasOptionParam(fixOption, 't') || fixOption.indexOf('top') >= 0) {
+  if (hasParamInStr(fixOption, 't') || fixOption.indexOf('top') >= 0) {
     fixOptionTop = true
   }
-  if (hasOptionParam(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
+  if (hasParamInStr(fixOption, 'b') || fixOption.indexOf('bottom') >= 0) {
     fixOptionBottom = true
   }
-  if (hasOptionParam(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
+  if (hasParamInStr(fixOption, 'l') || fixOption.indexOf('left') >= 0) {
     fixOptionLeft = true
   }
-  if (hasOptionParam(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
+  if (hasParamInStr(fixOption, 'r') || fixOption.indexOf('right') >= 0) {
     fixOptionRight = true
   }
-  if (hasOptionParam(fixOption, 'x')) {
+  if (hasParamInStr(fixOption, 'x')) {
     fixOptionLeft = true
     fixOptionRight = true
   }
-  if (hasOptionParam(fixOption, 'y')) {
+  if (hasParamInStr(fixOption, 'y')) {
     fixOptionTop = true
     fixOptionBottom = true
   }
@@ -1836,23 +1922,23 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
     style = nodeNameAndStyle.options
   }
   // console.log(`----------------------${node.name}----------------------`)
-  let fixOptionWidth = null
-  let fixOptionHeight = null
-  let fixOptionTop = null
-  let fixOptionBottom = null
-  let fixOptionLeft = null
-  let fixOptionRight = null
+  let styleFixWidth = null
+  let styleFixHeight = null
+  let styleFixTop = null
+  let styleFixBottom = null
+  let styleFixLeft = null
+  let styleFixRight = null
 
-  const optionFix = style[STYLE_FIX]
-  if (optionFix != null) {
+  const styleFix = style[STYLE_FIX]
+  if (styleFix != null) {
     // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
-    const options = getOptionFix(optionFix)
-    fixOptionWidth = options.width
-    fixOptionHeight = options.height
-    fixOptionTop = options.top
-    fixOptionBottom = options.bottom
-    fixOptionLeft = options.left
-    fixOptionRight = options.right
+    const styleFix = getStyleFix(styleFix)
+    styleFixWidth = styleFix.width
+    styleFixHeight = styleFix.height
+    styleFixTop = styleFix.top
+    styleFixBottom = styleFix.bottom
+    styleFixLeft = styleFix.left
+    styleFixRight = styleFix.right
   }
 
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
@@ -1874,15 +1960,15 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   // X座標
   // console.log(node.name + '-------------------')
   // console.log(beforeBounds.width, afterBounds.width)
-  if (fixOptionWidth == null) {
+  if (styleFixWidth == null) {
     if (approxEqual(beforeBounds.width, afterBounds.width, 0.0005)) {
-      fixOptionWidth = true
+      styleFixWidth = true
     } else {
-      fixOptionWidth = false
+      styleFixWidth = false
     }
   }
 
-  if (fixOptionLeft == null) {
+  if (styleFixLeft == null) {
     if (
       approxEqual(
         beforeBounds.x - parentBeforeBounds.x,
@@ -1890,10 +1976,10 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
       )
     ) {
       // ロックされている
-      fixOptionLeft = true
+      styleFixLeft = true
     } else {
       // 親のX座標･Widthをもとに､Left座標がきまる
-      fixOptionLeft =
+      styleFixLeft =
         (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
     }
   }
@@ -1907,52 +1993,52 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
     parentAfterBounds.width -
     (afterBounds.x + afterBounds.width)
 
-  if (fixOptionRight == null) {
-    if (fixOptionRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
+  if (styleFixRight == null) {
+    if (styleFixRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
       // ロックされている 0.001以下の誤差が起きることを確認した
-      fixOptionRight = true
+      styleFixRight = true
     } else {
       // 親のX座標･Widthをもとに､割合でRight座標がきまる
-      fixOptionRight =
+      styleFixRight =
         (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
     }
   }
 
   // Y座標
-  if (fixOptionHeight == null) {
-    if (approxEqual(beforeBounds.height, afterBounds.height, 0.0005)) {
-      fixOptionHeight = true
-    } else {
-      fixOptionHeight = false
-    }
+  if (styleFixHeight == null) {
+    styleFixHeight = approxEqual(
+      beforeBounds.height,
+      afterBounds.height,
+      0.0005,
+    )
   }
 
-  if (fixOptionTop == null) {
+  if (styleFixTop == null) {
     if (
       approxEqual(
         beforeBounds.y - parentBeforeBounds.y,
         afterBounds.y - parentAfterBounds.y,
       )
     ) {
-      fixOptionTop = true
+      styleFixTop = true
     } else {
       // 親のY座標･heightをもとに､Top座標がきまる
-      fixOptionTop =
+      styleFixTop =
         (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
     }
   }
 
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
   const afterBottom = parentAfterBounds.ey - afterBounds.ey
-  if (fixOptionBottom == null) {
+  if (styleFixBottom == null) {
     if (
-      fixOptionBottom == null &&
+      styleFixBottom == null &&
       approxEqual(beforeBottom, afterBottom, 0.0005)
     ) {
-      fixOptionBottom = true
+      styleFixBottom = true
     } else {
       // 親のY座標･Heightをもとに､Bottom座標がきまる
-      fixOptionBottom =
+      styleFixBottom =
         (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
     }
   }
@@ -1983,75 +2069,75 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   // number 親に対しての割合 anchorに割合をいれ､offsetを0
   // true 固定されている anchorを0か1にし､offsetをピクセルで指定
 
-  if (fixOptionLeft === true) {
+  if (styleFixLeft === true) {
     // 親のX座標から､X座標が固定値できまる
     anchorMin.x = 0
     offsetMin.x = beforeBounds.x - parentBeforeBounds.x
   } else {
-    anchorMin.x = fixOptionLeft
+    anchorMin.x = styleFixLeft
     offsetMin.x = 0
   }
-  if (fixOptionRight === true) {
+  if (styleFixRight === true) {
     // 親のX座標から､X座標が固定値できまる
     anchorMax.x = 1
     offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
   } else {
-    anchorMax.x = 1 - fixOptionRight
+    anchorMax.x = 1 - styleFixRight
     offsetMax.x = 0
   }
 
-  if (fixOptionWidth) {
-    if (fixOptionLeft === true /*&& fixOptionRight !== true*/) {
+  if (styleFixWidth) {
+    if (styleFixLeft === true /*&& fixOptionRight !== true*/) {
       anchorMax.x = anchorMin.x
       offsetMax.x = offsetMin.x + beforeBounds.width
-    } else if (fixOptionLeft !== true && fixOptionRight === true) {
+    } else if (styleFixLeft !== true && styleFixRight === true) {
       anchorMin.x = anchorMax.x
       offsetMin.x = offsetMax.x - beforeBounds.width
     }
-    if (fixOptionLeft !== true && fixOptionRight !== true) {
+    if (styleFixLeft !== true && styleFixRight !== true) {
       //両方共ロックされていない
-      anchorMin.x = anchorMax.x = (fixOptionLeft + 1 - fixOptionRight) / 2
+      anchorMin.x = anchorMax.x = (styleFixLeft + 1 - styleFixRight) / 2
       offsetMin.x = -beforeBounds.width / 2
       offsetMax.x = beforeBounds.width / 2
     }
   }
 
   // AdobeXD と　Unity2D　でY軸の向きがことなるため､Top→Max　Bottom→Min
-  if (fixOptionTop === true) {
+  if (styleFixTop === true) {
     // 親のY座標から､Y座標が固定値できまる
     anchorMax.y = 1
     offsetMax.y = -(beforeBounds.y - parentBeforeBounds.y)
   } else {
-    anchorMax.y = 1 - fixOptionTop
+    anchorMax.y = 1 - styleFixTop
     offsetMax.y = 0
   }
-  if (fixOptionBottom === true) {
+  if (styleFixBottom === true) {
     // 親のY座標から､Y座標が固定値できまる
     anchorMin.y = 0
     offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
   } else {
-    anchorMin.y = fixOptionBottom
+    anchorMin.y = styleFixBottom
     offsetMin.y = 0
   }
 
-  if (fixOptionHeight) {
-    if (fixOptionTop === true /*&& fixOptionBottom !== true*/) {
+  if (styleFixHeight) {
+    if (styleFixTop === true /*&& fixOptionBottom !== true*/) {
       anchorMin.y = anchorMax.y
       offsetMin.y = offsetMax.y - beforeBounds.height
-    } else if (fixOptionTop !== true && fixOptionBottom === true) {
+    } else if (styleFixTop !== true && styleFixBottom === true) {
       anchorMax.y = anchorMin.y
       offsetMax.y = offsetMin.y + beforeBounds.height
-    } else if (fixOptionTop !== true && fixOptionBottom !== true) {
+    } else if (styleFixTop !== true && styleFixBottom !== true) {
       //両方共ロックされていない
-      anchorMin.y = anchorMax.y = 1 - (fixOptionTop + 1 - fixOptionBottom) / 2
+      anchorMin.y = anchorMax.y = 1 - (styleFixTop + 1 - styleFixBottom) / 2
       offsetMin.y = -beforeBounds.height / 2
       offsetMax.y = beforeBounds.height / 2
     }
   }
 
   if (
-    optionFix != null &&
-    (hasOptionParam(optionFix, 'c') || optionFix.indexOf('center') >= 0)
+    styleFix != null &&
+    (hasParamInStr(styleFix, 'c') || styleFix.indexOf('center') >= 0)
   ) {
     anchorMin.x = 0.5
     anchorMax.x = 0.5
@@ -2062,8 +2148,8 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   }
 
   if (
-    optionFix != null &&
-    (hasOptionParam(optionFix, 'm') || optionFix.indexOf('middle') >= 0)
+    styleFix != null &&
+    (hasParamInStr(styleFix, 'm') || styleFix.indexOf('middle') >= 0)
   ) {
     anchorMin.y = 0.5
     anchorMax.y = 0.5
@@ -2075,12 +2161,12 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
 
   return {
     fix: {
-      left: fixOptionLeft,
-      right: fixOptionRight,
-      top: fixOptionTop,
-      bottom: fixOptionBottom,
-      width: fixOptionWidth,
-      height: fixOptionHeight,
+      left: styleFixLeft,
+      right: styleFixRight,
+      top: styleFixTop,
+      bottom: styleFixBottom,
+      width: styleFixWidth,
+      height: styleFixHeight,
     },
     anchor_min: anchorMin,
     anchor_max: anchorMax,
@@ -2437,6 +2523,7 @@ async function createImage(
       type: 'Image',
       name: unityName,
     })
+    assignLayer(json, style)
     assignDrawRectTransform(json, node)
     assignState(json, style)
     await assignImage(json, node, root, subFolder, renditions, unityName, style)
@@ -2444,18 +2531,6 @@ async function createImage(
     if (style[STYLE_COMPONENT] != null) {
       Object.assign(json, {
         component: {},
-      })
-    }
-    // assignPreferredHeight
-    if (style[STYLE_PREFERRED_HEIGHT] != null) {
-      Object.assign(json, {
-        preferred_height: json.h, //assignImageでわりあてられている
-      })
-    }
-    // assignMinHeight
-    if (style[STYLE_MIN_HEIGHT] != null) {
-      Object.assign(json, {
-        min_height: json.h, //assignImageでわりあてられている
       })
     }
     // image type
@@ -2493,38 +2568,52 @@ function getNodeName(node) {
   return node.name.trim()
 }
 
+/**
+ * IDを取得する #を削除する
+ * @param nodeName
+ * @return {string|null}
+ */
 function getIdFromNodeName(nodeName) {
   if (nodeName == null) {
     return null
   }
-  const selector = parseCssSelector(nodeName)
-  for (let selectorElement of selector) {
-    if (selectorElement.name.startsWith('#')) {
-      return selectorElement.name.substring(1)
+  const names = parseNodeName(nodeName)
+  for (let name of names) {
+    if (name.startsWith('#')) {
+      return name.substring(1)
     }
   }
   return null
 }
 
 /**
- * 現時点での仕様では、XDのnameはClass
- * ・重複OK(idは重複なし)
- * ・複数持てる 例 "viewport-x list-x"
+ * nodeNameから、 .がついているものを抽出する
  * TODO: この関数はSelectorのマッチ用によく呼び出されるため、キャッシュの生成が必要
  * @param nodeName
  * @returns {string[]}
  */
 function getClassesFromNodeName(nodeName) {
   // 分解
-  const names = parseCssSelector(nodeName)
+  const names = parseNodeName(nodeName)
   // .がついているもの（Class名）を探す
   const classes = []
-  for (const arg of names) {
-    if (arg.name.startsWith('.')) {
-      classes.push(arg.name)
+  for (const name of names) {
+    if (name.startsWith('.')) {
+      classes.push(name)
     }
   }
   return classes
+}
+
+/**
+ *
+ * @param nodeName
+ * @param selector
+ */
+function matchNodeNameSelector(nodeName, selector) {
+  const names = parseCssSelector(nodeName)
+  for (let name of names) {
+  }
 }
 
 /**
@@ -2549,12 +2638,10 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
       const currentSelectorOp = selectorOps[indexSelectorOp]
       switch (currentSelectorOp.op) {
         case '': {
-          let nodeClasses = getClassesFromNodeName(nodeName)
-          const found = nodeClasses.find(nodeClass => {
-            // console.log('--------------------------------nodeClass', nodeClass)
-            // console.log("'" + currentSelectorOp.name + "'=='" + nodeClass + "'")
-            return nodeClass === currentSelectorOp.name
-          })
+          let nodeNameArgs = parseNodeName(nodeName)
+          const found = nodeNameArgs.find(nodeNameArg =>
+            currentSelectorOp.selector_arg.match(nodeNameArg),
+          )
           if (found == null) {
             // 見つからなかった
             selectorMatch = false
@@ -2568,10 +2655,10 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
             selectorMatch = false
             break
           }
-          let classes = getClassesFromNodeName(getNodeName(tmpParent))
+          let nodeNameArgs = parseNodeName(getNodeName(tmpParent))
           tmpParent = tmpParent.parent
-          const found = classes.find(
-            className => className === currentSelectorOp.name,
+          const found = nodeNameArgs.find(nodeNameArg =>
+            currentSelectorOp.selector_arg.match(nodeNameArg),
           )
           if (found == null) {
             // 見つからなかった
@@ -2708,6 +2795,40 @@ function makeLayoutJson(root) {
   }
 }
 
+async function createRoot(layoutJson, node, funcForEachChild, options) {
+  Object.assign(layoutJson, {
+    // Artboardは親のサイズにぴったりはまるようにする
+    anchor_min: {
+      x: 0,
+      y: 0,
+    },
+    anchor_max: {
+      x: 1,
+      y: 1,
+    },
+    offset_min: {
+      x: 0,
+      y: 0,
+    },
+    offset_max: {
+      x: 0,
+      y: 0,
+    },
+    elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
+  })
+  if (
+    node.fillEnabled === true &&
+    node.fill != null &&
+    node.fill instanceof Color
+  ) {
+    Object.assign(layoutJson, {
+      fill_color: node.fill.toHex(true),
+    })
+  }
+  await funcForEachChild()
+  assignLayer(layoutJson, options)
+}
+
 /**
  * アートボードの処理
  * @param {*} renditions
@@ -2742,7 +2863,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     let node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, options } = getNodeNameAndStyle(node)
+    let { name, options: style } = getNodeNameAndStyle(node)
 
     const indent = (() => {
       let sp = ''
@@ -2759,7 +2880,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     */
 
     // コメントアウトチェック
-    if (checkStyleCommentOut(options)) {
+    if (checkStyleCommentOut(style)) {
       return
     }
 
@@ -2796,41 +2917,12 @@ async function nodeRoot(renditions, outputFolder, root) {
     // nodeの型で処理の分岐
     switch (constructorName) {
       case 'Artboard':
-        Object.assign(layoutJson, {
-          // Artboardは親のサイズにぴったりはまるようにする
-          anchor_min: {
-            x: 0,
-            y: 0,
-          },
-          anchor_max: {
-            x: 1,
-            y: 1,
-          },
-          offset_min: {
-            x: 0,
-            y: 0,
-          },
-          offset_max: {
-            x: 0,
-            y: 0,
-          },
-          elements: [], // これがないとBAUM2でエラーになる(elementsが見つからないため､例外がでる)
-        })
-        if (
-          node.fillEnabled === true &&
-          node.fill != null &&
-          node.fill instanceof Color
-        ) {
-          Object.assign(layoutJson, {
-            fill_color: node.fill.toHex(true),
-          })
-        }
-        await funcForEachChild()
+        await createRoot(layoutJson, node, funcForEachChild, style)
         break
       case 'BooleanGroup':
         {
           // BooleanGroupは強制的にラスタライズする
-          options[STYLE_TYPE_IMAGE] = true
+          style[STYLE_TYPE_IMAGE] = true
           const type = await nodeGroup(
             layoutJson,
             node,
@@ -2838,7 +2930,7 @@ async function nodeRoot(renditions, outputFolder, root) {
             subFolder,
             renditions,
             name,
-            options,
+            style,
             funcForEachChild,
             depth,
           )
@@ -2855,7 +2947,7 @@ async function nodeRoot(renditions, outputFolder, root) {
             subFolder,
             renditions,
             name,
-            options,
+            style,
             funcForEachChild,
             depth,
           )
@@ -2873,7 +2965,7 @@ async function nodeRoot(renditions, outputFolder, root) {
           subFolder,
           renditions,
           name,
-          options,
+          style,
         )
         await funcForEachChild()
         break
@@ -2885,7 +2977,7 @@ async function nodeRoot(renditions, outputFolder, root) {
           subFolder,
           renditions,
           name,
-          options,
+          style,
         )
         await funcForEachChild()
         break
@@ -3080,22 +3172,22 @@ async function alert(message, title) {
 }
 
 /**
- *
+ * 出力対象を得る
  * @param {Selection} selection
  * @param {RootNode} root
  * @returns {SceneNode[]}
  */
-function getExportRootNodes(selection, root) {
+async function getExportRootNodes(selection, root) {
   // 選択されているものがない場合 全てが変換対象
   // return selection.items.length > 0 ? selection.items : root.children
   if (selection.items.length !== 1) {
-    alert('出力アートボート直下のノードを1つ選択してください')
+    await alert('出力アートボート直下のノードを1つ選択してください')
     throw 'not selected immediate child.'
   }
   const node = selection.items[0]
   const parentIsArtboard = node.parent instanceof Artboard
   if (!parentIsArtboard) {
-    alert('出力アートボート直下のノードを1つ選択してください')
+    await alert('出力アートボート直下のノードを1つ選択してください')
     throw 'not selected immediate child.'
   }
 
@@ -3284,7 +3376,7 @@ async function pluginExportBaum2Command(selection, root) {
     ),
   )
 
-  let exportRootNodes = getExportRootNodes(selection, root)
+  let exportRootNodes = await getExportRootNodes(selection, root)
 
   // 出力前にセッションデータをダイアログに反映する
   // Scale
