@@ -32,49 +32,58 @@ const STR_VERTICAL = 'vertical'
 const STR_HORIZONTAL = 'horizontal'
 const STR_PREFERRED = 'preferred'
 
-// オプション文字列　全て小文字
+// オプション文字列　全て小文字 数字を含まない
 // OPTION名に H V　X Yといった、高さ方向をしめすものはできるだけ出さないようにする
+const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
+const STYLE_BLANK = 'blank'
+const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
+const STYLE_COMMENT_OUT = 'comment-out'
+const STYLE_COMPONENT = 'component'
+const STYLE_CONTENT_SIZE_FITTER = 'content-size-fitter' //自身のSizeFitterオプション
+const STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT =
+  'content-size-fitter-horizontal-fit'
+const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
+  'content-size-fitter-vertical-fit'
+const STYLE_DIRECTION = 'direction'
+const STYLE_FIX = 'fix'
+const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
+const STYLE_IMAGE_SCALE = 'image-scale'
+const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
+const STYLE_IMAGE_TYPE = 'image-type' // sliced tiled simple filled
+const STYLE_LAYER = 'layer'
+const STYLE_LAYOUT_ELEMENT = 'layout-element'
+const STYLE_LAYOUT_GROUP = 'layout-group' //子供を自動的にどうならべるかのオプション
+const STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT = 'layout-group-child-alignment'
+const STYLE_LAYOUT_GROUP_CHILD_FORCE_EXPAND = 'layout-group-child-force-expand'
+const STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE = 'layout-group-control-child-size'
+const STYLE_LAYOUT_GROUP_USE_CHILD_SCALE = 'layout-group-use-child-scale'
+const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
+const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
+const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X = 'rect-transform-anchor-offset-x'
+const STYLE_RECT_MASK_2D = 'rect-mask-two-d'
+const STYLE_SCROLL_RECT = 'scroll-rect'
+const STYLE_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
+const STYLE_TOGGLE_GROUP = 'toggle-group'
 const STYLE_TYPE_BUTTON = 'button'
-const STYLE_TYPE_SLIDER = 'slider'
-const STYLE_TYPE_SCROLLBAR = 'scrollbar'
 const STYLE_TYPE_IMAGE = 'image'
 const STYLE_TYPE_INPUT = 'input'
-const STYLE_TYPE_TOGGLE = 'toggle'
+const STYLE_TYPE_SCROLLBAR = 'scrollbar'
 const STYLE_TYPE_SCROLLER = 'scroller'
+const STYLE_TYPE_SLIDER = 'slider'
 const STYLE_TYPE_TEXT = 'text'
 const STYLE_TYPE_TEXTMP = 'textmp' // textmeshpro
+const STYLE_TYPE_TOGGLE = 'toggle'
 const STYLE_TYPE_VIEWPORT = 'viewport'
-
-const STYLE_COMMENT_OUT = 'comment-out'
-const STYLE_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
-const STYLE_SCROLL = 'scroll' // スクロール方向の指定 vertical horaizontal の文字列を含む
-const STYLE_FIX = 'fix'
-const STYLE_TOGGLE_GROUP = 'toggle-group'
-const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
-const STYLE_COMPONENT = 'component'
-const STYLE_MIN_HEIGHT = 'min-height' // 削除予定
-const STYLE_PREFERRED_HEIGHT = 'preferred-height' // 削除予定
-const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
-const STYLE_BLANK = 'blank'
-const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
-const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
-const STYLE_IMAGE_SCALE = 'image-scale'
-const STYLE_IMAGE_TYPE = 'image-type' // sliced tiled simple filled
-const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
-const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
-const STYLE_LAYOUT = 'layout' //子供を自動的にどうならべるかのオプション
-const STYLE_SIZE_FIT = 'size-fit' //自身のSizeFitterオプション
-const OPTION_CONTENT = 'content'
-const STYLE_DIRECTION = 'direction'
-const STYLE_LAYOUT_ELEMENT = 'layout-element'
-const STYLE_LAYER = 'layer'
 
 /**
  * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
  */
 let cssRules = null
 
+/**
+ * @returns {Promise<void>}
+ */
 async function loadCssRules() {
   if (cssRules != null) return
   cssRules = []
@@ -214,24 +223,12 @@ function parseCssSelector(selectorString) {
   return nameOps
 }
 
-function checkStyleCommentOut(style) {
-  return checkBoolean(style[STYLE_COMMENT_OUT])
-}
-
-function checkStyleSubPrefab(style) {
-  return optionEnableSubPrefab && checkBoolean(style[STYLE_SUB_PREFAB])
-}
-
 function checkStyleButton(style) {
   return checkBoolean(style[STYLE_TYPE_BUTTON])
 }
 
-function checkStyleSlider(style) {
-  return checkBoolean(style[STYLE_TYPE_SLIDER])
-}
-
-function checkStyleScrollbar(style) {
-  return checkBoolean(style[STYLE_TYPE_SCROLLBAR])
+function checkStyleCommentOut(style) {
+  return checkBoolean(style[STYLE_COMMENT_OUT])
 }
 
 function checkStyleImage(style) {
@@ -239,6 +236,26 @@ function checkStyleImage(style) {
     return true
   }
   return checkBoolean(style[STYLE_TYPE_IMAGE])
+}
+
+function checkStyleInput(style) {
+  return checkBoolean(style[STYLE_TYPE_INPUT])
+}
+
+function checkStyleScrollbar(style) {
+  return checkBoolean(style[STYLE_TYPE_SCROLLBAR])
+}
+
+function checkStyleScroller(style) {
+  return checkBoolean(style[STYLE_TYPE_SCROLLER])
+}
+
+function checkStyleSlider(style) {
+  return checkBoolean(style[STYLE_TYPE_SLIDER])
+}
+
+function checkStyleSubPrefab(style) {
+  return optionEnableSubPrefab && checkBoolean(style[STYLE_SUB_PREFAB])
 }
 
 function checkStyleText(style) {
@@ -249,33 +266,12 @@ function checkStyleTextMeshPro(style) {
   return checkBoolean(style[STYLE_TYPE_TEXTMP])
 }
 
-function checkStyleInput(style) {
-  return checkBoolean(style[STYLE_TYPE_INPUT])
-}
-
 function checkStyleToggle(style) {
   return checkBoolean(style[STYLE_TYPE_TOGGLE])
 }
 
-function checkStyleScroller(style) {
-  return checkBoolean(style[STYLE_TYPE_SCROLLER])
-}
-
 function checkStyleViewport(style) {
   return checkBoolean(style[STYLE_TYPE_VIEWPORT])
-}
-
-/**
- * 誤差範囲での差があるか
- * @param {number} a
- * @param {number} b
- * @param {number=} eps
- */
-function approxEqual(a, b, eps) {
-  if (eps == null) {
-    eps = 0.00001 // リサイズして元にもどしたとき､これぐらいの誤差がでる
-  }
-  return Math.abs(a - b) < eps
 }
 
 /**
@@ -289,6 +285,19 @@ function convertToFileName(name, includeDot) {
     return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F\.]/g, '_')
   }
   return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F]/g, '_')
+}
+
+/**
+ * 誤差範囲での差があるか
+ * @param {number} a
+ * @param {number} b
+ * @param {number=} eps
+ */
+function approxEqual(a, b, eps) {
+  if (eps == null) {
+    eps = 0.00001 // リサイズして元にもどしたとき､これぐらいの誤差がでる
+  }
+  return Math.abs(a - b) < eps
 }
 
 /**
@@ -517,6 +526,26 @@ function assignDrawRectTransform(json, node) {
 }
 
 /**
+ * 指定のAnchorパラメータを上書きする
+ * anchor_min ahchor_max offset_min offset_maxがjson内に設定済みの必要がある
+ * @param json
+ * @param style
+ */
+function assignRectTransformAnchorOffsetX(json, style) {
+  // 指定が会った場合、上書きする
+  if (!style) return
+  const anchorsStr = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X]
+  if (!anchorsStr) return
+  const anchorArgs = anchorsStr.split(' ')
+  if (anchorArgs.length >= 4) {
+    json['anchor_min']['x'] = parseFloat(anchorArgs[0])
+    json['anchor_max']['x'] = parseFloat(anchorArgs[1])
+    json['offset_min']['x'] = parseFloat(anchorArgs[2])
+    json['offset_max']['x'] = parseFloat(anchorArgs[3])
+  }
+}
+
+/**
  *
  * @param json
  * @param {SceneNode} node
@@ -539,7 +568,6 @@ function assignState(json, style) {
    * @type {string}
    */
   const styleState = style['state']
-  console.log('-------------------', style)
   if (!styleState) return
   const state = styleState.split(',').map(value => value.trim())
   Object.assign(json, {
@@ -715,77 +743,32 @@ async function assignImage(
  * @param style
  * @return {{}|null}
  */
-function getSizeFitterParam(style) {
+function getContentSizeFitterParam(style) {
   if (style == null) return null
-  let horizontalFit = null
-  let verticalFit = null
-  if (style === true) {
-    // trueであれば、縦横ともにPREFERREDにする
-    horizontalFit = STR_PREFERRED
-    verticalFit = STR_PREFERRED
-  } else {
-    const optionStr = style.toString()
-    if (hasAnyParamInStr(optionStr, 'x', STR_HORIZONTAL)) {
-      horizontalFit = STR_PREFERRED
-    }
-    if (hasAnyParamInStr(optionStr, 'y', STR_VERTICAL)) {
-      verticalFit = STR_PREFERRED
-    }
-  }
+  /*
+  const styleContentSizeFitter = style[STYLE_CONTENT_SIZE_FITTER]
+  if (styleContentSizeFitter == null) return null
+  */
 
   let param = {}
-  if (horizontalFit != null) {
+  const styleHorizontalFit = style[STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT]
+  if (styleHorizontalFit) {
     Object.assign(param, {
-      horizontal_fit: horizontalFit,
+      horizontal_fit: styleHorizontalFit.trim(),
     })
   }
-  if (verticalFit != null) {
+  const styleVerticalFit = style[STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT]
+  if (styleVerticalFit) {
     Object.assign(param, {
-      vertical_fit: verticalFit,
+      vertical_fit: styleVerticalFit.trim(),
     })
   }
+
   if (Object.keys(param).length === 0) {
     return null
   }
+
   return param
-}
-
-/**
- * content-size-fit は content内のオプションになる
- * @param json
- * @param optionContentSizeFit
- */
-function assignContentSizeFit(json, optionContentSizeFit) {
-  if (optionContentSizeFit == null) return
-  optionContentSizeFit = optionContentSizeFit.toLowerCase()
-  let jsonContent = json[STR_CONTENT]
-  if (jsonContent == null) {
-    json[STR_CONTENT] = {}
-    jsonContent = json[STR_CONTENT]
-  }
-  const sizeFitterParam = getSizeFitterParam(optionContentSizeFit)
-  if (sizeFitterParam != null) {
-    Object.assign(jsonContent, {
-      size_fitter: sizeFitterParam,
-    })
-  }
-
-  // Unityと乖離　ややこしくなる
-  /*
-  // $Contentが親(大抵Viewport)にサイズフィットするかどうか
-  let sizeFitParent = ''
-  if (optionContentSizeFit.includes('parenth')) {
-    sizeFitParent += 'horizontal'
-  }
-  if (optionContentSizeFit.includes('parentv')) {
-    sizeFitParent += 'vertical'
-  }
-  if (sizeFitParent != '') {
-    Object.assign(jsonContent, {
-      size_fit_parent: sizeFitParent,
-    })
-  }
-  */
 }
 
 /**
@@ -793,16 +776,51 @@ function assignContentSizeFit(json, optionContentSizeFit) {
  * @param json
  * @param {{}} style
  */
-function assignSizeFit(json, style) {
-  const optionSizeFit = style[STYLE_SIZE_FIT]
-  if (optionSizeFit != null) {
-    const sizeFitterParam = getSizeFitterParam(optionSizeFit)
-    if (sizeFitterParam != null) {
-      Object.assign(json, {
-        size_fitter: sizeFitterParam,
-      })
-    }
+function assignContentSizeFitter(json, style) {
+  const contentSizeFitterJson = getContentSizeFitterParam(style)
+  if (contentSizeFitterJson != null) {
+    Object.assign(json, {
+      content_size_fitter: contentSizeFitterJson,
+    })
   }
+}
+
+/**
+ * @param styleScrollRect
+ * @returns {{horizontal: boolean, vertical: boolean}}
+ */
+function getScrollRectStyle(styleScrollRect) {
+  const horizontal = hasAnyParamInStr(styleScrollRect, 'x', STR_HORIZONTAL)
+  const vertical = hasAnyParamInStr(styleScrollRect, 'y', STR_VERTICAL)
+  return { horizontal, vertical }
+}
+
+/**
+ * @param json
+ * @param style
+ */
+function assignScrollRect(json, style) {
+  const styleScrollRect = style[STYLE_SCROLL_RECT]
+  if (!styleScrollRect) return
+  const {
+    horizontal: scrollRectHorizontal,
+    vertical: scrollRectVertical,
+  } = getScrollRectStyle(styleScrollRect)
+  Object.assign(json, {
+    scroll_rect: {
+      horizontal: scrollRectHorizontal,
+      vertical: scrollRectVertical,
+      auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
+    },
+  })
+}
+
+function assignRectMask2d(json, style) {
+  const styleRectMask2D = style[STYLE_RECT_MASK_2D]
+  if (!styleRectMask2D) return
+  Object.assign(json, {
+    rect_mask_2d: true, // 受け取り側、boolで判定しているためbool値でいれる　それ以外は弾かれる
+  })
 }
 
 /**
@@ -838,22 +856,24 @@ async function createViewport(
 ) {
   // スクロールする方向を取得する
   // これがNULLのままなら、Unity上ではスクロールしない
-  let scrollDirection = null
-  const styleScroll = style[STYLE_SCROLL]
-  if (styleScroll != null) {
-    scrollDirection = ''
-    if (hasAnyParamInStr(styleScroll, 'y', STR_VERTICAL)) {
-      scrollDirection += STR_VERTICAL + ' '
-    }
-    if (hasAnyParamInStr(styleScroll, 'x', STR_HORIZONTAL)) {
-      scrollDirection += STR_HORIZONTAL
-    }
-  }
+  const styleScrollRect = style[STYLE_SCROLL_RECT]
+  const {
+    horizontal: scrollRectHorizontal,
+    vertical: scrollRectVertical,
+  } = getScrollRectStyle(styleScrollRect)
 
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
   // TODO: content-nameに対応する
   let contentName = '.content'
+  const styleScrollRectContent = style['scroll-rect-content']
+  if (styleScrollRectContent) {
+    const regex = /\s*['"](?<name>.*)['"]\s*/
+    const token = regex.exec(styleScrollRectContent)
+    if (token && token.groups.name) {
+      contentName = token.groups.name
+    }
+  }
   Object.assign(json, {
     content: {
       name: contentName,
@@ -861,6 +881,7 @@ async function createViewport(
   })
 
   let contentJson = json[STR_CONTENT]
+  //自動生成されるContentはNodeからできていないため getStyleFromNodeNameを呼び出す
   const contentStyle = getStyleFromNodeName(contentName, node, cssRules)
 
   if (node.constructor.name === 'Group') {
@@ -884,12 +905,6 @@ async function createViewport(
       if (child === maskNode) {
         // maskはElement処理をしない
         return false
-      }
-      const nodeName = getNodeName(child)
-      // まだviewportが確定していない場合､areaという名前の子供を探す(Baum2互換)
-      if (maskNode == null && nodeName.toLowerCase() === 'area') {
-        maskNode = child
-        return false //処理しない(Elementに含まれない)
       }
       return true // 処理する
     })
@@ -916,7 +931,7 @@ async function createViewport(
       getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     )
 
-    assignLayout(json[STR_CONTENT], node, maskNode, node.children, contentStyle)
+    assignLayout(contentJson, node, maskNode, node.children, contentStyle)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -931,32 +946,25 @@ async function createViewport(
     // そういったものを省くための処理
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
+      const childBounds = getGlobalBounds(child)
       const nodeName = getNodeName(child)
-      const bounds = getGlobalDrawBounds(child)
-      if (!testBounds(viewportBounds, bounds)) {
+      if (!testBounds(viewportBounds, childBounds)) {
         console.log(nodeName + 'はViewportにはいっていない')
         return false // 処理しない
       }
-      calcContentBounds.addBounds(bounds)
+      calcContentBounds.addBounds(childBounds)
       return true // 処理する
     })
 
-    const viewportBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
-
-    let child0 = viewportNode.children.at(0)
-    const child0BoundsCM = getDrawBoundsCMInBase(child0, viewportNode)
-
-    const cellWidth = viewportNode.cellSize.width * scale
-    // item[0] がY方向へ移動している分
-    const cellHeight = child0BoundsCM.cy + viewportNode.cellSize.height * scale
+    const maskBoundsCM = getDrawBoundsCMInBase(viewportNode, root)
 
     Object.assign(json, {
       type: 'Viewport',
       name: getUnityName(node),
-      x: viewportBoundsCM.cx,
-      y: viewportBoundsCM.cy,
-      w: viewportBoundsCM.width,
-      h: viewportBoundsCM.height,
+      x: maskBoundsCM.cx,
+      y: maskBoundsCM.cy,
+      w: maskBoundsCM.width,
+      h: maskBoundsCM.height,
       fill_color: '#ffffff00', // タッチイベント取得Imageになる
       // Contentグループ情報
     })
@@ -966,54 +974,49 @@ async function createViewport(
       getBoundsInBase(calcContentBounds.bounds, viewportBounds),
     )
 
-    const contentOptionLayout = contentStyle[STYLE_LAYOUT]
-    if (contentOptionLayout != null) {
-      if (hasParamInStr(contentOptionLayout, 'grid')) {
-        let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode)
-
+    const contentStyleLayout = contentStyle[STYLE_LAYOUT_GROUP]
+    if (contentStyleLayout != null) {
+      let gridLayoutJson = getGridLayoutFromRepeatGrid(viewportNode, contentStyle)
+      if (hasParamInStr(contentStyleLayout, 'grid')) {
         // スクロールの方向が横なら、並びは縦から
-        if (scrollDirection === STR_VERTICAL) {
+        if (scrollRectHorizontal) {
           Object.assign(gridLayoutJson, {
             start_axis: STR_HORIZONTAL,
           })
         }
 
         // スクロールの方向が縦なら、並びは横から
-        if (scrollDirection === STR_HORIZONTAL) {
+        if (scrollRectVertical) {
           Object.assign(gridLayoutJson, {
             start_axis: STR_VERTICAL,
           })
         }
-
         // 固定する数(constraintCount)は、ここでは決定しない
         // レスポンシブに変更される数なので、アプリケーション側で対応する
         // 高さがFIXされていれば、FixedRowCountは決定してもいいかも
         // https://forum.unity.com/threads/gridlayout-contentsizefitter-doesnt-work-in-4-6-1p3.286353/
         // ここで、GridLayout、ContentSizeFitterをしたうえで、constraintCountを決めるMonoBehaviourサンプルがある
-
-        Object.assign(contentJson, {
-          layout: gridLayoutJson,
-        })
+      } else if (hasAnyParamInStr(contentStyleLayout, 'x', STR_HORIZONTAL)) {
+        // gridLayoutJson を Horizontalに変える
+        gridLayoutJson['method'] = STR_HORIZONTAL
+      } else if (hasAnyParamInStr(contentStyleLayout, 'y', STR_VERTICAL)) {
+        // gridLayoutJson を Verticalに変える
+        gridLayoutJson['method'] = STR_VERTICAL
       }
+      Object.assign(contentJson, {
+        layout: gridLayoutJson,
+      })
     }
   }
 
   assignDrawRectTransform(json, node)
-
-  assignSizeFit(json, style)
-  // scrollオプションが設定されていれば、scroll情報を埋め込む
-  if (styleScroll) {
-    Object.assign(json, {
-      scroll: {
-        direction: scrollDirection,
-        auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
-      },
-    })
-  }
+  assignContentSizeFitter(json, style)
+  assignScrollRect(json, style)
+  assignRectMask2d(json, style)
 
   // Content系
   // SizeFit
-  assignSizeFit(contentJson, contentStyle)
+  assignContentSizeFitter(contentJson, contentStyle)
   assignLayer(contentJson, contentStyle)
 
   // ContentのRectTransformを決める
@@ -1025,18 +1028,6 @@ async function createViewport(
   let anchorMax = { x: 0, y: 1 }
   let offsetMin = { x: 0, y: -contentHeight }
   let offsetMax = { x: contentWidth, y: 0 }
-  if (contentOptionFix != null) {
-    if (contentOptionFix.top === true && contentOptionFix.bottom === true) {
-      // 親と縦を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
-      anchorMin.y = 0
-      offsetMin.y = 0
-    }
-    if (contentOptionFix.left === true && contentOptionFix.right === true) {
-      // 親と横を一致させる　ViewportとMaskが同じサイズ、という条件のもと成り立つ方法
-      anchorMax.x = 1
-      offsetMax.x = 0
-    }
-  }
   Object.assign(contentJson, {
     fix: contentOptionFix,
     pivot: pivot, // ここのPivotはX,Yで渡す　他のところは文字列になっている
@@ -1045,6 +1036,7 @@ async function createViewport(
     offset_min: offsetMin,
     offset_max: offsetMax,
   })
+  assignRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
 }
 
 /**
@@ -1084,9 +1076,10 @@ function sortElementsByPositionDesc(jsonElements) {
 /**
  * リピートグリッドから、GridLayoutGroup用パラメータを取得する
  * @param {RepeatGrid} repeatGrid
+ * @param style
  * @return {{}}
  */
-function getGridLayoutFromRepeatGrid(repeatGrid) {
+function getGridLayoutFromRepeatGrid( repeatGrid, style) {
   let layoutJson = {}
   const repeatGridBounds = getGlobalBounds(repeatGrid)
   const nodesBounds = getNodeListBounds(repeatGrid.children, null)
@@ -1103,6 +1096,7 @@ function getGridLayoutFromRepeatGrid(repeatGrid) {
     cell_max_width: repeatGrid.cellSize.width * scale,
     cell_max_height: repeatGrid.cellSize.height * scale,
   })
+  assignLayoutParam(layoutJson, style)
   return layoutJson
 }
 
@@ -1363,7 +1357,7 @@ function calcGridLayout(json, viewportNode, maskNode, children) {
   sortElementsByPositionAsc(json.elements)
   let jsonLayout
   if (viewportNode.constructor.name === 'RepeatGrid') {
-    jsonLayout = getGridLayoutFromRepeatGrid(viewportNode)
+    jsonLayout = getGridLayoutFromRepeatGrid(viewportNode, null)
   } else {
     // RepeatGridでなければ、VLayout情報から取得する
     jsonLayout = calcLayout(json, viewportNode, maskNode, children)
@@ -1373,43 +1367,60 @@ function calcGridLayout(json, viewportNode, maskNode, children) {
 }
 
 /**
- * @param optionLayoutString
+ * レイアウトコンポーネント各種パラメータをStyleから設定する
+ * @param layoutJson
+ * @param style
+ */
+function assignLayoutParam(layoutJson, style) {
+  if( style == null ) return
+  const styleChildAlignment = style[STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT]
+  if (styleChildAlignment != null) {
+    Object.assign(layoutJson, {
+      control_child_size: styleChildAlignment,
+    })
+  }
+  const styleControlChildSize = style[STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE]
+  if (styleControlChildSize != null) {
+    Object.assign(layoutJson, {
+      control_child_size: styleControlChildSize,
+    })
+  }
+  const styleUseChildScale = style[STYLE_LAYOUT_GROUP_USE_CHILD_SCALE]
+  if (styleUseChildScale != null) {
+    Object.assign(layoutJson, {
+      use_child_scale: styleUseChildScale,
+    })
+  }
+  const styleChildForceExpand = style[STYLE_LAYOUT_GROUP_CHILD_FORCE_EXPAND]
+  if (styleChildForceExpand != null) {
+    Object.assign(layoutJson, {
+      child_force_expand: styleChildForceExpand,
+    })
+  }
+}
+
+/**
  * @param json
  * @param viewportNode
  * @param maskNode
  * @param children
+ * @param style
  * @return {null}
  */
-function getLayoutJson(
-  optionLayoutString,
-  json,
-  viewportNode,
-  maskNode,
-  children,
-) {
+function getLayoutJson(json, viewportNode, maskNode, children, style) {
+  if (style == null) return null
+  let styleLayout = style[STYLE_LAYOUT_GROUP]
+  if (styleLayout == null) return null
   let layoutJson = null
-  if (hasAnyParamInStr(optionLayoutString, 'y', STR_VERTICAL)) {
+  if (hasAnyParamInStr(styleLayout, 'y', STR_VERTICAL)) {
     layoutJson = calcVLayout(json, viewportNode, maskNode, children)
-  } else if (hasAnyParamInStr(optionLayoutString, 'x', STR_HORIZONTAL)) {
+  } else if (hasAnyParamInStr(styleLayout, 'x', STR_HORIZONTAL)) {
     layoutJson = calcHLayout(json, viewportNode, maskNode, children)
-  } else if (hasAnyParamInStr(optionLayoutString, 'grid')) {
+  } else if (hasAnyParamInStr(styleLayout, 'grid')) {
     layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
   if (layoutJson != null) {
-    Object.assign(layoutJson, {
-      control_child_size_width: true,
-      control_child_size_height: true,
-    })
-    if (optionLayoutString.includes('expand-x')) {
-      Object.assign(layoutJson, {
-        child_force_expand_width: true,
-      })
-    }
-    if (optionLayoutString.includes('expand-y')) {
-      Object.assign(layoutJson, {
-        child_force_expand_height: true,
-      })
-    }
+    assignLayoutParam(layoutJson, style)
   }
   return layoutJson
 }
@@ -1423,15 +1434,7 @@ function getLayoutJson(
  * @param style
  */
 function assignLayout(json, viewportNode, maskNode, children, style) {
-  if (style == null || style[STYLE_LAYOUT] == null) return
-  let styleLayout = style[STYLE_LAYOUT]
-  let layoutJson = getLayoutJson(
-    styleLayout,
-    json,
-    viewportNode,
-    maskNode,
-    children,
-  )
+  let layoutJson = getLayoutJson(json, viewportNode, maskNode, children, style)
 
   const layoutSpacingX = style['layout-spacing-x']
   if (layoutSpacingX != null) {
@@ -1508,14 +1511,15 @@ async function createGroup(
     h: boundsCM.height, // Baum2ではつかわないが､情報としていれる RectElementで使用
     elements: [], // Groupは空でもelementsをもっていないといけない
   })
-  assignDrawRectTransform(json, node)
-  assignCanvasGroup(json, node, style)
   await funcForEachChild()
 
+  assignDrawRectTransform(json, node)
+  assignLayer(json, style)
+  assignState(json, style)
+  assignCanvasGroup(json, node, style)
   assignLayoutElement(json, node, style)
   assignLayout(json, node, node, node.children, style)
-  assignSizeFit(json, style)
-  assignLayer(json, style)
+  assignContentSizeFitter(json, style)
 
   return type
 }
@@ -1525,7 +1529,7 @@ async function createGroup(
  * @param json
  * @param name
  * @param node
- * @param funcForEachChild
+ * @param {} funcForEachChild
  * @returns {Promise<void>}
  */
 async function createScrollbar(style, json, name, node, funcForEachChild) {
@@ -1541,11 +1545,16 @@ async function createScrollbar(style, json, name, node, funcForEachChild) {
     })
   }
 
-  assignSizeFit(json, style)
-  assignLayout(json, node, node, node.children, style)
+  await funcForEachChild()
 
   assignDrawRectTransform(json, node)
-  await funcForEachChild()
+  assignLayer(json, style)
+  assignState(json, style)
+  assignCanvasGroup(json, node, style)
+  assignLayoutElement(json, node, style)
+  assignLayout(json, node, node, node.children, style)
+  assignContentSizeFitter(json, style)
+
   //return type
 }
 
@@ -1558,12 +1567,20 @@ async function createScrollbar(style, json, name, node, funcForEachChild) {
 function assignLayoutElement(json, node, style) {
   const styleElement = style[STYLE_LAYOUT_ELEMENT]
   if (styleElement == null) return
+  const bounds = getGlobalDrawBounds(node)
   if (hasParamInStr(styleElement, 'min')) {
-    const bounds = getGlobalBounds(node)
     Object.assign(json, {
       layout_element: {
         min_width: bounds.width,
         min_height: bounds.height,
+      },
+    })
+  }
+  if (hasAnyParamInStr(styleElement, 'preferred')) {
+    Object.assign(json, {
+      layout_element: {
+        preferred_width: bounds.width,
+        preferred_height: bounds.height,
       },
     })
   }
@@ -1597,12 +1614,12 @@ async function createToggle(json, name, style, node, root, funcForEachChild) {
       group: style[STYLE_TOGGLE_GROUP],
     })
   }
+  await funcForEachChild()
+  assignLayer(json, style)
+  assignState(json, style)
   assignLayoutElement(json, node, style)
   assignDrawRectTransform(json, node)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
-  assignState(json, style)
-  assignLayer(json, style)
-  await funcForEachChild()
   return type
 }
 
@@ -1622,11 +1639,11 @@ async function createButton(json, name, node, root, funcForEachChild) {
     name: getUnityName(node),
   })
   const style = getNodeNameAndStyle(node).style
+  await funcForEachChild()
   assignDrawRectTransform(json, node)
   assignLayer(json, style)
   assignState(json, style)
   assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
-  await funcForEachChild()
   return type
 }
 
@@ -1834,48 +1851,47 @@ function getStyleFix(styleFix) {
   if (styleFix == null) {
     return null
   }
-  let fixOption = styleFix.toLowerCase()
-  let fixOptionWidth = false
-  let fixOptionHeight = false
-  let fixOptionTop = false
-  let fixOptionBottom = false
-  let fixOptionLeft = false
-  let fixOptionRight = false
+  let styleFixWidth = false
+  let styleFixHeight = false
+  let styleFixTop = false
+  let styleFixBottom = false
+  let styleFixLeft = false
+  let styleFixRight = false
 
-  if (hasAnyParamInStr(fixOption, 'w', 'width', 'size')) {
-    fixOptionWidth = true
+  if (hasAnyParamInStr(styleFix, 'w', 'width', 'size')) {
+    styleFixWidth = true
   }
-  if (hasAnyParamInStr(fixOption, 'h', 'height', 'size')) {
-    fixOptionHeight = true
+  if (hasAnyParamInStr(styleFix, 'h', 'height', 'size')) {
+    styleFixHeight = true
   }
-  if (hasAnyParamInStr(fixOption, 't', 'top')) {
-    fixOptionTop = true
+  if (hasAnyParamInStr(styleFix, 't', 'top')) {
+    styleFixTop = true
   }
-  if (hasAnyParamInStr(fixOption, 'b', 'bottom')) {
-    fixOptionBottom = true
+  if (hasAnyParamInStr(styleFix, 'b', 'bottom')) {
+    styleFixBottom = true
   }
-  if (hasAnyParamInStr(fixOption, 'l', 'left')) {
-    fixOptionLeft = true
+  if (hasAnyParamInStr(styleFix, 'l', 'left')) {
+    styleFixLeft = true
   }
-  if (hasAnyParamInStr(fixOption, 'r', 'right')) {
-    fixOptionRight = true
+  if (hasAnyParamInStr(styleFix, 'r', 'right')) {
+    styleFixRight = true
   }
-  if (hasParamInStr(fixOption, 'x')) {
-    fixOptionLeft = true
-    fixOptionRight = true
+  if (hasParamInStr(styleFix, 'x')) {
+    styleFixLeft = true
+    styleFixRight = true
   }
-  if (hasParamInStr(fixOption, 'y')) {
-    fixOptionTop = true
-    fixOptionBottom = true
+  if (hasParamInStr(styleFix, 'y')) {
+    styleFixTop = true
+    styleFixBottom = true
   }
 
   return {
-    left: fixOptionLeft,
-    right: fixOptionRight,
-    top: fixOptionTop,
-    bottom: fixOptionBottom,
-    width: fixOptionWidth,
-    height: fixOptionHeight,
+    left: styleFixLeft,
+    right: styleFixRight,
+    top: styleFixTop,
+    bottom: styleFixBottom,
+    width: styleFixWidth,
+    height: styleFixHeight,
   }
 }
 
@@ -2549,7 +2565,7 @@ function checkEndsTypeName(type, name) {
  * @returns {string}
  */
 function getNodeName(node) {
-  return node.name.trim()
+  return getNodeNameAndStyle(node).node_name
 }
 
 /**
@@ -2636,6 +2652,7 @@ function getStyleFromNodeName(nodeName, parent, cssRules) {
 
 /**
  * node.nameをパースしオプションに分解する
+ * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
  * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
  * @param {SceneNodeClass} node
  * @returns {null|{node_name: string, name: string, options: *, style: *}}
@@ -2646,10 +2663,9 @@ function getNodeNameAndStyle(node) {
   }
 
   let parentNode = node.parent
-  let nodeName = getNodeName(node)
-  const style = getStyleFromNodeName(nodeName, parentNode, cssRules)
+  let nodeName = node.name.trim()
 
-  if (parentNode.constructor.name === 'RepeatGrid') {
+  if (parentNode && parentNode.constructor.name === 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
     // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
     // item_button
@@ -2666,15 +2682,14 @@ function getNodeNameAndStyle(node) {
     //     - item_button
     //     - item_text
     // 以上のような構成になる
-    nodeName = '0'
+    nodeName = 'child0'
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parentNode.children.length; i++) {
       if (parentNode.children.at(i) === node) {
-        nodeName = i.toString()
+        nodeName = '.child'
         break
       }
     }
-
     // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
     let commentOut = true
     node.children.forEach(child => {
@@ -2693,11 +2708,12 @@ function getNodeNameAndStyle(node) {
     nodeName = nodeName.substring(2)
   }
 
-  const css = parseCss(nodeName)
-  if (css != null && css.length > 0) {
+  const style = getStyleFromNodeName(nodeName, parentNode, cssRules)
+  const localCss = parseCss(nodeName)
+  if (localCss != null && localCss.length > 0) {
     // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
-    Object.assign(style, css[0].style) // 上書きする
-    console.log('-----------style------------', style)
+    Object.assign(style, localCss[0].style) // 上書きする
+    console.log('-----------local style------------', style)
   }
 
   return {
@@ -2839,6 +2855,11 @@ async function nodeRoot(renditions, outputFolder, root) {
     }
 
     // 子Node処理関数
+    /**
+     * @param numChildren
+     * @param funcFilter
+     * @returns {Promise<void>}
+     */
     let funcForEachChild = async (numChildren, funcFilter) => {
       const maxNumChildren = node.children.length
       if (numChildren == null) {

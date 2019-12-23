@@ -11,63 +11,73 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 .layout-x {
-  layout: x expand-y;
-  size-fit: x;
+  layout-group: x;
+  layout-group-control-child-size: width height;
+  layout-group-child-force-expand: width;
+  content-size-fitter-horizontal-fit: preferred-size;
 }
 
+/*
+縦にならべる
+ */
 .layout-y {
-  layout: y expand-x;
-  size-fit: y;
+  layout-group: y;
+  layout-group-control-child-size: width height;
+  layout-group-child-force-expand: width;
+  content-size-fitter-vertical-fit: preferred-size;
 }
 
 /**
 親が自動レイアウトをもっている場合に
-これ以下のグループが必要なMINサイズを設定する
+これ以下のグループが必要なPREFERREDサイズを設定する
  */
 .layout-rect {
-  layout-element: min;
+  layout-element: preferred;
 }
 
 .viewport-xy {
   viewport: true;
-  scroll: x y;
+  scroll-rect: x y;
   content-name: ".content";
 }
 
 .viewport-x {
   viewport: true;
+  scroll-rect: x;
+  rect-mask-two-d: true;
   content-name: ".content";
-  scroll: x;
 }
 
 .viewport-x > .content {
-  layout: x expand-y;
-  size-fit: x;
-  fix: y;
+  layout: x;
+  conent-size-fitter: x;
 }
 
 .viewport-y {
   viewport: true;
-  content-name: ".content";
-  scroll: y;
+  rect-mask-two-d: true;
+  scroll-rect: y;
+  scroll-rect-content: ".content .layout-y";
 }
 
 .viewport-y > .content {
-  layout: y expand-x;
-  size-fit: y;
-  fix: x;
+  /* 親と横幅がぴったり重なる anchor.min.x=0 anchor.max.x=1 offset.min.x=0 offset.max.x=0*/
+  rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
+.child {
+  layout-element: preferred
+}
 
 .viewport-grid-x {
   viewport: true;
   content-name: ".content";
-  scroll: x;
+  scroll-rect: x;
 }
 
 .viewport-grid-x > .content {
   layout: grid expand-y;
-  size-fit: x;
+  conent-size-fitter: x;
   fix: y;
 }
 
@@ -75,12 +85,12 @@ https://jsfiddle.net/developit/vzkckrw4/
 .viewport-grid-y {
   viewport: true;
   content-name: ".content";
-  scroll: y;
+  scroll-rect: y;
 }
 
 .viewport-grid-y > .content {
   layout: grid expand-x;
-  size-fit: y;
+  conent-size-fitter: y;
   fix: x;
 }
 
@@ -88,13 +98,11 @@ https://jsfiddle.net/developit/vzkckrw4/
 .scrollbar-y {
   scrollbar: true;
   direction: btt;
-  handle-rect-state: handle;
 }
 
 .scrollbar-x {
   scrollbar: true;
   direction: ltr;
-  handle-rect-state: handle;
 }
 
 .scrollbar-x > .handle {
@@ -112,7 +120,7 @@ https://jsfiddle.net/developit/vzkckrw4/
   direction: ltr;
   layout: x;
   layout-spacing-x: 9px;
-  size-fit: x y;
+  conent-size-fitter: x y;
 }
 
 .dots-scrollbar > .toggle {
@@ -132,7 +140,7 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
- * こちらが定義されていれば、offにcheckedイメージが重なる
+ * こちらが定義されていれば、offイメージにcheckedイメージが重なる
  */
 .toggle > .image.checked {
   state: checked;
@@ -156,32 +164,4 @@ textはtext mesh proとして出力する
 
 .button {
   button: true;
-}
-
-/**
-property 名に数字があってはいけない
- */
-.image-0-30 {
-  image: true;
-  image-slice: 0px 30px;
-}
-
-.image-0-40 {
-  image: true;
-  image-slice: 0px 40px;
-}
-
-.image-0-80 {
-  image: true;
-  border: 0px 80px;
-}
-
-.image-30 {
-  image: true;
-  image-slice: 30px;
-}
-
-.image-0-100-0 {
-  image: true;
-  image-slice: 0px 100px 0px
 }
