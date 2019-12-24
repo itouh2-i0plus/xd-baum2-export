@@ -4,6 +4,7 @@
 
 CSSパーサは以下のものを利用
 https://jsfiddle.net/developit/vzkckrw4/
+制限： Style-Valueに{}があるとおかしくなる
  */
 
 * {
@@ -24,6 +25,14 @@ https://jsfiddle.net/developit/vzkckrw4/
   layout-group: y;
   layout-group-control-child-size: width height;
   layout-group-child-force-expand: width;
+  content-size-fitter-vertical-fit: preferred-size;
+}
+
+.layout-grid-y {
+  layout-group: grid;
+  layout-group-control-child-size: width height;
+  layout-group-child-force-expand: width;
+  layout-group-start-axis: x;
   content-size-fitter-vertical-fit: preferred-size;
 }
 
@@ -49,7 +58,7 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 .viewport-x > .content {
-  layout: x;
+  layout-group: x;
   conent-size-fitter: x;
 }
 
@@ -61,7 +70,12 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 .viewport-y > .content {
-  /* 親と横幅がぴったり重なる anchor.min.x=0 anchor.max.x=1 offset.min.x=0 offset.max.x=0*/
+  /* 親と横幅がぴったり重なる
+  anchor.min.x: 0
+  anchor.max.x: 1
+  offset.min.x: 0
+  offset.max.x: 0
+  */
   rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
@@ -71,21 +85,20 @@ https://jsfiddle.net/developit/vzkckrw4/
 
 .viewport-grid-x {
   viewport: true;
-  content-name: ".content";
+  content-name: ".content .layout-grid-x";
   scroll-rect: x;
 }
 
 .viewport-grid-x > .content {
-  layout: grid expand-y;
-  conent-size-fitter: x;
-  fix: y;
+  layout-group: grid;
+  rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
 
 .viewport-grid-y {
   viewport: true;
-  content-name: ".content";
   scroll-rect: y;
+  content-name: ".content";
 }
 
 .viewport-grid-y > .content {
