@@ -3194,7 +3194,6 @@ async function pluginExportBaum2Command(selection, root) {
   let inputFolder
   let inputScale
   let errorLabel
-  let checkEnableSubPrefab
   let checkTextToTMP
   let checkForceTextToImage
   let checkCheckMarkedForExport
