@@ -11,6 +11,9 @@ https://jsfiddle.net/developit/vzkckrw4/
   layer: UI
 }
 
+/*
+横にならべる
+*/
 .layout-x {
   layout-group: x;
   layout-group-control-child-size: width height;
@@ -20,12 +23,20 @@ https://jsfiddle.net/developit/vzkckrw4/
 
 /*
 縦にならべる
- */
+*/
 .layout-y {
   layout-group: y;
   layout-group-control-child-size: width height;
   layout-group-child-force-expand: width;
   content-size-fitter-vertical-fit: preferred-size;
+}
+
+.layout-grid-x {
+  layout-group: grid;
+  layout-group-control-child-size: width height;
+  layout-group-child-force-expand: height;
+  layout-group-start-axis: y;
+  content-size-fitter-horizontal-fit: preferred-size;
 }
 
 .layout-grid-y {
@@ -36,13 +47,14 @@ https://jsfiddle.net/developit/vzkckrw4/
   content-size-fitter-vertical-fit: preferred-size;
 }
 
-/**
+/*
 親が自動レイアウトをもっている場合に
 これ以下のグループが必要なPREFERREDサイズを設定する
  */
 .layout-rect {
   layout-element: preferred;
 }
+
 
 .viewport-xy {
   viewport: true;
@@ -57,11 +69,6 @@ https://jsfiddle.net/developit/vzkckrw4/
   content-name: ".content";
 }
 
-.viewport-x > .content {
-  layout-group: x;
-  conent-size-fitter: x;
-}
-
 .viewport-y {
   viewport: true;
   rect-mask-two-d: true;
@@ -69,8 +76,28 @@ https://jsfiddle.net/developit/vzkckrw4/
   scroll-rect-content: ".content .layout-y";
 }
 
+.viewport-grid-x {
+  viewport: true;
+  rect-mask-two-d: true;
+  scroll-rect: x;
+  scroll-rect-content: ".content .layout-grid-x";
+}
+
+.viewport-grid-y {
+  viewport: true;
+  rect-mask-two-d: true;
+  scroll-rect: y;
+  scroll-rect-content: ".content .layout-grid-y";
+}
+
+.viewport-x > .content {
+  layout-group: x;
+  conent-size-fitter: x;
+}
+
 .viewport-y > .content {
-  /* 親と横幅がぴったり重なる
+  /*
+  親と横幅がぴったり重なる
   anchor.min.x: 0
   anchor.max.x: 1
   offset.min.x: 0
@@ -79,32 +106,12 @@ https://jsfiddle.net/developit/vzkckrw4/
   rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
-.child {
-  layout-element: preferred
-}
-
-.viewport-grid-x {
-  viewport: true;
-  content-name: ".content .layout-grid-x";
-  scroll-rect: x;
-}
-
 .viewport-grid-x > .content {
-  layout-group: grid;
   rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
-
-.viewport-grid-y {
-  viewport: true;
-  scroll-rect: y;
-  content-name: ".content";
-}
-
 .viewport-grid-y > .content {
-  layout: grid expand-x;
-  conent-size-fitter: y;
-  fix: x;
+  rect-transform-anchor-offset-y: 0 1 0 0;
 }
 
 
@@ -146,14 +153,14 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
- * こちらが定義されていれば、offとonでイメージ入れ替え
+こちらが定義されていれば、offとonでイメージ入れ替え
  */
 .toggle > .image.on {
   state: on;
 }
 
 /*
- * こちらが定義されていれば、offイメージにcheckedイメージが重なる
+こちらが定義されていれば、offイメージにcheckedイメージが重なる
  */
 .toggle > .image.checked {
   state: checked;
@@ -168,7 +175,7 @@ https://jsfiddle.net/developit/vzkckrw4/
   component: true;
 }
 
-/**
+/*
 textはtext mesh proとして出力する
  */
 .text {

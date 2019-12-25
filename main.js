@@ -4,28 +4,22 @@ const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
-var scale = 1.0
+let scale = 1.0
 
 // レスポンシブパラメータを保存する
 /**
  * @type {{}}
  */
-var responsiveBounds = {}
+let responsiveBounds = {}
 
 // 出力するフォルダ
-var outputFolder = null
+let outputFolder = null
 
 // エキスポートフラグを見るかどうか
-var optionCheckMarkedForExport = true
+let optionCheckMarkedForExport = true
 
-// レスポンシブパラメータを取得するオプション
-var optionEnableSubPrefab = true
-
-// Textノードは強制的にTextMeshProに変換する
-var optionDefaultTextMP = false
-
-// Textノードは強制的にImageに変換する
-var optionForceTextToImage = false
+// 画像を出力するかどうか
+let optionImageNoExport = false
 
 const STR_CONTENT = 'content'
 const STR_VERTICAL = 'vertical'
@@ -61,6 +55,7 @@ const STYLE_LAYOUT_GROUP_USE_CHILD_SCALE = 'layout-group-use-child-scale'
 const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
 const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X = 'rect-transform-anchor-offset-x'
+const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y = 'rect-transform-anchor-offset-x'
 const STYLE_RECT_MASK_2D = 'rect-mask-two-d'
 const STYLE_SCROLL_RECT = 'scroll-rect'
 const STYLE_SUB_PREFAB = 'sub-prefab' // 仕様策定から必要
@@ -94,6 +89,9 @@ async function loadCssRules() {
   const rules = parseCss(contents)
   for (const rule of rules) {
     let nameOps = parseCssSelector(rule.selector)
+    if (!nameOps) {
+      throw 'failed to parse CSS:"' + rule + '"'
+    }
     cssRules.push({ selector_ops: nameOps, style: rule.style })
   }
 }
@@ -141,15 +139,17 @@ function parseCssRule(css) {
  * @return {string[]}
  */
 function parseNodeName(nodeName) {
-  const names = []
   // nodeNameもCSS selectorフォーマットのため
   const args = parseCssSelector(nodeName)
   if (args) {
+    const names = []
     for (let arg of args) {
       names.push(arg.name)
     }
+    return names
   }
-  return names
+  // parseできなかった場合はそのまま帰す
+  return [nodeName]
 }
 
 class SelectorArg {
@@ -258,7 +258,7 @@ function parseCssSelector(selectorString) {
   // 最後の要素のopは'' であるべき
   // valueのなかに{}の文字がはいっているとエラーになる確率が高い
   if (nameOps.length === 0) {
-    throw 'failed to parse CSS:"' + selectorString + '"'
+    return null
   }
   return nameOps
 }
@@ -292,10 +292,6 @@ function checkStyleScroller(style) {
 
 function checkStyleSlider(style) {
   return checkBoolean(style[STYLE_TYPE_SLIDER])
-}
-
-function checkStyleSubPrefab(style) {
-  return optionEnableSubPrefab && checkBoolean(style[STYLE_SUB_PREFAB])
 }
 
 function checkStyleText(style) {
@@ -574,14 +570,25 @@ function assignDrawRectTransform(json, node) {
 function assignRectTransformAnchorOffsetX(json, style) {
   // 指定が会った場合、上書きする
   if (!style) return
-  const anchorsStr = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X]
-  if (!anchorsStr) return
-  const anchorArgs = anchorsStr.split(' ')
-  if (anchorArgs.length >= 4) {
-    json['anchor_min']['x'] = parseFloat(anchorArgs[0])
-    json['anchor_max']['x'] = parseFloat(anchorArgs[1])
-    json['offset_min']['x'] = parseFloat(anchorArgs[2])
-    json['offset_max']['x'] = parseFloat(anchorArgs[3])
+  const anchorsX = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X]
+  if (anchorsX) {
+    const anchorArgs = anchorsX.split(' ')
+    if (anchorArgs.length >= 4) {
+      json['anchor_min']['x'] = parseFloat(anchorArgs[0])
+      json['anchor_max']['x'] = parseFloat(anchorArgs[1])
+      json['offset_min']['x'] = parseFloat(anchorArgs[2])
+      json['offset_max']['x'] = parseFloat(anchorArgs[3])
+    }
+  }
+  const anchorsY = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y]
+  if (anchorsY) {
+    const anchorArgs = anchorsX.split(' ')
+    if (anchorArgs.length >= 4) {
+      json['anchor_min']['y'] = parseFloat(anchorArgs[0])
+      json['anchor_max']['y'] = parseFloat(anchorArgs[1])
+      json['offset_min']['y'] = parseFloat(anchorArgs[2])
+      json['offset_max']['y'] = parseFloat(anchorArgs[3])
+    }
   }
 }
 
@@ -687,9 +694,7 @@ async function assignImage(
   }
   const image9Slice = style[STYLE_IMAGE_SLICE]
   if (image9Slice) {
-    //const pattern = /([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?([0-9]+px)?[^0-9]?/
     const pattern = /([0-9]+)(px)[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?([0-9]+)?(px)?[^0-9]?/
-    //const result = pattern.exec(options[OPTION_9SLICE])
 
     const result = image9Slice.match(pattern)
     /*
@@ -723,11 +728,6 @@ async function assignImage(
       fileExtension = '-9slice,' + offset + '.png'
     }
   }
-
-  // 出力画像ファイル
-  const file = await subFolder.createFile(fileName + fileExtension, {
-    overwrite: true,
-  })
 
   const drawBounds = getDrawBoundsCMInBase(node, root)
   Object.assign(json, {
@@ -766,16 +766,22 @@ async function assignImage(
     Object.assign(json, {
       image: fileName,
     })
-    // 画像出力登録
-    // この画像サイズが、0になっていた場合出力に失敗する
-    // 例：レスポンシブパラメータを取得するため、リサイズする→しかし元にもどらなかった
-    renditions.push({
-      fileName: fileName,
-      node: node,
-      outputFile: file,
-      type: application.RenditionType.PNG,
-      scale: scale * localScale,
-    })
+    if (!optionImageNoExport) {
+      // 画像出力登録
+      // この画像サイズが、0になっていた場合出力に失敗する
+      // 例：レスポンシブパラメータを取得するため、リサイズする→しかし元にもどらなかった
+      // 出力画像ファイル
+      const file = await subFolder.createFile(fileName + fileExtension, {
+        overwrite: true,
+      })
+      renditions.push({
+        fileName: fileName,
+        node: node,
+        outputFile: file,
+        type: application.RenditionType.PNG,
+        scale: scale * localScale,
+      })
+    }
   }
 }
 
@@ -1012,14 +1018,14 @@ async function createViewport(
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentOptionFix = getStyleFix(contentStyle[STYLE_FIX])
+  const contentStyleFix = getStyleFix(contentStyle[STYLE_FIX])
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
   let offsetMin = { x: 0, y: -contentHeight }
   let offsetMax = { x: contentWidth, y: 0 }
   Object.assign(contentJson, {
-    fix: contentOptionFix,
+    fix: contentStyleFix,
     pivot: pivot, // ここのPivotはX,Yで渡す　他のところは文字列になっている
     anchor_min: anchorMin,
     anchor_max: anchorMax,
@@ -1689,11 +1695,6 @@ async function nodeGroup(
   funcForEachChild,
   depth,
 ) {
-  if (depth > 0 && checkStyleSubPrefab(style)) {
-    // SubPrefabオプションをみつけた場合それ以下の処理は行わないようにする
-    // 深度が0以上というのは､必要か　→　必要 出力ノードになっている場合､depth==0なので
-    return 'subPrefab'
-  }
   if (checkStyleImage(style)) {
     await createImage(json, node, root, subFolder, renditions, name, style)
     return 'Image'
@@ -1954,13 +1955,13 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   const styleFix = style[STYLE_FIX]
   if (styleFix != null) {
     // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
-    const styleFix = getStyleFix(styleFix)
-    styleFixWidth = styleFix.width
-    styleFixHeight = styleFix.height
-    styleFixTop = styleFix.top
-    styleFixBottom = styleFix.bottom
-    styleFixLeft = styleFix.left
-    styleFixRight = styleFix.right
+    const fix = getStyleFix(styleFix)
+    styleFixWidth = fix.width
+    styleFixHeight = fix.height
+    styleFixTop = fix.top
+    styleFixBottom = fix.bottom
+    styleFixLeft = fix.left
+    styleFixRight = fix.right
   }
 
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
@@ -2109,7 +2110,7 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   }
 
   if (styleFixWidth) {
-    if (styleFixLeft === true /*&& fixOptionRight !== true*/) {
+    if (styleFixLeft === true) {
       anchorMax.x = anchorMin.x
       offsetMax.x = offsetMin.x + beforeBounds.width
     } else if (styleFixLeft !== true && styleFixRight === true) {
@@ -2143,7 +2144,7 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   }
 
   if (styleFixHeight) {
-    if (styleFixTop === true /*&& fixOptionBottom !== true*/) {
+    if (styleFixTop === true) {
       anchorMin.y = anchorMax.y
       offsetMin.y = offsetMax.y - beforeBounds.height
     } else if (styleFixTop !== true && styleFixBottom === true) {
@@ -2412,7 +2413,7 @@ async function createText(
   style,
 ) {
   // ラスタライズオプションチェック
-  if (optionForceTextToImage || checkStyleImage(style)) {
+  if (checkStyleImage(style)) {
     await createImage(json, node, artboard, subfolder, renditions, name, style)
     return
   }
@@ -2449,16 +2450,16 @@ async function createText(
   }
 
   // @ALIGN オプションがあった場合､上書きする
-  const optionAlign = style[STYLE_ALIGN]
-  if (optionAlign != null) {
-    hAlign = optionAlign
+  const styleAlign = style[STYLE_ALIGN]
+  if (styleAlign != null) {
+    hAlign = styleAlign
   }
 
   // @v-align オプションがあった場合、上書きする
   // XDでは、left-center-rightは設定できるため
-  const optionVAlign = style[STYLE_V_ALIGN]
-  if (optionVAlign != null) {
-    vAlign = optionVAlign
+  const styleVAlign = style[STYLE_V_ALIGN]
+  if (styleVAlign != null) {
+    vAlign = styleVAlign
   }
 
   // text.styleRangesの適応をしていない
@@ -2682,6 +2683,9 @@ function getNodeNameAndStyle(node) {
 
   let parentNode = node.parent
   let nodeName = node.name.trim()
+  const style = getStyleFromNodeName(nodeName, parentNode, cssRules, [
+    getElementName(node),
+  ])
 
   if (parentNode && parentNode.constructor.name === 'RepeatGrid') {
     // 親がリピートグリッドの場合､名前が適当につけられるようです
@@ -2725,10 +2729,6 @@ function getNodeNameAndStyle(node) {
     style[STYLE_COMMENT_OUT] = true
     nodeName = nodeName.substring(2)
   }
-
-  const style = getStyleFromNodeName(nodeName, parentNode, cssRules, [
-    getElementName(node),
-  ])
 
   const value = {
     node_name: nodeName,
@@ -2783,7 +2783,7 @@ function makeLayoutJson(root) {
   }
 }
 
-async function createRoot(layoutJson, node, funcForEachChild, options) {
+async function createRoot(layoutJson, node, funcForEachChild, style) {
   Object.assign(layoutJson, {
     // Artboardは親のサイズにぴったりはまるようにする
     anchor_min: {
@@ -2814,7 +2814,7 @@ async function createRoot(layoutJson, node, funcForEachChild, options) {
     })
   }
   await funcForEachChild()
-  assignLayer(layoutJson, options)
+  assignLayer(layoutJson, style)
 }
 
 /**
@@ -2833,11 +2833,13 @@ async function nodeRoot(renditions, outputFolder, root) {
   subFolderName = convertToFileName(subFolderName, false)
 
   // アートボード毎にフォルダを作成する
-  // TODO:他にやりかたはないだろうか
-  try {
-    subFolder = await outputFolder.getEntry(subFolderName)
-  } catch (e) {
-    subFolder = await outputFolder.createFolder(subFolderName)
+  if (!optionImageNoExport) {
+    // TODO:他にやりかたはないだろうか
+    try {
+      subFolder = await outputFolder.getEntry(subFolderName)
+    } catch (e) {
+      subFolder = await outputFolder.createFolder(subFolderName)
+    }
   }
 
   const layoutFileName = subFolderName + '.layout.json'
@@ -3069,7 +3071,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     })
   }
 
-  if (renditions.length !== 0) {
+  if (renditions.length !== 0 && !optionImageNoExport) {
     // 一括画像ファイル出力
     await application
       .createRenditions(renditions)
@@ -3194,8 +3196,7 @@ async function pluginExportBaum2Command(selection, root) {
   let inputFolder
   let inputScale
   let errorLabel
-  let checkTextToTMP
-  let checkForceTextToImage
+  let checkImageNoExport
   let checkCheckMarkedForExport
   let checkAllArtboard
   let dialog = h(
@@ -3287,23 +3288,10 @@ async function pluginExportBaum2Command(selection, root) {
             alignItems: 'center',
           },
         },
-        (checkTextToTMP = h('input', {
+        (checkImageNoExport = h('input', {
           type: 'checkbox',
         })),
-        h('span', 'TextはTextMeshProにして出力する (拡張モードが必要)'),
-      ),
-      h(
-        'label',
-        {
-          style: {
-            flexDirection: 'row',
-            alignItems: 'center',
-          },
-        },
-        (checkForceTextToImage = h('input', {
-          type: 'checkbox',
-        })),
-        h('span', 'Textを強制的に画像にして出力する'),
+        h('span', 'イメージは出力しない'),
       ),
       (errorLabel = h(
         'label',
@@ -3345,13 +3333,8 @@ async function pluginExportBaum2Command(selection, root) {
                 errorLabel.textContent = 'invalid output folder'
                 return
               }
-              // サブPrefab
-              // optionEnableSubPrefab = checkEnableSubPrefab.checked
               //
-              optionDefaultTextMP = checkTextToTMP.checked
-              //
-              optionForceTextToImage = checkForceTextToImage.checked
-              //
+              optionImageNoExport = checkImageNoExport.checked
               optionCheckMarkedForExport = checkCheckMarkedForExport.checked
 
               dialog.close('export')
@@ -3374,9 +3357,7 @@ async function pluginExportBaum2Command(selection, root) {
     inputFolder.value = outputFolder.nativePath
   }
   // Responsive Parameter
-  // checkEnableSubPrefab.checked = optionEnableSubPrefab
-  checkTextToTMP.checked = optionDefaultTextMP
-  checkForceTextToImage.checked = optionForceTextToImage
+  checkImageNoExport.checked = optionImageNoExport
   checkCheckMarkedForExport.checked = optionCheckMarkedForExport
 
   // Dialog表示
@@ -3403,10 +3384,7 @@ async function pluginExportBaum2Command(selection, root) {
         nodes.forEach(node => {
           let nodeNameAndStyle = getNodeNameAndStyle(node)
           const isArtboard = node instanceof Artboard
-          if (
-            isArtboard ||
-            checkStyleSubPrefab(nodeNameAndStyle.options) //
-          ) {
+          if (isArtboard) {
             if (isArtboard) currentArtboard = node
             if (optionCheckMarkedForExport && !node.markedForExport) {
               // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
