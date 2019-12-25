@@ -1,19 +1,31 @@
 /*
-デザイン要素はできるだけXDにやらせる
-こちらで定義にするのはUnityでの挙動になるようにする
+ デザイン要素はできるだけXDにやらせる
+ こちらで定義にするのはUnityでの挙動になるようにする
 
-CSSパーサは以下のものを利用
-https://jsfiddle.net/developit/vzkckrw4/
-制限： Style-Valueに{}があるとおかしくなる
+ CSSパーサは以下のものを利用
+ https://jsfiddle.net/developit/vzkckrw4/
+ 制限： Style-Valueに{}があるとおかしくなる
  */
 
 * {
-  layer: UI
+  layer: UI;
 }
 
 /*
-横にならべる
-*/
+ BooleanGroupはImage化する
+ */
+booleangroup {
+  image: true;
+}
+
+repeatgrid > * {
+  match-log: --------------match---------------;
+  layout-element: preferred;
+}
+
+/*
+ 横にならべる
+ */
 .layout-x {
   layout-group: x;
   layout-group-control-child-size: width height;
@@ -22,8 +34,8 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
-縦にならべる
-*/
+ 縦にならべる
+ */
 .layout-y {
   layout-group: y;
   layout-group-control-child-size: width height;
@@ -31,6 +43,9 @@ https://jsfiddle.net/developit/vzkckrw4/
   content-size-fitter-vertical-fit: preferred-size;
 }
 
+/*
+ グリッド状にならべる 横に伸びる
+ */
 .layout-grid-x {
   layout-group: grid;
   layout-group-control-child-size: width height;
@@ -39,6 +54,9 @@ https://jsfiddle.net/developit/vzkckrw4/
   content-size-fitter-horizontal-fit: preferred-size;
 }
 
+/*
+ グリッド状にならべる 縦に伸びる
+ */
 .layout-grid-y {
   layout-group: grid;
   layout-group-control-child-size: width height;
@@ -48,8 +66,8 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
-親が自動レイアウトをもっている場合に
-これ以下のグループが必要なPREFERREDサイズを設定する
+ 親が自動レイアウトをもっている場合に
+ これ以下のグループが必要なPREFERREDサイズを設定する
  */
 .layout-rect {
   layout-element: preferred;
@@ -66,7 +84,7 @@ https://jsfiddle.net/developit/vzkckrw4/
   viewport: true;
   scroll-rect: x;
   rect-mask-two-d: true;
-  content-name: ".content";
+  content-name: ".content .layout-x";
 }
 
 .viewport-y {
@@ -91,18 +109,17 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 .viewport-x > .content {
-  layout-group: x;
   conent-size-fitter: x;
 }
 
 .viewport-y > .content {
   /*
-  親と横幅がぴったり重なる
-  anchor.min.x: 0
-  anchor.max.x: 1
-  offset.min.x: 0
-  offset.max.x: 0
-  */
+   親と横幅がぴったり重なる
+   anchor.min.x: 0
+   anchor.max.x: 1
+   offset.min.x: 0
+   offset.max.x: 0
+   */
   rect-transform-anchor-offset-x: 0 1 0 0;
 }
 
@@ -125,6 +142,15 @@ https://jsfiddle.net/developit/vzkckrw4/
   direction: ltr;
 }
 
+.dots-scrollbar {
+  scrollbar: true;
+  direction: ltr;
+  layout-group: x;
+  layout-group-spacing-x: 9px;
+  conent-size-fitter-vertical-fit: preferred-size;
+  conent-size-fitter-horizontal-fit: preferred-size;
+}
+
 .scrollbar-x > .handle {
   state: scrollbar-handle-rect;
   fix: l r t b;
@@ -133,14 +159,6 @@ https://jsfiddle.net/developit/vzkckrw4/
 .scrollbar-y > .handle {
   state: scrollbar-handle-rect;
   fix: l r t b;
-}
-
-.dots-scrollbar {
-  scrollbar: true;
-  direction: ltr;
-  layout: x;
-  layout-spacing-x: 9px;
-  conent-size-fitter: x y;
 }
 
 .dots-scrollbar > .toggle {
@@ -153,14 +171,14 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
-こちらが定義されていれば、offとonでイメージ入れ替え
+ こちらが定義されていれば、offとonでイメージ入れ替え
  */
 .toggle > .image.on {
   state: on;
 }
 
 /*
-こちらが定義されていれば、offイメージにcheckedイメージが重なる
+ こちらが定義されていれば、offイメージにcheckedイメージが重なる
  */
 .toggle > .image.checked {
   state: checked;
@@ -176,7 +194,7 @@ https://jsfiddle.net/developit/vzkckrw4/
 }
 
 /*
-textはtext mesh proとして出力する
+ textはtext mesh proとして出力する
  */
 .text {
   text: true;
