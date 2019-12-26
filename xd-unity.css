@@ -19,7 +19,7 @@ booleangroup {
 }
 
 repeatgrid > * {
-  match-log: --------------match---------------;
+  repeatgrid-child-name: "repeatgrid-child";
   layout-element: preferred;
 }
 

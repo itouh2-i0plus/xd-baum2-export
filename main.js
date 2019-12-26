@@ -1166,7 +1166,6 @@ function getStyleFix(styleFix) {
  offset_min: offsetMin,
  offset_max: offsetMax,
  * @param {SceneNodeClass} node
- * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
  * @param style
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
@@ -1422,7 +1421,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
 
 /**
  * root以下のノードのレスポンシブパラメータ作成
- * @param root
+ * @param {SceneNodeClass} root
  * @return {ResponsiveParameter[]}
  */
 function makeResponsiveParameter(root) {
@@ -1442,7 +1441,7 @@ function makeResponsiveParameter(root) {
   // rootのリサイズ
   const viewportHeight = root.viewportHeight // viewportの高さの保存
   root.resize(rootWidth + resizePlusWidth, rootHeight + resizePlusHeight)
-  if (root.viewportHeight != null) {
+  if (viewportHeight) {
     // viewportの高さを高さが変わった分の変化に合わせる
     root.viewportHeight = viewportHeight + resizePlusHeight
   }
@@ -1457,7 +1456,9 @@ function makeResponsiveParameter(root) {
 
   // Artboardのサイズを元に戻す
   root.resize(rootWidth, rootHeight)
-  if (root.viewportHeight != null) root.viewportHeight = viewportHeight
+  if (viewportHeight) {
+    root.viewportHeight = viewportHeight
+  }
 
   // 元に戻ったときのbounds
   nodeWalker(root, node => {
@@ -1660,6 +1661,8 @@ function getElementName(node) {
 
 const cacheNodeNameAndStyle = {}
 
+const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
+
 /**
  * node.nameをパースしオプションに分解する
  * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
@@ -1719,8 +1722,9 @@ function getNodeNameAndStyle(node) {
     //     - item_text
     // 以上のような構成になる
     nodeName = 'repeatgrid-child'
-    if (style['repeatgrid-child-name']) {
-      nodeName = style['repeatgrid-child-name']
+    const styleRepeatgridChildName = style[STYLE_REPEATGRID_CHILD_NAME]
+    if (styleRepeatgridChildName) {
+      nodeName = styleRepeatgridChildName
     }
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parentNode.children.length; i++) {
@@ -2360,7 +2364,7 @@ async function createGroup(json, node, root, funcForEachChild) {
  * @param style
  * @param json
  * @param node
- * @param {} funcForEachChild
+ * @param funcForEachChild
  * @returns {Promise<void>}
  */
 async function createScrollbar(style, json, node, funcForEachChild) {
@@ -2393,7 +2397,7 @@ async function createScrollbar(style, json, node, funcForEachChild) {
  * @param json
  * @param node
  * @param root
- * @param {} funcForEachChild
+ * @param funcForEachChild
  * @returns {Promise<void>}
  */
 async function createToggle(json, node, root, funcForEachChild) {
@@ -2538,8 +2542,6 @@ async function createText(json, node, artboard, subfolder, renditions) {
  * @param {Artboard} root
  * @param {*} subFolder
  * @param {*} renditions
- * @param {string} name
- * @param {{}} style
  */
 async function createImage(json, node, root, subFolder, renditions) {
   let { node_name, style } = getNodeNameAndStyle(node)
@@ -2651,7 +2653,7 @@ async function nodeGroup(
   renditions,
   funcForEachChild,
 ) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   if (checkStyleImage(style)) {
     await createImage(json, node, root, subFolder, renditions)
@@ -2740,17 +2742,16 @@ async function nodeRoot(renditions, outputFolder, root) {
 
   let nodeWalker = async (nodeStack, layoutJson, depth, parentJson) => {
     let node = nodeStack[nodeStack.length - 1]
-    let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
     let { style } = getNodeNameAndStyle(node)
 
-    const indent = (() => {
+    /*
+        const indent = (() => {
       let sp = ''
       for (let i = 0; i < depth; i++) sp += '  '
       return sp
     })()
 
-    /*
     console.log(
       indent + "'" + name + "':" + constructorName,
       style,
@@ -2799,6 +2800,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     }
 
     // nodeの型で処理の分岐
+    let constructorName = node.constructor.name
     switch (constructorName) {
       case 'Artboard':
         await createRoot(layoutJson, node, funcForEachChild)
@@ -2863,16 +2865,21 @@ async function nodeRoot(renditions, outputFolder, root) {
   console.log(layoutFileName)
 }
 
-// Baum2 export
-async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
+/**
+ * Baum2 export
+ * @param {SceneNodeClass[]} roots
+ * @param outputFolder
+ * @param {SceneNodeClass[]} responsiveCheckRootNodes
+ * @returns {Promise<void>}
+ */
+async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
   // ラスタライズする要素を入れる
   let renditions = []
 
   responsiveBounds = {}
   // レスポンシブパラメータの作成
-  for (const i in responsiveCheckArtboards) {
-    let artboard = responsiveCheckArtboards[i]
-    makeResponsiveParameter(artboard) // responsiveBoundsに追加されていく
+  for (const responsiveCheckRootNode of responsiveCheckRootNodes) {
+    makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
   }
   checkHashBounds(responsiveBounds, true)
 
@@ -2884,8 +2891,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // }
 
   // アートボード毎の処理
-  for (let i in roots) {
-    let root = roots[i]
+  for (let root of roots) {
     await nodeRoot(renditions, outputFolder, root)
   }
 
@@ -2924,7 +2930,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
     // 一括画像ファイル出力
     await application
       .createRenditions(renditions)
-      .then(results => {
+      .then(() => {
         console.log(`saved ${renditions.length} files`)
       })
       .catch(error => {
@@ -3223,8 +3229,14 @@ async function pluginExportBaum2Command(selection, root) {
     try {
       await loadCssRules()
       // 出力ノードリスト
+      /**
+       * @type {SceneNodeClass[]}
+       */
       let exports = {}
       // レスポンシブパラメータを取得するため､操作を行うアートボード
+      /**
+       * @type {SceneNodeClass[]}
+       */
       let responsiveCheckArtboards = {}
 
       // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
