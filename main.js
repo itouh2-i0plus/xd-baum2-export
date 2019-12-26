@@ -8,7 +8,7 @@ let scale = 1.0
 
 // レスポンシブパラメータを保存する
 /**
- * @type {{}}
+ * @type {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]}
  */
 let responsiveBounds = {}
 
@@ -1531,14 +1531,7 @@ async function createViewport(json, node, root, funcForEachChild) {
  * @param depth
  * @return {Promise<string>}
  */
-async function createGroup(
-  json,
-  node,
-  root,
-  subFolder,
-  renditions,
-  funcForEachChild,
-) {
+async function createGroup(json, node, root, funcForEachChild) {
   let { name, style } = getNodeNameAndStyle(node)
 
   const type = 'Group'
@@ -1712,7 +1705,7 @@ async function nodeGroup(
   }
 
   // 通常のグループ
-  await createGroup(json, node, root, subFolder, renditions, funcForEachChild)
+  await createGroup(json, node, root, funcForEachChild)
 }
 
 class MinMaxSize {
@@ -1884,7 +1877,7 @@ function getStyleFix(styleFix) {
  offset_min: offsetMin,
  offset_max: offsetMax,
  * @param {SceneNodeClass} node
- * @param hashBounds
+ * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}} hashBounds
  * @param style
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
@@ -2153,6 +2146,14 @@ function nodeWalker(node, func) {
   })
 }
 
+class GlobalBounds {
+  constructor(node) {
+    this.visible = node.visible
+    this.bounds = getGlobalDrawBounds(node)
+    this.global_bounds = getGlobalDrawBounds(node)
+  }
+}
+
 /**
  * root以下のノードのレスポンシブパラメータ作成
  * @param root
@@ -2164,11 +2165,14 @@ function makeResponsiveParameter(root) {
   nodeWalker(root, node => {
     hashBounds[node.guid] = {
       node: node,
+      /*
       before: {
         visible: node.visible,
         bounds: getGlobalDrawBounds(node),
         global_bounds: getGlobalBounds(node),
       },
+      */
+      before: new GlobalBounds(node)
     }
   })
 
@@ -2188,10 +2192,11 @@ function makeResponsiveParameter(root) {
   // 変更されたboundsを取得する
   nodeWalker(root, node => {
     let hash = hashBounds[node.guid] || (hashBounds[node.guid] = {})
-    hash['after'] = {
+    hash['after'] = /*{
       bounds: getGlobalDrawBounds(node),
       global_bounds: getGlobalBounds(node),
-    }
+    }*/
+      new GlobalBounds(node)
   })
 
   // Artboardのサイズを元に戻す
@@ -2200,10 +2205,11 @@ function makeResponsiveParameter(root) {
 
   // 元に戻ったときのbounds
   nodeWalker(root, node => {
-    hashBounds[node.guid]['restore'] = {
+    hashBounds[node.guid]['restore'] = /*{
       bounds: getGlobalDrawBounds(node),
       global_bounds: getGlobalBounds(node),
-    }
+    }*/
+    new GlobalBounds(node)
   })
 
   // レスポンシブパラメータの生成
@@ -2267,7 +2273,7 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
 /**
  * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
  * 元通りのサイズに戻ったかどうかのチェック
- * @param {*} hashBounds
+ * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
  * @param {boolean|null} repair
  */
 function checkHashBounds(hashBounds, repair) {
@@ -2275,7 +2281,7 @@ function checkHashBounds(hashBounds, repair) {
   for (let key in hashBounds) {
     let value = hashBounds[key]
     if (value['before'] && value['restore']) {
-      let beforeBounds = value['before']['bounds']
+      let beforeBounds = value['before']
       let restoreBounds = value['restore']['bounds']
       if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
         // 変わってしまった
