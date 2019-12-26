@@ -65,7 +65,6 @@ const STYLE_TYPE_BUTTON = 'button'
 const STYLE_TYPE_IMAGE = 'image'
 const STYLE_TYPE_INPUT = 'input'
 const STYLE_TYPE_SCROLLBAR = 'scrollbar'
-const STYLE_TYPE_SCROLLER = 'scroller'
 const STYLE_TYPE_SLIDER = 'slider'
 const STYLE_TYPE_TEXT = 'text'
 const STYLE_TYPE_TEXTMP = 'textmp' // textmeshpro
@@ -383,10 +382,6 @@ function checkStyleInput(style) {
 
 function checkStyleScrollbar(style) {
   return checkBoolean(style[STYLE_TYPE_SCROLLBAR])
-}
-
-function checkStyleScroller(style) {
-  return checkBoolean(style[STYLE_TYPE_SCROLLER])
 }
 
 function checkStyleSlider(style) {
@@ -1205,7 +1200,6 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
   const beforeBounds = bounds.before[boundsParameterName]
   const afterBounds = bounds.after[boundsParameterName]
   const parentBounds = hashBounds[node.parent.guid]
-  console.log(parentBounds)
   if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
 
   const parentBeforeBounds = parentBounds.before[boundsParameterName]
@@ -1810,7 +1804,6 @@ function assignCanvasGroup(json, node, style) {
  */
 function assignDrawRectTransform(json, node) {
   let param = getDrawRectTransform(node)
-  console.log(param)
   if (param) {
     Object.assign(json, param)
   }
@@ -2351,6 +2344,11 @@ async function createGroup(json, node, root, funcForEachChild) {
   })
   await funcForEachChild()
 
+  if( style["active"]) {
+    Object.assign(json, {
+      deactive: checkBoolean(style["active"])
+    })
+  }
   assignDrawRectTransform(json, node)
   assignLayer(json, style)
   assignState(json, style)
@@ -2862,7 +2860,6 @@ async function nodeRoot(renditions, outputFolder, root) {
 
   // レイアウトファイルの出力
   await layoutFile.write(JSON.stringify(layoutJson, null, '  '))
-  console.log(layoutFileName)
 }
 
 /**
@@ -2878,7 +2875,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
 
   responsiveBounds = {}
   // レスポンシブパラメータの作成
-  for (const responsiveCheckRootNode of responsiveCheckRootNodes) {
+  for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
     makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
   }
   checkHashBounds(responsiveBounds, true)
@@ -2897,8 +2894,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
 
   // すべて可視にする
   // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
-  for (let i in roots) {
-    let root = roots[i]
+  for (let root of roots) {
     nodeWalker(root, node => {
       const { node_name: nodeName, style } = getNodeNameAndStyle(node)
       if (checkStyleCommentOut(style)) {
@@ -3232,12 +3228,12 @@ async function pluginExportBaum2Command(selection, root) {
       /**
        * @type {SceneNodeClass[]}
        */
-      let exports = {}
+      let exportRoots = []
       // レスポンシブパラメータを取得するため､操作を行うアートボード
       /**
        * @type {SceneNodeClass[]}
        */
-      let responsiveCheckArtboards = {}
+      let responsiveCheckArtboards = []
 
       // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
       let currentArtboard = null
@@ -3251,15 +3247,13 @@ async function pluginExportBaum2Command(selection, root) {
               // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
             } else {
               // 同じ名前のものは上書きされる
-              exports[nodeNameAndStyle.node_name] = node
+              exportRoots.push( node)
               if (isArtboard) {
-                responsiveCheckArtboards[nodeNameAndStyle.node_name] = node
+                responsiveCheckArtboards.push( node)
               } else {
                 // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
                 if (currentArtboard != null) {
-                  responsiveCheckArtboards[
-                    currentArtboard.name
-                  ] = currentArtboard
+                  responsiveCheckArtboards.push(currentArtboard)
                 }
               }
             }
@@ -3271,12 +3265,12 @@ async function pluginExportBaum2Command(selection, root) {
 
       funcForEach(exportRootNodes)
 
-      if (!Object.keys(exports).length) {
+      if (exportRoots.length === 0) {
         // 出力するものが見つからなかった
         await alert('no selected artboards.')
         return
       }
-      await exportBaum2(exports, outputFolder, responsiveCheckArtboards)
+      await exportBaum2(exportRoots, outputFolder, responsiveCheckArtboards)
     } catch (e) {
       console.log(e)
       console.log(e.stack)
@@ -3300,9 +3294,9 @@ async function pluginResponsiveParamName(selection, root) {
     // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
     makeResponsiveParameter(item)
     let func = node => {
-      if (node.symbolId != null) return
+      if (node.symbolId) return
       const param = calcRectTransform(node, {})
-      if (param != null) {
+      if (param) {
         let styleFix = []
         for (let key in param.fix) {
           if (param.fix[key] === true) {
@@ -3333,7 +3327,7 @@ async function pluginResponsiveParamName(selection, root) {
 
   // データをもとに戻すため､意図的にエラーをスローすると､付加した情報も消えてしまう
   if (!checkHashBounds(responsiveBounds, false)) {
-    await alert('bounds is changed. throwed error for UNDO', '@fix')
+    await alert('bounds is changed. thrown error for UNDO', '@fix')
   } else {
   }
 }
