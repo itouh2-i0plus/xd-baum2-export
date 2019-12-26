@@ -8,7 +8,7 @@ let scale = 1.0
 
 // レスポンシブパラメータを保存する
 /**
- * @type {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]}
+ * @type {ResponsiveParameter[]}
  */
 let responsiveBounds = {}
 
@@ -396,13 +396,13 @@ function getGlobalDrawBounds(node) {
   // それを利用するようにする
   const hashBounds = responsiveBounds
   let bounds = null
-  if (hashBounds != null) {
+  if (hashBounds) {
     const hBounds = hashBounds[node.guid]
-    if (hBounds != null && hBounds['before'] != null) {
-      bounds = Object.assign({}, hBounds['before']['bounds'])
+    if (hBounds && hBounds.before) {
+      bounds = Object.create(hBounds.before.bounds)
     }
   }
-  if (bounds != null) return bounds
+  if (bounds) return bounds
 
   bounds = node.globalDrawBounds
   const viewPortHeight = node.viewportHeight
@@ -427,11 +427,11 @@ function getGlobalBounds(node) {
   let bounds = null
   if (hashBounds != null) {
     const hBounds = hashBounds[node.guid]
-    if (hBounds != null && hBounds['before'] != null) {
-      bounds = Object.assign({}, hBounds['before']['global_bounds'])
+    if (hBounds && hBounds.before) {
+      bounds = Object.create(hBounds.before.bounds)
     }
   }
-  if (bounds != null) return bounds
+  if (bounds) return bounds
 
   bounds = node.globalBounds
   // Artboardにあるスクロール領域のボーダー
@@ -1365,6 +1365,8 @@ function assignLayer(json, style) {
   }
 }
 
+const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
+
 /**
  *
  * @param {*} json
@@ -1386,7 +1388,7 @@ async function createViewport(json, node, root, funcForEachChild) {
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
   let contentName = '.content'
-  const styleScrollRectContent = style['scroll-rect-content']
+  const styleScrollRectContent = style[STYLE_SCROLL_RECT_CONTENT]
   if (styleScrollRectContent) {
     const regex = /\s*['"](?<name>.*)['"]\s*/
     const token = regex.exec(styleScrollRectContent)
@@ -1877,12 +1879,13 @@ function getStyleFix(styleFix) {
  offset_min: offsetMin,
  offset_max: offsetMax,
  * @param {SceneNodeClass} node
- * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}} hashBounds
+ * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
  * @param style
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
-function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
+function calcRectTransform(node, style, calcDrawBounds = true) {
+  let hashBounds = responsiveBounds
   if (!node || !node.parent) return null
   if (!style) {
     // fix を取得するため
@@ -1912,15 +1915,14 @@ function calcRectTransform(node, hashBounds, style, calcDrawBounds = true) {
   const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
 
   const bounds = hashBounds[node.guid]
-  if (!bounds || !bounds['before'] || !bounds['after']) return null
-  const beforeBounds = bounds['before'][boundsParameterName]
-  const afterBounds = bounds['after'][boundsParameterName]
+  if (!bounds || !bounds.before || !bounds.after) return null
+  const beforeBounds = bounds.before[boundsParameterName]
+  const afterBounds = bounds.after[boundsParameterName]
   const parentBounds = hashBounds[node.parent.guid]
-  if (!parentBounds || !parentBounds['before'] || !parentBounds['after'])
-    return null
+  if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
 
-  const parentBeforeBounds = parentBounds['before'][boundsParameterName]
-  const parentAfterBounds = parentBounds['after'][boundsParameterName]
+  const parentBeforeBounds = parentBounds.before[boundsParameterName]
+  const parentAfterBounds = parentBounds.after[boundsParameterName]
 
   // console.log(parentBeforeBounds)
   // console.log(beforeBounds)
@@ -2154,26 +2156,42 @@ class GlobalBounds {
   }
 }
 
+class ResponsiveParameter {
+  constructor(node) {
+    this.node = node
+  }
+  updateBefore() {
+    this.before = new GlobalBounds(this.node)
+  }
+  updateAfter() {
+    this.after = new GlobalBounds(this.node)
+  }
+  updateRestore() {
+    this.restore = new GlobalBounds(this.node)
+  }
+  update() {
+    // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
+    this.responsiveParameter = calcRectTransform(this.node, null)
+    // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
+    this.responsiveParameterGlobal = calcRectTransform(this.node, null, false)
+  }
+}
+
 /**
  * root以下のノードのレスポンシブパラメータ作成
  * @param root
- * @return {{node:{}, before:{}, after:{}, restore:{} responsiveParameter:{}}}
+ * @return {ResponsiveParameter[]}
  */
 function makeResponsiveParameter(root) {
+  /**
+   * @type {ResponsiveParameter[]}
+   */
   let hashBounds = {}
   // 現在のboundsを取得する
   nodeWalker(root, node => {
-    hashBounds[node.guid] = {
-      node: node,
-      /*
-      before: {
-        visible: node.visible,
-        bounds: getGlobalDrawBounds(node),
-        global_bounds: getGlobalBounds(node),
-      },
-      */
-      before: new GlobalBounds(node)
-    }
+    let param = new ResponsiveParameter(node)
+    param.updateBefore()
+    hashBounds[node.guid] = param
   })
 
   const rootWidth = root.globalBounds.width
@@ -2191,12 +2209,11 @@ function makeResponsiveParameter(root) {
 
   // 変更されたboundsを取得する
   nodeWalker(root, node => {
-    let hash = hashBounds[node.guid] || (hashBounds[node.guid] = {})
-    hash['after'] = /*{
-      bounds: getGlobalDrawBounds(node),
-      global_bounds: getGlobalBounds(node),
-    }*/
-      new GlobalBounds(node)
+    let hash =
+      hashBounds[node.guid] ||
+      (hashBounds[node.guid] = new ResponsiveParameter(node))
+    //hash.after = new GlobalBounds(node)
+    hash.updateAfter()
   })
 
   // Artboardのサイズを元に戻す
@@ -2205,29 +2222,12 @@ function makeResponsiveParameter(root) {
 
   // 元に戻ったときのbounds
   nodeWalker(root, node => {
-    hashBounds[node.guid]['restore'] = /*{
-      bounds: getGlobalDrawBounds(node),
-      global_bounds: getGlobalBounds(node),
-    }*/
-    new GlobalBounds(node)
+    hashBounds[node.guid].updateRestore()
   })
 
   // レスポンシブパラメータの生成
   for (let key in hashBounds) {
-    let value = hashBounds[key]
-    // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    value['responsiveParameter'] = calcRectTransform(
-      value['node'],
-      hashBounds,
-      null,
-    )
-    // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    value['responsiveParameterGlobal'] = calcRectTransform(
-      value['node'],
-      hashBounds,
-      null,
-      false,
-    )
+    hashBounds[key].update()
   }
 
   return hashBounds
@@ -2273,19 +2273,19 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
 /**
  * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
  * 元通りのサイズに戻ったかどうかのチェック
- * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
+ * @param {ResponsiveParameter[]} hashBounds
  * @param {boolean|null} repair
  */
 function checkHashBounds(hashBounds, repair) {
   let result = true
   for (let key in hashBounds) {
     let value = hashBounds[key]
-    if (value['before'] && value['restore']) {
-      let beforeBounds = value['before']
-      let restoreBounds = value['restore']['bounds']
+    if (value.before && value.restore) {
+      let beforeBounds = value.before
+      let restoreBounds = value.restore.bounds
       if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
         // 変わってしまった
-        let node = value['node']
+        let node = value.node
         console.log('***error bounds changed:' + node.name)
         if (repair === true) {
           // 修復を試みる
@@ -2321,7 +2321,7 @@ function checkHashBounds(hashBounds, repair) {
  */
 function getDrawRectTransform(node) {
   let bounds = responsiveBounds[node.guid]
-  return bounds ? bounds['responsiveParameter'] : null
+  return bounds ? bounds.responsiveParameter : null
 }
 
 /**
@@ -2330,21 +2330,7 @@ function getDrawRectTransform(node) {
  */
 function getRectTransform(node) {
   let bounds = responsiveBounds[node.guid]
-  return bounds ? bounds['responsiveParameterGlobal'] : null
-}
-
-/**
- * 幅が固定されているか
- * @param {*} node
- */
-function isFixWidth(node) {
-  const param = getDrawRectTransform(node)
-  return checkBoolean(param['fix']['width'])
-}
-
-function isFixHeight(node) {
-  const param = getDrawRectTransform(node)
-  return checkBoolean(param['fix']['height'])
+  return bounds ? bounds.responsiveParameterGlobal : null
 }
 
 /**
@@ -2493,23 +2479,6 @@ async function createImage(json, node, root, subFolder, renditions) {
 }
 
 /**
- * 名前後ろに機能が入っているかどうかのチェック
- * @param type
- * @param name
- * @return {boolean}
- */
-function checkEndsTypeName(type, name) {
-  return (
-    type === name ||
-    name.endsWith('+' + type) ||
-    name.endsWith('-' + type) ||
-    name.endsWith('_' + type) ||
-    name.endsWith('.' + type) ||
-    name.endsWith(' ' + type)
-  )
-}
-
-/**
  * NodeNameはXDでつけられたものをTrimしただけ
  * @param {SceneNodeClass} node
  * @returns {string}
@@ -2535,6 +2504,8 @@ function getIdFromNodeName(nodeName) {
   }
   return null
 }
+
+const STYLE_MATCH_LOG = 'match-log'
 
 /**
  *
@@ -2582,7 +2553,7 @@ function getStyleFromNodeName(
     console.log('-----------local style------------', style)
   }
 
-  const log = style['match-log']
+  const log = style[STYLE_MATCH_LOG]
   if (log) console.log(log)
   //console.log(nodeNameArgs)
 
@@ -2654,6 +2625,11 @@ function getNodeNameAndStyle(node) {
     //     - item_text
     // 以上のような構成になる
     nodeName = 'repeatgrid-child'
+    /*
+    if (style['repeatgrid-child-name']) {
+      nodeName = style['repeatgrid-child-name']
+    }
+     */
     // 自身のChildインデックスを名前に利用する
     for (let i = 0; i < parentNode.children.length; i++) {
       if (parentNode.children.at(i) === node) {
@@ -3339,7 +3315,7 @@ async function pluginResponsiveParamName(selection, root) {
     Object.assign(responsiveBounds, makeResponsiveParameter(item))
     let func = node => {
       if (node.symbolId != null) return
-      const param = calcRectTransform(node, responsiveBounds, {})
+      const param = calcRectTransform(node, {})
       if (param != null) {
         let styleFix = []
         for (let key in param.fix) {
