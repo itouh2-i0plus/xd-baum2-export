@@ -10,7 +10,7 @@ let scale = 1.0
 /**
  * @type {ResponsiveParameter[]}
  */
-let responsiveBounds = {}
+let responsiveBounds = null
 
 // 出力するフォルダ
 let outputFolder = null
@@ -151,6 +151,104 @@ function parseNodeName(nodeName) {
   }
   // parseできなかった場合はそのまま帰す
   return [nodeName]
+}
+
+class MinMaxSize {
+  constructor() {
+    this.minWidth = null
+    this.minHeight = null
+    this.maxWidth = null
+    this.maxHeight = null
+  }
+
+  addSize(w, h) {
+    if (this.minWidth == null || this.minWidth > w) {
+      this.minWidth = w
+    }
+    if (this.maxWidth == null || this.maxWidth < w) {
+      this.maxWidth = w
+    }
+    if (this.minHeight == null || this.minHeight > h) {
+      this.minHeight = h
+    }
+    if (this.maxHeight == null || this.maxHeight < h) {
+      this.maxHeight = h
+    }
+  }
+}
+
+class CalcBounds {
+  constructor() {
+    this.sx = null
+    this.sy = null
+    this.ex = null
+    this.ey = null
+  }
+
+  addBoundsParam(x, y, w, h) {
+    if (this.sx == null || this.sx > x) {
+      this.sx = x
+    }
+    if (this.sy == null || this.sy > y) {
+      this.sy = y
+    }
+    const ex = x + w
+    const ey = y + h
+    if (this.ex == null || this.ex < ex) {
+      this.ex = ex
+    }
+    if (this.ey == null || this.ey < ey) {
+      this.ey = ey
+    }
+  }
+
+  /**
+   * @param {Bounds} bounds
+   */
+  addBounds(bounds) {
+    this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
+  }
+
+  /**
+   * @returns {Bounds}
+   */
+  get bounds() {
+    return {
+      x: this.sx,
+      y: this.sy,
+      width: this.ex - this.sx,
+      height: this.ey - this.sy,
+    }
+  }
+}
+
+class GlobalBounds {
+  constructor(node) {
+    this.visible = node.visible
+    this.bounds = getGlobalDrawBounds(node)
+    this.global_bounds = getGlobalDrawBounds(node)
+  }
+}
+
+class ResponsiveParameter {
+  constructor(node) {
+    this.node = node
+  }
+  updateBefore() {
+    this.before = new GlobalBounds(this.node)
+  }
+  updateAfter() {
+    this.after = new GlobalBounds(this.node)
+  }
+  updateRestore() {
+    this.restore = new GlobalBounds(this.node)
+  }
+  update() {
+    // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
+    this.responsiveParameter = calcRectTransform(this.node, null)
+    // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
+    this.responsiveParameterGlobal = calcRectTransform(this.node, null, false)
+  }
 }
 
 class SelectorArg {
@@ -399,7 +497,7 @@ function getGlobalDrawBounds(node) {
   if (hashBounds) {
     const hBounds = hashBounds[node.guid]
     if (hBounds && hBounds.before) {
-      bounds = Object.create(hBounds.before.bounds)
+      bounds = Object.assign({}, hBounds.before.bounds)
     }
   }
   if (bounds) return bounds
@@ -428,7 +526,7 @@ function getGlobalBounds(node) {
   if (hashBounds != null) {
     const hBounds = hashBounds[node.guid]
     if (hBounds && hBounds.before) {
-      bounds = Object.create(hBounds.before.bounds)
+      bounds = Object.assign({}, hBounds.before.global_bounds)
     }
   }
   if (bounds) return bounds
@@ -647,13 +745,15 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
   })
   assignLayoutParam(layoutJson, style)
 
-  const contentStyleLayout = style[STYLE_LAYOUT_GROUP]
-  if (hasAnyParamInStr(contentStyleLayout, 'x', STR_HORIZONTAL)) {
-    // gridLayoutJson を Horizontalに変える
-    layoutJson['method'] = STR_HORIZONTAL
-  } else if (hasAnyParamInStr(contentStyleLayout, 'y', STR_VERTICAL)) {
-    // gridLayoutJson を Verticalに変える
-    layoutJson['method'] = STR_VERTICAL
+  if (style != null) {
+    const contentStyleLayout = style[STYLE_LAYOUT_GROUP]
+    if (hasAnyParamInStr(contentStyleLayout, 'x', STR_HORIZONTAL)) {
+      // gridLayoutJson を Horizontalに変える
+      layoutJson['method'] = STR_HORIZONTAL
+    } else if (hasAnyParamInStr(contentStyleLayout, 'y', STR_VERTICAL)) {
+      // gridLayoutJson を Verticalに変える
+      layoutJson['method'] = STR_VERTICAL
+    }
   }
 
   return layoutJson
@@ -700,7 +800,6 @@ function getPaddingAndCellMaxSize(parentNode, maskNode, nodeChildren) {
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   let childrenCalcBounds = getNodeListBounds(nodeChildren, maskNode)
   //
-  let jsonVLayout = {}
   // Paddingの計算
   let viewportBounds = getGlobalDrawBounds(parentNode) // 描画でのサイズを取得する　影など増えた分も考慮したPaddingを取得する
   const childrenBounds = childrenCalcBounds.bounds
@@ -859,18 +958,6 @@ function calcLayout(json, viewportNode, maskNode, nodeChildren) {
     })
   }
 
-  /*
-  // items全部が stretchx:true なら　ChildForceExpand.width = true
-  const foundNotStretchX = elements.forEach(elem => {
-    return elem["stretchx"] !== true
-  })
-  if (!foundNotStretchX) {
-    Object.assign(jsonVLayout, {
-      child_force_expand_width: true
-    })
-  }
-  */
-
   return jsonLayout
 }
 
@@ -980,6 +1067,724 @@ function getUnityName(node) {
 }
 
 /**
+ * 文字列の中に所定のパラメータ文字列がるかチェックする
+ * option = x
+ * option = ,x,
+ * option = ,x
+ * @param {string} str
+ * @param {string} param
+ * @return {null|boolean}
+ */
+function hasParamInStr(str, param) {
+  if (str == null || param == null) return null
+  if (str === param) return true
+  if (str.startsWith(`${param} `)) return true
+  if (str.indexOf(` ${param} `) >= 0) return true
+  return str.endsWith(` ${param}`)
+}
+
+/**
+ * @param {string} str
+ * @param {...string} params
+ * @return {boolean}
+ */
+function hasAnyParamInStr(str, ...params) {
+  for (let param of params) {
+    if (hasParamInStr(str, param)) return true
+  }
+  return false
+}
+
+/**
+ * @param {string} styleFix
+ * @returns {null|{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
+ */
+function getStyleFix(styleFix) {
+  if (styleFix == null) {
+    return null
+  }
+  let styleFixWidth = false
+  let styleFixHeight = false
+  let styleFixTop = false
+  let styleFixBottom = false
+  let styleFixLeft = false
+  let styleFixRight = false
+
+  if (hasAnyParamInStr(styleFix, 'w', 'width', 'size')) {
+    styleFixWidth = true
+  }
+  if (hasAnyParamInStr(styleFix, 'h', 'height', 'size')) {
+    styleFixHeight = true
+  }
+  if (hasAnyParamInStr(styleFix, 't', 'top')) {
+    styleFixTop = true
+  }
+  if (hasAnyParamInStr(styleFix, 'b', 'bottom')) {
+    styleFixBottom = true
+  }
+  if (hasAnyParamInStr(styleFix, 'l', 'left')) {
+    styleFixLeft = true
+  }
+  if (hasAnyParamInStr(styleFix, 'r', 'right')) {
+    styleFixRight = true
+  }
+  if (hasParamInStr(styleFix, 'x')) {
+    styleFixLeft = true
+    styleFixRight = true
+  }
+  if (hasParamInStr(styleFix, 'y')) {
+    styleFixTop = true
+    styleFixBottom = true
+  }
+
+  return {
+    left: styleFixLeft,
+    right: styleFixRight,
+    top: styleFixTop,
+    bottom: styleFixBottom,
+    width: styleFixWidth,
+    height: styleFixHeight,
+  }
+}
+
+/**
+ * 本当に正確なレスポンシブパラメータは、シャドウなどエフェクトを考慮し、どれだけ元サイズより
+ 大きくなるか最終アウトプットのサイズを踏まえて計算する必要がある
+ calcResonsiveParameter内で、判断する必要があると思われる
+ * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
+ fix: {
+      // ロック true or ピクセル数
+      left: fixOptionLeft,
+      right: fixOptionRight,
+      top: fixOptionTop,
+      bottom: fixOptionBottom,
+      width: fixOptionWidth,
+      height: fixOptionHeight,
+    },
+ anchor_min: anchorMin,
+ anchor_max: anchorMax,
+ offset_min: offsetMin,
+ offset_max: offsetMax,
+ * @param {SceneNodeClass} node
+ * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
+ * @param style
+ * @param calcDrawBounds
+ * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
+ */
+function calcRectTransform(node, style, calcDrawBounds = true) {
+  let hashBounds = responsiveBounds
+  if (!node || !node.parent) return null
+  if (!style) {
+    // fix を取得するため
+    // TODO: anchor スタイルのパラメータはとるべきでは
+    style = getNodeNameAndStyle(node).style
+  }
+  // console.log(`----------------------${node.name}----------------------`)
+  let styleFixWidth = null
+  let styleFixHeight = null
+  let styleFixTop = null
+  let styleFixBottom = null
+  let styleFixLeft = null
+  let styleFixRight = null
+
+  const styleFix = style[STYLE_FIX]
+  if (styleFix != null) {
+    // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
+    const fix = getStyleFix(styleFix)
+    styleFixWidth = fix.width
+    styleFixHeight = fix.height
+    styleFixTop = fix.top
+    styleFixBottom = fix.bottom
+    styleFixLeft = fix.left
+    styleFixRight = fix.right
+  }
+
+  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
+
+  const bounds = hashBounds[node.guid]
+  if (!bounds || !bounds.before || !bounds.after) return null
+  const beforeBounds = bounds.before[boundsParameterName]
+  const afterBounds = bounds.after[boundsParameterName]
+  const parentBounds = hashBounds[node.parent.guid]
+  console.log(parentBounds)
+  if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
+
+  const parentBeforeBounds = parentBounds.before[boundsParameterName]
+  const parentAfterBounds = parentBounds.after[boundsParameterName]
+
+  // X座標
+  // console.log(node.name + '-------------------')
+  // console.log(beforeBounds.width, afterBounds.width)
+  if (styleFixWidth == null) {
+    styleFixWidth = approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
+  }
+
+  if (styleFixLeft == null) {
+    if (
+      approxEqual(
+        beforeBounds.x - parentBeforeBounds.x,
+        afterBounds.x - parentAfterBounds.x,
+      )
+    ) {
+      // ロックされている
+      styleFixLeft = true
+    } else {
+      // 親のX座標･Widthをもとに､Left座標がきまる
+      styleFixLeft =
+        (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
+    }
+  }
+
+  const beforeRight =
+    parentBeforeBounds.x +
+    parentBeforeBounds.width -
+    (beforeBounds.x + beforeBounds.width)
+  const afterRight =
+    parentAfterBounds.x +
+    parentAfterBounds.width -
+    (afterBounds.x + afterBounds.width)
+
+  if (styleFixRight == null) {
+    if (styleFixRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
+      // ロックされている 0.001以下の誤差が起きることを確認した
+      styleFixRight = true
+    } else {
+      // 親のX座標･Widthをもとに､割合でRight座標がきまる
+      styleFixRight =
+        (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
+    }
+  }
+
+  // Y座標
+  if (styleFixHeight == null) {
+    styleFixHeight = approxEqual(
+      beforeBounds.height,
+      afterBounds.height,
+      0.0005,
+    )
+  }
+
+  if (styleFixTop == null) {
+    if (
+      approxEqual(
+        beforeBounds.y - parentBeforeBounds.y,
+        afterBounds.y - parentAfterBounds.y,
+      )
+    ) {
+      styleFixTop = true
+    } else {
+      // 親のY座標･heightをもとに､Top座標がきまる
+      styleFixTop =
+        (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
+    }
+  }
+
+  const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
+  const afterBottom = parentAfterBounds.ey - afterBounds.ey
+  if (styleFixBottom == null) {
+    if (
+      styleFixBottom == null &&
+      approxEqual(beforeBottom, afterBottom, 0.0005)
+    ) {
+      styleFixBottom = true
+    } else {
+      // 親のY座標･Heightをもとに､Bottom座標がきまる
+      styleFixBottom =
+        (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
+    }
+  }
+
+  // anchorの値を決める
+  // ここまでに
+  // fixOptionWidth,fixOptionHeight : true || false
+  // fixOptionTop,fixOptionBottom : true || number
+  // fixOptionLeft,fixOptionRight : true || number
+  // になっていないといけない
+  // console.log("left:" + fixOptionLeft, "right:" + fixOptionRight)
+  // console.log("top:" + fixOptionTop, "bottom:" + fixOptionBottom)
+  // console.log("width:" + fixOptionWidth, "height:" + fixOptionHeight)
+
+  let offsetMin = {
+    x: null,
+    y: null,
+  } // left(x), bottom(h)
+  let offsetMax = {
+    x: null,
+    y: null,
+  } // right(w), top(y)
+  let anchorMin = { x: null, y: null } // left, bottom
+  let anchorMax = { x: null, y: null } // right, top
+
+  // fixOptionXXX
+  // null 定義されていない widthかheightが固定されている
+  // number 親に対しての割合 anchorに割合をいれ､offsetを0
+  // true 固定されている anchorを0か1にし､offsetをピクセルで指定
+
+  if (styleFixLeft === true) {
+    // 親のX座標から､X座標が固定値できまる
+    anchorMin.x = 0
+    offsetMin.x = beforeBounds.x - parentBeforeBounds.x
+  } else {
+    anchorMin.x = styleFixLeft
+    offsetMin.x = 0
+  }
+  if (styleFixRight === true) {
+    // 親のX座標から､X座標が固定値できまる
+    anchorMax.x = 1
+    offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
+  } else {
+    anchorMax.x = 1 - styleFixRight
+    offsetMax.x = 0
+  }
+
+  if (styleFixWidth) {
+    if (styleFixLeft === true) {
+      anchorMax.x = anchorMin.x
+      offsetMax.x = offsetMin.x + beforeBounds.width
+    } else if (styleFixLeft !== true && styleFixRight === true) {
+      anchorMin.x = anchorMax.x
+      offsetMin.x = offsetMax.x - beforeBounds.width
+    }
+    if (styleFixLeft !== true && styleFixRight !== true) {
+      //両方共ロックされていない
+      anchorMin.x = anchorMax.x = (styleFixLeft + 1 - styleFixRight) / 2
+      offsetMin.x = -beforeBounds.width / 2
+      offsetMax.x = beforeBounds.width / 2
+    }
+  }
+
+  // AdobeXD と　Unity2D　でY軸の向きがことなるため､Top→Max　Bottom→Min
+  if (styleFixTop === true) {
+    // 親のY座標から､Y座標が固定値できまる
+    anchorMax.y = 1
+    offsetMax.y = -(beforeBounds.y - parentBeforeBounds.y)
+  } else {
+    anchorMax.y = 1 - styleFixTop
+    offsetMax.y = 0
+  }
+  if (styleFixBottom === true) {
+    // 親のY座標から､Y座標が固定値できまる
+    anchorMin.y = 0
+    offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
+  } else {
+    anchorMin.y = styleFixBottom
+    offsetMin.y = 0
+  }
+
+  if (styleFixHeight) {
+    if (styleFixTop === true) {
+      anchorMin.y = anchorMax.y
+      offsetMin.y = offsetMax.y - beforeBounds.height
+    } else if (styleFixTop !== true && styleFixBottom === true) {
+      anchorMax.y = anchorMin.y
+      offsetMax.y = offsetMin.y + beforeBounds.height
+    } else if (styleFixTop !== true && styleFixBottom !== true) {
+      //両方共ロックされていない
+      anchorMin.y = anchorMax.y = 1 - (styleFixTop + 1 - styleFixBottom) / 2
+      offsetMin.y = -beforeBounds.height / 2
+      offsetMax.y = beforeBounds.height / 2
+    }
+  }
+
+  if (styleFix != null && hasAnyParamInStr(styleFix, 'c', 'center')) {
+    anchorMin.x = 0.5
+    anchorMax.x = 0.5
+    const center = beforeBounds.x + beforeBounds.width / 2
+    const parentCenter = parentBeforeBounds.x + parentBeforeBounds.width / 2
+    offsetMin.x = center - parentCenter - beforeBounds.width / 2
+    offsetMax.x = center - parentCenter + beforeBounds.width / 2
+  }
+
+  if (styleFix != null && hasAnyParamInStr(styleFix, 'm', 'middle')) {
+    anchorMin.y = 0.5
+    anchorMax.y = 0.5
+    const middle = beforeBounds.y + beforeBounds.height / 2
+    const parentMiddle = parentBeforeBounds.y + parentBeforeBounds.height / 2
+    offsetMin.y = -(middle - parentMiddle) - beforeBounds.height / 2
+    offsetMax.y = -(middle - parentMiddle) + beforeBounds.height / 2
+  }
+
+  return {
+    fix: {
+      left: styleFixLeft,
+      right: styleFixRight,
+      top: styleFixTop,
+      bottom: styleFixBottom,
+      width: styleFixWidth,
+      height: styleFixHeight,
+    },
+    anchor_min: anchorMin,
+    anchor_max: anchorMax,
+    offset_min: offsetMin,
+    offset_max: offsetMax,
+  }
+}
+
+/**
+ * root以下のノードのレスポンシブパラメータ作成
+ * @param root
+ * @return {ResponsiveParameter[]}
+ */
+function makeResponsiveParameter(root) {
+  let hashBounds = responsiveBounds
+  // 現在のboundsを取得する
+  nodeWalker(root, node => {
+    let param = new ResponsiveParameter(node)
+    param.updateBefore()
+    hashBounds[node.guid] = param
+  })
+
+  const rootWidth = root.globalBounds.width
+  const rootHeight = root.globalBounds.height
+  const resizePlusWidth = 100
+  const resizePlusHeight = 100
+
+  // rootのリサイズ
+  const viewportHeight = root.viewportHeight // viewportの高さの保存
+  root.resize(rootWidth + resizePlusWidth, rootHeight + resizePlusHeight)
+  if (root.viewportHeight != null) {
+    // viewportの高さを高さが変わった分の変化に合わせる
+    root.viewportHeight = viewportHeight + resizePlusHeight
+  }
+
+  // 変更されたboundsを取得する
+  nodeWalker(root, node => {
+    let bounds =
+      hashBounds[node.guid] ||
+      (hashBounds[node.guid] = new ResponsiveParameter(node))
+    bounds.updateAfter()
+  })
+
+  // Artboardのサイズを元に戻す
+  root.resize(rootWidth, rootHeight)
+  if (root.viewportHeight != null) root.viewportHeight = viewportHeight
+
+  // 元に戻ったときのbounds
+  nodeWalker(root, node => {
+    hashBounds[node.guid].updateRestore()
+  })
+
+  // レスポンシブパラメータの生成
+  for (let key in hashBounds) {
+    hashBounds[key].update()
+  }
+
+  return hashBounds
+}
+
+/**
+ * @param beforeBounds
+ * @param restoreBounds
+ * @return {boolean}
+ */
+function checkBounds(beforeBounds, restoreBounds) {
+  return (
+    approxEqual(beforeBounds.x, restoreBounds.x) &&
+    approxEqual(beforeBounds.y, restoreBounds.y) &&
+    approxEqual(beforeBounds.width, restoreBounds.width) &&
+    approxEqual(beforeBounds.height, restoreBounds.height)
+  )
+}
+
+function checkBoundsVerbose(beforeBounds, restoreBounds) {
+  let result = true
+  if (!approxEqual(beforeBounds.x, restoreBounds.x)) {
+    console.log(`X座標が変わった ${beforeBounds.x} -> ${restoreBounds.x}`)
+    result = false
+  }
+  if (!approxEqual(beforeBounds.y, restoreBounds.y)) {
+    console.log(`Y座標が変わった ${beforeBounds.y} -> ${restoreBounds.y}`)
+    result = false
+  }
+  if (!approxEqual(beforeBounds.width, restoreBounds.width)) {
+    console.log(`幅が変わった ${beforeBounds.width} -> ${restoreBounds.width}`)
+    result = false
+  }
+  if (!approxEqual(beforeBounds.height, restoreBounds.height)) {
+    console.log(
+      `高さが変わった ${beforeBounds.height} -> ${restoreBounds.height}`,
+    )
+    result = false
+  }
+  return result
+}
+
+/**
+ * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
+ * 元通りのサイズに戻ったかどうかのチェック
+ * @param {ResponsiveParameter[]} hashBounds
+ * @param {boolean|null} repair
+ */
+function checkHashBounds(hashBounds, repair) {
+  let result = true
+  for (let key in hashBounds) {
+    let value = hashBounds[key]
+    if (value.before && value.restore) {
+      let beforeBounds = value.before
+      let restoreBounds = value.restore.bounds
+      if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
+        // 変わってしまった
+        let node = value.node
+        console.log('***error bounds changed:' + node.name)
+        if (repair === true) {
+          // 修復を試みる
+          if (node.symbolId != null) {
+            const dx = restoreBounds.x - beforeBounds.x
+            const dy = restoreBounds.y - beforeBounds.y
+            try {
+              node.moveInParentCoordinates(dx, dy)
+              node.resize(beforeBounds.width, beforeBounds.height)
+            } catch (e) {}
+            if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
+            } else {
+              console.log('***修復できませんでした')
+              result = false
+            }
+          } else {
+            console.log('***Componentのため修復できませんでした')
+            result = false
+          }
+        } else {
+          result = false
+        }
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * 描画サイズでのレスポンシブパラメータの取得
+ * @param {SceneNode} node
+ * @returns {*}
+ */
+function getDrawRectTransform(node) {
+  let bounds = responsiveBounds[node.guid]
+  return bounds ? bounds.responsiveParameter : null
+}
+
+/**
+ * GlobalBoundsでのレスポンシブパラメータの取得
+ * @param {SceneNode} node
+ */
+function getRectTransform(node) {
+  let bounds = responsiveBounds[node.guid]
+  return bounds ? bounds.responsiveParameterGlobal : null
+}
+
+/**
+ * NodeNameはXDでつけられたものをTrimしただけ
+ * @param {SceneNodeClass} node
+ * @returns {string}
+ */
+function getNodeName(node) {
+  return getNodeNameAndStyle(node).node_name
+}
+
+/**
+ * IDを取得する #を削除する
+ * @param nodeName
+ * @return {string|null}
+ */
+function getIdFromNodeName(nodeName) {
+  if (nodeName == null) {
+    return null
+  }
+  const names = parseNodeName(nodeName)
+  for (let name of names) {
+    if (name.startsWith('#')) {
+      return name.substring(1)
+    }
+  }
+  return null
+}
+
+const STYLE_MATCH_LOG = 'match-log'
+
+/**
+ *
+ * @param {string} nodeName
+ * @param {SceneNodeClass} parent
+ * @param cssRules
+ * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
+ * @returns {*}
+ */
+function getStyleFromNodeName(
+  nodeName,
+  parent,
+  cssRules,
+  addNodeNameArgs = null,
+) {
+  const style = {}
+  let nodeNameArgs = parseNodeName(nodeName)
+  nodeNameArgs = nodeNameArgs.concat(addNodeNameArgs)
+  for (const rule of cssRules) {
+    const selectorOps = rule.selector_ops
+    let selectorMatch = true
+    let tmpParent = parent // セレクタチェック用のParent
+    for (
+      let indexSelectorOp = selectorOps.length - 1;
+      indexSelectorOp >= 0 && selectorMatch; // selectorOpのトップまでいくか、このルールにマッチしなかったことが確定したら停止
+      indexSelectorOp--
+    ) {
+      const currentSelectorOp = selectorOps[indexSelectorOp]
+      const result = currentSelectorOp.match(nodeNameArgs, tmpParent)
+      if (!result) {
+        selectorMatch = false
+        break // 次のルール
+      }
+      tmpParent = result.next_parent
+    }
+    if (selectorMatch) {
+      Object.assign(style, rule.style)
+    }
+  }
+
+  const localCss = parseCss(nodeName)
+  if (localCss != null && localCss.length > 0) {
+    // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
+    Object.assign(style, localCss[0].style) // 上書きする
+    console.log('-----------local style------------', style)
+  }
+
+  const log = style[STYLE_MATCH_LOG]
+  if (log) console.log(log)
+  //console.log(nodeNameArgs)
+
+  return style
+}
+
+function getElementName(node) {
+  return node.constructor.name.toLowerCase()
+}
+
+const cacheNodeNameAndStyle = {}
+
+/**
+ * node.nameをパースしオプションに分解する
+ * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
+ * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
+ * @param {SceneNodeClass} node
+ * @returns {{node_name: string, name: string, style: *}|null}
+ */
+function getNodeNameAndStyle(node) {
+  if (node == null) {
+    return null
+  }
+
+  // キャッシュ確認
+  const cache = cacheNodeNameAndStyle[node.guid]
+  if (cache) {
+    return cache
+  }
+
+  let parentNode = node.parent
+  let nodeName = node.name.trim()
+  const style = getStyleFromNodeName(nodeName, parentNode, cssRules, [
+    getElementName(node),
+  ])
+
+  // 名前の最初が//ならコメントNode
+  if (nodeName.startsWith('//')) {
+    style[STYLE_COMMENT_OUT] = true
+    nodeName = nodeName.substring(2)
+  }
+
+  const value = {
+    node_name: nodeName,
+    name: nodeName, // 削除予定
+    style,
+  }
+  // ここでキャッシュに書き込むことで、飛び出しループになることを防ぐ
+  // 注意する箇所
+  // 上： getStyleFromNodeName(nodeName, parentNode, cssRules, ...) で親への参照
+  // 下： node.children.some(child => { const childStyle = getNodeNameAndStyle(child).style　で、子供への参照
+  cacheNodeNameAndStyle[node.guid] = value
+
+  if (parentNode && parentNode.constructor.name === 'RepeatGrid') {
+    // 親がリピートグリッドの場合､名前が適当につけられるようです
+    // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
+    // item_button
+    // item_text
+    // 2つセットをリピートグリッド化した場合､以下のような構成になる
+    // リピートグリッド 1
+    //   - item0
+    //     - item_button
+    //     - item_text
+    //   - item1
+    //     - item_button
+    //     - item_text
+    //   - item2
+    //     - item_button
+    //     - item_text
+    // 以上のような構成になる
+    nodeName = 'repeatgrid-child'
+    if (style['repeatgrid-child-name']) {
+      nodeName = style['repeatgrid-child-name']
+    }
+    // 自身のChildインデックスを名前に利用する
+    for (let i = 0; i < parentNode.children.length; i++) {
+      if (parentNode.children.at(i) === node) {
+        nodeName += '-' + i
+        break
+      }
+    }
+    value['node_name'] = nodeName
+    value['name'] = nodeName
+
+    // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
+    style[STYLE_COMMENT_OUT] = !node.children.some(child => {
+      // コメントアウトしてないものが一つでもあるか
+      const childStyle = getNodeNameAndStyle(child).style
+      return !childStyle[STYLE_COMMENT_OUT]
+    })
+  }
+
+  return value
+}
+
+/**
+ * @param root
+ * @returns {{root: {name: *, type: string}, info: {canvas: {image: {w: number, h: number}, size: {w: number, h: number}, base: {w: number, x: number, h: number, y: number}}, version: string}}}
+ */
+function makeLayoutJson(root) {
+  let rootBounds
+  if (root instanceof Artboard) {
+    rootBounds = getGlobalDrawBounds(root)
+    rootBounds.cx = rootBounds.width / 2
+    rootBounds.cy = rootBounds.height / 2
+  } else {
+    rootBounds = getDrawBoundsCMInBase(root, root.parent)
+  }
+
+  return {
+    info: {
+      version: '0.6.1',
+      canvas: {
+        image: {
+          w: rootBounds.width,
+          h: rootBounds.height,
+        },
+        size: {
+          w: rootBounds.width,
+          h: rootBounds.height,
+        },
+        base: {
+          x: rootBounds.cx,
+          y: rootBounds.cy,
+          w: rootBounds.width,
+          h: rootBounds.height,
+        },
+      },
+    },
+    root: {
+      type: 'Root',
+      name: root.name,
+    },
+  }
+}
+
+/**
  * CanvasGroupオプション
  * @param {*} json
  * @param {SceneNode} node
@@ -1001,7 +1806,8 @@ function assignCanvasGroup(json, node, style) {
  */
 function assignDrawRectTransform(json, node) {
   let param = getDrawRectTransform(node)
-  if (param != null) {
+  console.log(param)
+  if (param) {
     Object.assign(json, param)
   }
 }
@@ -1090,20 +1896,17 @@ function assignBoundsCM(json, boundsCm) {
  * @param root
  * @param subFolder
  * @param renditions
- * @param name
- * @param style
  * @return {Promise<void>}
  */
 async function assignImage(json, node, root, subFolder, renditions) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { node_name, style } = getNodeNameAndStyle(node)
 
   // 今回出力するためのユニークな名前をつける
   const parentName = getNodeName(node.parent)
-  const nodeNameAndStyle = getNodeNameAndStyle(node)
 
   let hashStringLength = 5
   // ファイル名が長すぎるとエラーになる可能性もある
-  let fileName = convertToFileName(parentName + '-' + name, true)
+  let fileName = convertToFileName(parentName + '-' + node_name, true)
   while (true) {
     const guidStr = '-' + node.guid.slice(0, hashStringLength)
     // すでに同じものがあるか検索
@@ -1383,7 +2186,7 @@ const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
  * Item化する場合は指定する
  */
 async function createViewport(json, node, root, funcForEachChild) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
@@ -1525,16 +2328,11 @@ async function createViewport(json, node, root, funcForEachChild) {
  * @param json
  * @param {SceneNode} node
  * @param root
- * @param subFolder
- * @param renditions
- * @param name
- * @param style
  * @param funcForEachChild
- * @param depth
  * @return {Promise<string>}
  */
 async function createGroup(json, node, root, funcForEachChild) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   const type = 'Group'
   let boundsCM = getDrawBoundsCMInBase(node, root)
@@ -1561,12 +2359,11 @@ async function createGroup(json, node, root, funcForEachChild) {
 /**
  * @param style
  * @param json
- * @param name
  * @param node
  * @param {} funcForEachChild
  * @returns {Promise<void>}
  */
-async function createScrollbar(style, json, name, node, funcForEachChild) {
+async function createScrollbar(style, json, node, funcForEachChild) {
   const type = 'Scrollbar'
   Object.assign(json, {
     type: type,
@@ -1596,11 +2393,11 @@ async function createScrollbar(style, json, name, node, funcForEachChild) {
  * @param json
  * @param node
  * @param root
- * @param funcForEachChild
+ * @param {} funcForEachChild
  * @returns {Promise<void>}
  */
 async function createToggle(json, node, root, funcForEachChild) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   Object.assign(json, {
     type: 'Toggle',
@@ -1632,7 +2429,7 @@ async function createToggle(json, node, root, funcForEachChild) {
  * @returns {Promise<string>}
  */
 async function createButton(json, node, root, funcForEachChild) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   const type = 'Button'
   Object.assign(json, {
@@ -1650,690 +2447,6 @@ async function createButton(json, node, root, funcForEachChild) {
 }
 
 /**
- * Groupの処理 戻り値は処理したType
- * 注意:ここで､子供の処理もしてしまう
- * @param {*} json
- * @param {SceneNode} node
- * @param root
- * @param subFolder
- * @param renditions
- * @param {*} funcForEachChild
- * @returns {Promise<void>}
- */
-async function nodeGroup(
-  json,
-  node,
-  root,
-  subFolder,
-  renditions,
-  funcForEachChild,
-) {
-  let { name, style } = getNodeNameAndStyle(node)
-
-  if (checkStyleImage(style)) {
-    await createImage(json, node, root, subFolder, renditions)
-    return
-  }
-
-  if (checkStyleButton(style)) {
-    await createButton(json, node, root, funcForEachChild)
-    return
-  }
-
-  if (checkStyleSlider(style)) {
-    const type = 'Slider'
-    Object.assign(json, {
-      type: type,
-      name: getUnityName(node),
-    })
-    assignDrawRectTransform(json, node)
-    await funcForEachChild()
-    return
-  }
-
-  if (checkStyleScrollbar(style)) {
-    await createScrollbar(style, json, name, node, funcForEachChild)
-    return
-  }
-
-  if (checkStyleToggle(style)) {
-    await createToggle(json, node, root, funcForEachChild)
-    return
-  }
-
-  if (checkStyleViewport(style)) {
-    await createViewport(json, node, root, funcForEachChild)
-    return
-  }
-
-  // 通常のグループ
-  await createGroup(json, node, root, funcForEachChild)
-}
-
-class MinMaxSize {
-  constructor() {
-    this.minWidth = null
-    this.minHeight = null
-    this.maxWidth = null
-    this.maxHeight = null
-  }
-
-  addSize(w, h) {
-    if (this.minWidth == null || this.minWidth > w) {
-      this.minWidth = w
-    }
-    if (this.maxWidth == null || this.maxWidth < w) {
-      this.maxWidth = w
-    }
-    if (this.minHeight == null || this.minHeight > h) {
-      this.minHeight = h
-    }
-    if (this.maxHeight == null || this.maxHeight < h) {
-      this.maxHeight = h
-    }
-  }
-}
-
-class CalcBounds {
-  constructor() {
-    this.sx = null
-    this.sy = null
-    this.ex = null
-    this.ey = null
-  }
-
-  addBoundsParam(x, y, w, h) {
-    if (this.sx == null || this.sx > x) {
-      this.sx = x
-    }
-    if (this.sy == null || this.sy > y) {
-      this.sy = y
-    }
-    const ex = x + w
-    const ey = y + h
-    if (this.ex == null || this.ex < ex) {
-      this.ex = ex
-    }
-    if (this.ey == null || this.ey < ey) {
-      this.ey = ey
-    }
-  }
-
-  /**
-   * @param {Bounds} bounds
-   */
-  addBounds(bounds) {
-    this.addBoundsParam(bounds.x, bounds.y, bounds.width, bounds.height)
-  }
-
-  /**
-   * @returns {Bounds}
-   */
-  get bounds() {
-    return {
-      x: this.sx,
-      y: this.sy,
-      width: this.ex - this.sx,
-      height: this.ey - this.sy,
-    }
-  }
-}
-
-/**
- * 文字列の中に所定のパラメータ文字列がるかチェックする
- * option = x
- * option = ,x,
- * option = ,x
- * @param {string} str
- * @param {string} param
- * @return {null|boolean}
- */
-function hasParamInStr(str, param) {
-  if (str == null || param == null) return null
-  if (str === param) return true
-  if (str.startsWith(`${param} `)) return true
-  if (str.indexOf(` ${param} `) >= 0) return true
-  return str.endsWith(` ${param}`)
-}
-
-/**
- * @param {string} str
- * @param {...string} params
- * @return {boolean}
- */
-function hasAnyParamInStr(str, ...params) {
-  for (let param of params) {
-    if (hasParamInStr(str, param)) return true
-  }
-  return false
-}
-
-/**
- * @param {string} styleFix
- * @returns {null|{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
- */
-function getStyleFix(styleFix) {
-  if (styleFix == null) {
-    return null
-  }
-  let styleFixWidth = false
-  let styleFixHeight = false
-  let styleFixTop = false
-  let styleFixBottom = false
-  let styleFixLeft = false
-  let styleFixRight = false
-
-  if (hasAnyParamInStr(styleFix, 'w', 'width', 'size')) {
-    styleFixWidth = true
-  }
-  if (hasAnyParamInStr(styleFix, 'h', 'height', 'size')) {
-    styleFixHeight = true
-  }
-  if (hasAnyParamInStr(styleFix, 't', 'top')) {
-    styleFixTop = true
-  }
-  if (hasAnyParamInStr(styleFix, 'b', 'bottom')) {
-    styleFixBottom = true
-  }
-  if (hasAnyParamInStr(styleFix, 'l', 'left')) {
-    styleFixLeft = true
-  }
-  if (hasAnyParamInStr(styleFix, 'r', 'right')) {
-    styleFixRight = true
-  }
-  if (hasParamInStr(styleFix, 'x')) {
-    styleFixLeft = true
-    styleFixRight = true
-  }
-  if (hasParamInStr(styleFix, 'y')) {
-    styleFixTop = true
-    styleFixBottom = true
-  }
-
-  return {
-    left: styleFixLeft,
-    right: styleFixRight,
-    top: styleFixTop,
-    bottom: styleFixBottom,
-    width: styleFixWidth,
-    height: styleFixHeight,
-  }
-}
-
-/**
- * 本当に正確なレスポンシブパラメータは、シャドウなどエフェクトを考慮し、どれだけ元サイズより
- 大きくなるか最終アウトプットのサイズを踏まえて計算する必要がある
- calcResonsiveParameter内で、判断する必要があると思われる
- * 自動で取得されたレスポンシブパラメータは､optionの @Pivot @StretchXで上書きされる
- fix: {
-      // ロック true or ピクセル数
-      left: fixOptionLeft,
-      right: fixOptionRight,
-      top: fixOptionTop,
-      bottom: fixOptionBottom,
-      width: fixOptionWidth,
-      height: fixOptionHeight,
-    },
- anchor_min: anchorMin,
- anchor_max: anchorMax,
- offset_min: offsetMin,
- offset_max: offsetMax,
- * @param {SceneNodeClass} node
- * @param {{before:GlobalBounds, after:GlobalBounds, restore:GlobalBounds}[]} hashBounds
- * @param style
- * @param calcDrawBounds
- * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
- */
-function calcRectTransform(node, style, calcDrawBounds = true) {
-  let hashBounds = responsiveBounds
-  if (!node || !node.parent) return null
-  if (!style) {
-    // fix を取得するため
-    // TODO: anchor スタイルのパラメータはとるべきでは
-    style = getNodeNameAndStyle(node).style
-  }
-  // console.log(`----------------------${node.name}----------------------`)
-  let styleFixWidth = null
-  let styleFixHeight = null
-  let styleFixTop = null
-  let styleFixBottom = null
-  let styleFixLeft = null
-  let styleFixRight = null
-
-  const styleFix = style[STYLE_FIX]
-  if (styleFix != null) {
-    // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
-    const fix = getStyleFix(styleFix)
-    styleFixWidth = fix.width
-    styleFixHeight = fix.height
-    styleFixTop = fix.top
-    styleFixBottom = fix.bottom
-    styleFixLeft = fix.left
-    styleFixRight = fix.right
-  }
-
-  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
-
-  const bounds = hashBounds[node.guid]
-  if (!bounds || !bounds.before || !bounds.after) return null
-  const beforeBounds = bounds.before[boundsParameterName]
-  const afterBounds = bounds.after[boundsParameterName]
-  const parentBounds = hashBounds[node.parent.guid]
-  if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
-
-  const parentBeforeBounds = parentBounds.before[boundsParameterName]
-  const parentAfterBounds = parentBounds.after[boundsParameterName]
-
-  // console.log(parentBeforeBounds)
-  // console.log(beforeBounds)
-
-  // X座標
-  // console.log(node.name + '-------------------')
-  // console.log(beforeBounds.width, afterBounds.width)
-  if (styleFixWidth == null) {
-    styleFixWidth = approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
-  }
-
-  if (styleFixLeft == null) {
-    if (
-      approxEqual(
-        beforeBounds.x - parentBeforeBounds.x,
-        afterBounds.x - parentAfterBounds.x,
-      )
-    ) {
-      // ロックされている
-      styleFixLeft = true
-    } else {
-      // 親のX座標･Widthをもとに､Left座標がきまる
-      styleFixLeft =
-        (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
-    }
-  }
-
-  const beforeRight =
-    parentBeforeBounds.x +
-    parentBeforeBounds.width -
-    (beforeBounds.x + beforeBounds.width)
-  const afterRight =
-    parentAfterBounds.x +
-    parentAfterBounds.width -
-    (afterBounds.x + afterBounds.width)
-
-  if (styleFixRight == null) {
-    if (styleFixRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
-      // ロックされている 0.001以下の誤差が起きることを確認した
-      styleFixRight = true
-    } else {
-      // 親のX座標･Widthをもとに､割合でRight座標がきまる
-      styleFixRight =
-        (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
-    }
-  }
-
-  // Y座標
-  if (styleFixHeight == null) {
-    styleFixHeight = approxEqual(
-      beforeBounds.height,
-      afterBounds.height,
-      0.0005,
-    )
-  }
-
-  if (styleFixTop == null) {
-    if (
-      approxEqual(
-        beforeBounds.y - parentBeforeBounds.y,
-        afterBounds.y - parentAfterBounds.y,
-      )
-    ) {
-      styleFixTop = true
-    } else {
-      // 親のY座標･heightをもとに､Top座標がきまる
-      styleFixTop =
-        (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
-    }
-  }
-
-  const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
-  const afterBottom = parentAfterBounds.ey - afterBounds.ey
-  if (styleFixBottom == null) {
-    if (
-      styleFixBottom == null &&
-      approxEqual(beforeBottom, afterBottom, 0.0005)
-    ) {
-      styleFixBottom = true
-    } else {
-      // 親のY座標･Heightをもとに､Bottom座標がきまる
-      styleFixBottom =
-        (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
-    }
-  }
-
-  // anchorの値を決める
-  // ここまでに
-  // fixOptionWidth,fixOptionHeight : true || false
-  // fixOptionTop,fixOptionBottom : true || number
-  // fixOptionLeft,fixOptionRight : true || number
-  // になっていないといけない
-  // console.log("left:" + fixOptionLeft, "right:" + fixOptionRight)
-  // console.log("top:" + fixOptionTop, "bottom:" + fixOptionBottom)
-  // console.log("width:" + fixOptionWidth, "height:" + fixOptionHeight)
-
-  let offsetMin = {
-    x: null,
-    y: null,
-  } // left(x), bottom(h)
-  let offsetMax = {
-    x: null,
-    y: null,
-  } // right(w), top(y)
-  let anchorMin = { x: null, y: null } // left, bottom
-  let anchorMax = { x: null, y: null } // right, top
-
-  // fixOptionXXX
-  // null 定義されていない widthかheightが固定されている
-  // number 親に対しての割合 anchorに割合をいれ､offsetを0
-  // true 固定されている anchorを0か1にし､offsetをピクセルで指定
-
-  if (styleFixLeft === true) {
-    // 親のX座標から､X座標が固定値できまる
-    anchorMin.x = 0
-    offsetMin.x = beforeBounds.x - parentBeforeBounds.x
-  } else {
-    anchorMin.x = styleFixLeft
-    offsetMin.x = 0
-  }
-  if (styleFixRight === true) {
-    // 親のX座標から､X座標が固定値できまる
-    anchorMax.x = 1
-    offsetMax.x = beforeBounds.ex - parentBeforeBounds.ex
-  } else {
-    anchorMax.x = 1 - styleFixRight
-    offsetMax.x = 0
-  }
-
-  if (styleFixWidth) {
-    if (styleFixLeft === true) {
-      anchorMax.x = anchorMin.x
-      offsetMax.x = offsetMin.x + beforeBounds.width
-    } else if (styleFixLeft !== true && styleFixRight === true) {
-      anchorMin.x = anchorMax.x
-      offsetMin.x = offsetMax.x - beforeBounds.width
-    }
-    if (styleFixLeft !== true && styleFixRight !== true) {
-      //両方共ロックされていない
-      anchorMin.x = anchorMax.x = (styleFixLeft + 1 - styleFixRight) / 2
-      offsetMin.x = -beforeBounds.width / 2
-      offsetMax.x = beforeBounds.width / 2
-    }
-  }
-
-  // AdobeXD と　Unity2D　でY軸の向きがことなるため､Top→Max　Bottom→Min
-  if (styleFixTop === true) {
-    // 親のY座標から､Y座標が固定値できまる
-    anchorMax.y = 1
-    offsetMax.y = -(beforeBounds.y - parentBeforeBounds.y)
-  } else {
-    anchorMax.y = 1 - styleFixTop
-    offsetMax.y = 0
-  }
-  if (styleFixBottom === true) {
-    // 親のY座標から､Y座標が固定値できまる
-    anchorMin.y = 0
-    offsetMin.y = -(beforeBounds.ey - parentBeforeBounds.ey)
-  } else {
-    anchorMin.y = styleFixBottom
-    offsetMin.y = 0
-  }
-
-  if (styleFixHeight) {
-    if (styleFixTop === true) {
-      anchorMin.y = anchorMax.y
-      offsetMin.y = offsetMax.y - beforeBounds.height
-    } else if (styleFixTop !== true && styleFixBottom === true) {
-      anchorMax.y = anchorMin.y
-      offsetMax.y = offsetMin.y + beforeBounds.height
-    } else if (styleFixTop !== true && styleFixBottom !== true) {
-      //両方共ロックされていない
-      anchorMin.y = anchorMax.y = 1 - (styleFixTop + 1 - styleFixBottom) / 2
-      offsetMin.y = -beforeBounds.height / 2
-      offsetMax.y = beforeBounds.height / 2
-    }
-  }
-
-  if (styleFix != null && hasAnyParamInStr(styleFix, 'c', 'center')) {
-    anchorMin.x = 0.5
-    anchorMax.x = 0.5
-    const center = beforeBounds.x + beforeBounds.width / 2
-    const parentCenter = parentBeforeBounds.x + parentBeforeBounds.width / 2
-    offsetMin.x = center - parentCenter - beforeBounds.width / 2
-    offsetMax.x = center - parentCenter + beforeBounds.width / 2
-  }
-
-  if (styleFix != null && hasAnyParamInStr(styleFix, 'm', 'middle')) {
-    anchorMin.y = 0.5
-    anchorMax.y = 0.5
-    const middle = beforeBounds.y + beforeBounds.height / 2
-    const parentMiddle = parentBeforeBounds.y + parentBeforeBounds.height / 2
-    offsetMin.y = -(middle - parentMiddle) - beforeBounds.height / 2
-    offsetMax.y = -(middle - parentMiddle) + beforeBounds.height / 2
-  }
-
-  return {
-    fix: {
-      left: styleFixLeft,
-      right: styleFixRight,
-      top: styleFixTop,
-      bottom: styleFixBottom,
-      width: styleFixWidth,
-      height: styleFixHeight,
-    },
-    anchor_min: anchorMin,
-    anchor_max: anchorMax,
-    offset_min: offsetMin,
-    offset_max: offsetMax,
-  }
-}
-
-/**
- * func : node => {}  nodeを引数とした関数
- * @param {*} node
- * @param {*} func
- */
-function nodeWalker(node, func) {
-  let result = func(node)
-  if (result === false) return // 明確なFalseの場合、子供へはいかない
-  node.children.forEach(child => {
-    nodeWalker(child, func)
-  })
-}
-
-class GlobalBounds {
-  constructor(node) {
-    this.visible = node.visible
-    this.bounds = getGlobalDrawBounds(node)
-    this.global_bounds = getGlobalDrawBounds(node)
-  }
-}
-
-class ResponsiveParameter {
-  constructor(node) {
-    this.node = node
-  }
-  updateBefore() {
-    this.before = new GlobalBounds(this.node)
-  }
-  updateAfter() {
-    this.after = new GlobalBounds(this.node)
-  }
-  updateRestore() {
-    this.restore = new GlobalBounds(this.node)
-  }
-  update() {
-    // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    this.responsiveParameter = calcRectTransform(this.node, null)
-    // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    this.responsiveParameterGlobal = calcRectTransform(this.node, null, false)
-  }
-}
-
-/**
- * root以下のノードのレスポンシブパラメータ作成
- * @param root
- * @return {ResponsiveParameter[]}
- */
-function makeResponsiveParameter(root) {
-  /**
-   * @type {ResponsiveParameter[]}
-   */
-  let hashBounds = {}
-  // 現在のboundsを取得する
-  nodeWalker(root, node => {
-    let param = new ResponsiveParameter(node)
-    param.updateBefore()
-    hashBounds[node.guid] = param
-  })
-
-  const rootWidth = root.globalBounds.width
-  const rootHeight = root.globalBounds.height
-  const resizePlusWidth = 100
-  const resizePlusHeight = 100
-
-  // Artboardのリサイズ
-  const viewportHeight = root.viewportHeight // viewportの高さの保存
-  root.resize(rootWidth + resizePlusWidth, rootHeight + resizePlusHeight)
-  if (root.viewportHeight != null) {
-    // viewportの高さを高さが変わった分の変化に合わせる
-    root.viewportHeight = viewportHeight + resizePlusHeight
-  }
-
-  // 変更されたboundsを取得する
-  nodeWalker(root, node => {
-    let hash =
-      hashBounds[node.guid] ||
-      (hashBounds[node.guid] = new ResponsiveParameter(node))
-    //hash.after = new GlobalBounds(node)
-    hash.updateAfter()
-  })
-
-  // Artboardのサイズを元に戻す
-  root.resize(rootWidth, rootHeight)
-  if (root.viewportHeight != null) root.viewportHeight = viewportHeight
-
-  // 元に戻ったときのbounds
-  nodeWalker(root, node => {
-    hashBounds[node.guid].updateRestore()
-  })
-
-  // レスポンシブパラメータの生成
-  for (let key in hashBounds) {
-    hashBounds[key].update()
-  }
-
-  return hashBounds
-}
-
-/**
- * @param beforeBounds
- * @param restoreBounds
- * @return {boolean}
- */
-function checkBounds(beforeBounds, restoreBounds) {
-  return (
-    approxEqual(beforeBounds.x, restoreBounds.x) &&
-    approxEqual(beforeBounds.y, restoreBounds.y) &&
-    approxEqual(beforeBounds.width, restoreBounds.width) &&
-    approxEqual(beforeBounds.height, restoreBounds.height)
-  )
-}
-
-function checkBoundsVerbose(beforeBounds, restoreBounds) {
-  let result = true
-  if (!approxEqual(beforeBounds.x, restoreBounds.x)) {
-    console.log(`X座標が変わった ${beforeBounds.x} -> ${restoreBounds.x}`)
-    result = false
-  }
-  if (!approxEqual(beforeBounds.y, restoreBounds.y)) {
-    console.log(`Y座標が変わった ${beforeBounds.y} -> ${restoreBounds.y}`)
-    result = false
-  }
-  if (!approxEqual(beforeBounds.width, restoreBounds.width)) {
-    console.log(`幅が変わった ${beforeBounds.width} -> ${restoreBounds.width}`)
-    result = false
-  }
-  if (!approxEqual(beforeBounds.height, restoreBounds.height)) {
-    console.log(
-      `高さが変わった ${beforeBounds.height} -> ${restoreBounds.height}`,
-    )
-    result = false
-  }
-  return result
-}
-
-/**
- * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
- * 元通りのサイズに戻ったかどうかのチェック
- * @param {ResponsiveParameter[]} hashBounds
- * @param {boolean|null} repair
- */
-function checkHashBounds(hashBounds, repair) {
-  let result = true
-  for (let key in hashBounds) {
-    let value = hashBounds[key]
-    if (value.before && value.restore) {
-      let beforeBounds = value.before
-      let restoreBounds = value.restore.bounds
-      if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
-        // 変わってしまった
-        let node = value.node
-        console.log('***error bounds changed:' + node.name)
-        if (repair === true) {
-          // 修復を試みる
-          if (node.symbolId != null) {
-            const dx = restoreBounds.x - beforeBounds.x
-            const dy = restoreBounds.y - beforeBounds.y
-            try {
-              node.moveInParentCoordinates(dx, dy)
-              node.resize(beforeBounds.width, beforeBounds.height)
-            } catch (e) {}
-            if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
-            } else {
-              console.log('***修復できませんでした')
-              result = false
-            }
-          } else {
-            console.log('***Componentのため修復できませんでした')
-            result = false
-          }
-        } else {
-          result = false
-        }
-      }
-    }
-  }
-  return result
-}
-
-/**
- * 描画サイズでのレスポンシブパラメータの取得
- * @param {SceneNode} node
- * @returns {*}
- */
-function getDrawRectTransform(node) {
-  let bounds = responsiveBounds[node.guid]
-  return bounds ? bounds.responsiveParameter : null
-}
-
-/**
- * GlobalBoundsでのレスポンシブパラメータの取得
- * @param {SceneNode} node
- */
-function getRectTransform(node) {
-  let bounds = responsiveBounds[node.guid]
-  return bounds ? bounds.responsiveParameterGlobal : null
-}
-
-/**
  * テキストレイヤーの処理
  * @param {*} json
  * @param {SceneNode} node
@@ -2342,7 +2455,7 @@ function getRectTransform(node) {
  * @param {[]} renditions
  */
 async function createText(json, node, artboard, subfolder, renditions) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   // ラスタライズオプションチェック
   if (checkStyleImage(style)) {
@@ -2429,7 +2542,7 @@ async function createText(json, node, artboard, subfolder, renditions) {
  * @param {{}} style
  */
 async function createImage(json, node, root, subFolder, renditions) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { node_name, style } = getNodeNameAndStyle(node)
 
   const unityName = getUnityName(node)
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
@@ -2457,7 +2570,7 @@ async function createImage(json, node, root, subFolder, renditions) {
   } else {
     Object.assign(json, {
       type: 'Image',
-      name: name,
+      name: node_name,
     })
     assignLayer(json, style)
     assignDrawRectTransform(json, node)
@@ -2479,224 +2592,13 @@ async function createImage(json, node, root, subFolder, renditions) {
 }
 
 /**
- * NodeNameはXDでつけられたものをTrimしただけ
- * @param {SceneNodeClass} node
- * @returns {string}
- */
-function getNodeName(node) {
-  return getNodeNameAndStyle(node).node_name
-}
-
-/**
- * IDを取得する #を削除する
- * @param nodeName
- * @return {string|null}
- */
-function getIdFromNodeName(nodeName) {
-  if (nodeName == null) {
-    return null
-  }
-  const names = parseNodeName(nodeName)
-  for (let name of names) {
-    if (name.startsWith('#')) {
-      return name.substring(1)
-    }
-  }
-  return null
-}
-
-const STYLE_MATCH_LOG = 'match-log'
-
-/**
- *
- * @param {string} nodeName
- * @param {SceneNodeClass} parent
- * @param cssRules
- * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
- * @returns {*}
- */
-function getStyleFromNodeName(
-  nodeName,
-  parent,
-  cssRules,
-  addNodeNameArgs = null,
-) {
-  const style = {}
-  let nodeNameArgs = parseNodeName(nodeName)
-  nodeNameArgs = nodeNameArgs.concat(addNodeNameArgs)
-  for (const rule of cssRules) {
-    const selectorOps = rule.selector_ops
-    let selectorMatch = true
-    let tmpParent = parent // セレクタチェック用のParent
-    for (
-      let indexSelectorOp = selectorOps.length - 1;
-      indexSelectorOp >= 0 && selectorMatch; // selectorOpのトップまでいくか、このルールにマッチしなかったことが確定したら停止
-      indexSelectorOp--
-    ) {
-      const currentSelectorOp = selectorOps[indexSelectorOp]
-      const result = currentSelectorOp.match(nodeNameArgs, tmpParent)
-      if (!result) {
-        selectorMatch = false
-        break // 次のルール
-      }
-      tmpParent = result.next_parent
-    }
-    if (selectorMatch) {
-      Object.assign(style, rule.style)
-    }
-  }
-
-  const localCss = parseCss(nodeName)
-  if (localCss != null && localCss.length > 0) {
-    // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
-    Object.assign(style, localCss[0].style) // 上書きする
-    console.log('-----------local style------------', style)
-  }
-
-  const log = style[STYLE_MATCH_LOG]
-  if (log) console.log(log)
-  //console.log(nodeNameArgs)
-
-  return style
-}
-
-function getElementName(node) {
-  return node.constructor.name.toLowerCase()
-}
-
-const cacheNodeNameAndStyle = {}
-
-/**
- * node.nameをパースしオプションに分解する
- * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
- * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
- * @param {SceneNodeClass} node
- * @returns {null|{node_name: string, name: string, style: *}}
- */
-function getNodeNameAndStyle(node) {
-  if (node == null) {
-    return null
-  }
-
-  // キャッシュ確認
-  const cache = cacheNodeNameAndStyle[node.guid]
-  if (cache) {
-    return cache
-  }
-
-  let parentNode = node.parent
-  let nodeName = node.name.trim()
-  const style = getStyleFromNodeName(nodeName, parentNode, cssRules, [
-    getElementName(node),
-  ])
-
-  // 名前の最初が//ならコメントNode
-  if (nodeName.startsWith('//')) {
-    style[STYLE_COMMENT_OUT] = true
-    nodeName = nodeName.substring(2)
-  }
-
-  const value = {
-    node_name: nodeName,
-    name: nodeName, // 削除予定
-    style,
-  }
-  // ここでキャッシュに書き込むことで、飛び出しループになることを防ぐ
-  // 注意する箇所
-  // 上： getStyleFromNodeName(nodeName, parentNode, cssRules, ...) で親への参照
-  // 下： node.children.some(child => { const childStyle = getNodeNameAndStyle(child).style　で、子供への参照
-  cacheNodeNameAndStyle[node.guid] = value
-
-  if (parentNode && parentNode.constructor.name === 'RepeatGrid') {
-    // 親がリピートグリッドの場合､名前が適当につけられるようです
-    // Buttonといった名前やオプションが勝手につき､機能してしまうことを防ぐ
-    // item_button
-    // item_text
-    // 2つセットをリピートグリッド化した場合､以下のような構成になる
-    // リピートグリッド 1
-    //   - item0
-    //     - item_button
-    //     - item_text
-    //   - item1
-    //     - item_button
-    //     - item_text
-    //   - item2
-    //     - item_button
-    //     - item_text
-    // 以上のような構成になる
-    nodeName = 'repeatgrid-child'
-    /*
-    if (style['repeatgrid-child-name']) {
-      nodeName = style['repeatgrid-child-name']
-    }
-     */
-    // 自身のChildインデックスを名前に利用する
-    for (let i = 0; i < parentNode.children.length; i++) {
-      if (parentNode.children.at(i) === node) {
-        nodeName += '-' + i
-        break
-      }
-    }
-    // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
-    style[STYLE_COMMENT_OUT] = !node.children.some(child => {
-      // コメントアウトしてないものが一つでもあるか
-      const childStyle = getNodeNameAndStyle(child).style
-      return !childStyle[STYLE_COMMENT_OUT]
-    })
-  }
-
-  return value
-}
-
-/**
- * @param root
- * @returns {{root: {name: *, type: string}, info: {canvas: {image: {w: number, h: number}, size: {w: number, h: number}, base: {w: number, x: number, h: number, y: number}}, version: string}}}
- */
-function makeLayoutJson(root) {
-  let rootBounds
-  if (root instanceof Artboard) {
-    rootBounds = getGlobalDrawBounds(root)
-    rootBounds.cx = rootBounds.width / 2
-    rootBounds.cy = rootBounds.height / 2
-  } else {
-    rootBounds = getDrawBoundsCMInBase(root, root.parent)
-  }
-
-  return {
-    info: {
-      version: '0.6.1',
-      canvas: {
-        image: {
-          w: rootBounds.width,
-          h: rootBounds.height,
-        },
-        size: {
-          w: rootBounds.width,
-          h: rootBounds.height,
-        },
-        base: {
-          x: rootBounds.cx,
-          y: rootBounds.cy,
-          w: rootBounds.width,
-          h: rootBounds.height,
-        },
-      },
-    },
-    root: {
-      type: 'Root',
-      name: root.name,
-    },
-  }
-}
-
-/**
  * @param layoutJson
  * @param node
  * @param funcForEachChild
  * @returns {Promise<void>}
  */
 async function createRoot(layoutJson, node, funcForEachChild) {
-  let { name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
   Object.assign(layoutJson, {
     // Artboardは親のサイズにぴったりはまるようにする
     anchor_min: {
@@ -2731,6 +2633,80 @@ async function createRoot(layoutJson, node, funcForEachChild) {
 }
 
 /**
+ * Groupの処理 戻り値は処理したType
+ * 注意:ここで､子供の処理もしてしまう
+ * @param {*} json
+ * @param {SceneNode} node
+ * @param root
+ * @param subFolder
+ * @param renditions
+ * @param {*} funcForEachChild
+ * @returns {Promise<void>}
+ */
+async function nodeGroup(
+  json,
+  node,
+  root,
+  subFolder,
+  renditions,
+  funcForEachChild,
+) {
+  let { name, style } = getNodeNameAndStyle(node)
+
+  if (checkStyleImage(style)) {
+    await createImage(json, node, root, subFolder, renditions)
+    return
+  }
+
+  if (checkStyleButton(style)) {
+    await createButton(json, node, root, funcForEachChild)
+    return
+  }
+
+  if (checkStyleSlider(style)) {
+    const type = 'Slider'
+    Object.assign(json, {
+      type: type,
+      name: getUnityName(node),
+    })
+    assignDrawRectTransform(json, node)
+    await funcForEachChild()
+    return
+  }
+
+  if (checkStyleScrollbar(style)) {
+    await createScrollbar(style, json, node, funcForEachChild)
+    return
+  }
+
+  if (checkStyleToggle(style)) {
+    await createToggle(json, node, root, funcForEachChild)
+    return
+  }
+
+  if (checkStyleViewport(style)) {
+    await createViewport(json, node, root, funcForEachChild)
+    return
+  }
+
+  // 通常のグループ
+  await createGroup(json, node, root, funcForEachChild)
+}
+
+/**
+ * func : node => {}  nodeを引数とした関数
+ * @param {*} node
+ * @param {*} func
+ */
+function nodeWalker(node, func) {
+  let result = func(node)
+  if (result === false) return // 明確なFalseの場合、子供へはいかない
+  node.children.forEach(child => {
+    nodeWalker(child, func)
+  })
+}
+
+/**
  * アートボードの処理
  * @param {*} renditions
  * @param {*} outputFolder
@@ -2740,7 +2716,7 @@ async function nodeRoot(renditions, outputFolder, root) {
   let subFolder
   let nodeNameAndStyle = getNodeNameAndStyle(root)
 
-  let subFolderName = nodeNameAndStyle.name
+  let subFolderName = nodeNameAndStyle.node_name
 
   // フォルダ名に使えない文字を'_'に変換
   subFolderName = convertToFileName(subFolderName, false)
@@ -2766,7 +2742,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     let node = nodeStack[nodeStack.length - 1]
     let constructorName = node.constructor.name
     // レイヤー名から名前とオプションの分割
-    let { name, style } = getNodeNameAndStyle(node)
+    let { style } = getNodeNameAndStyle(node)
 
     const indent = (() => {
       let sp = ''
@@ -2892,13 +2868,12 @@ async function exportBaum2(roots, outputFolder, responsiveCheckArtboards) {
   // ラスタライズする要素を入れる
   let renditions = []
 
-  // レスポンシブパラメータの作成
   responsiveBounds = {}
+  // レスポンシブパラメータの作成
   for (const i in responsiveCheckArtboards) {
     let artboard = responsiveCheckArtboards[i]
-    Object.assign(responsiveBounds, makeResponsiveParameter(artboard))
+    makeResponsiveParameter(artboard) // responsiveBoundsに追加されていく
   }
-
   checkHashBounds(responsiveBounds, true)
 
   // シンボル用サブフォルダの作成
@@ -3264,9 +3239,9 @@ async function pluginExportBaum2Command(selection, root) {
               // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
             } else {
               // 同じ名前のものは上書きされる
-              exports[nodeNameAndStyle.name] = node
+              exports[nodeNameAndStyle.node_name] = node
               if (isArtboard) {
-                responsiveCheckArtboards[nodeNameAndStyle.name] = node
+                responsiveCheckArtboards[nodeNameAndStyle.node_name] = node
               } else {
                 // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
                 if (currentArtboard != null) {
@@ -3289,7 +3264,6 @@ async function pluginExportBaum2Command(selection, root) {
         await alert('no selected artboards.')
         return
       }
-
       await exportBaum2(exports, outputFolder, responsiveCheckArtboards)
     } catch (e) {
       console.log(e)
@@ -3312,7 +3286,7 @@ async function pluginResponsiveParamName(selection, root) {
   responsiveBounds = {}
   selectionItems.forEach(item => {
     // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
-    Object.assign(responsiveBounds, makeResponsiveParameter(item))
+    makeResponsiveParameter(item)
     let func = node => {
       if (node.symbolId != null) return
       const param = calcRectTransform(node, {})
