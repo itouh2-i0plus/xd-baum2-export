@@ -640,6 +640,35 @@ function testBounds(a, b) {
 }
 
 /**
+ * 文字列の中に所定のパラメータ文字列がるかチェックする
+ * option = x
+ * option = ,x,
+ * option = ,x
+ * @param {string} str
+ * @param {string} param
+ * @return {null|boolean}
+ */
+function hasParamInStr(str, param) {
+  if (str == null || param == null) return null
+  if (str === param) return true
+  if (str.startsWith(`${param} `)) return true
+  if (str.indexOf(` ${param} `) >= 0) return true
+  return str.endsWith(` ${param}`)
+}
+
+/**
+ * @param {string} str
+ * @param {...string} params
+ * @return {boolean}
+ */
+function hasAnyParamInStr(str, ...params) {
+  for (let param of params) {
+    if (hasParamInStr(str, param)) return true
+  }
+  return false
+}
+
+/**
  * @param style
  * @return {{}|null}
  */
@@ -738,7 +767,7 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
     cell_max_width: repeatGrid.cellSize.width * scale,
     cell_max_height: repeatGrid.cellSize.height * scale,
   })
-  assignLayoutParam(layoutJson, style)
+  addLayoutParam(layoutJson, style)
 
   if (style != null) {
     const contentStyleLayout = style[STYLE_LAYOUT_GROUP]
@@ -1028,7 +1057,7 @@ function getLayoutJson(json, viewportNode, maskNode, children, style) {
     layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
   if (layoutJson != null) {
-    assignLayoutParam(layoutJson, style)
+    addLayoutParam(layoutJson, style)
   }
   return layoutJson
 }
@@ -1059,35 +1088,6 @@ function getUnityName(node) {
     return nodeName
   }
   return id
-}
-
-/**
- * 文字列の中に所定のパラメータ文字列がるかチェックする
- * option = x
- * option = ,x,
- * option = ,x
- * @param {string} str
- * @param {string} param
- * @return {null|boolean}
- */
-function hasParamInStr(str, param) {
-  if (str == null || param == null) return null
-  if (str === param) return true
-  if (str.startsWith(`${param} `)) return true
-  if (str.indexOf(` ${param} `) >= 0) return true
-  return str.endsWith(` ${param}`)
-}
-
-/**
- * @param {string} str
- * @param {...string} params
- * @return {boolean}
- */
-function hasAnyParamInStr(str, ...params) {
-  for (let param of params) {
-    if (hasParamInStr(str, param)) return true
-  }
-  return false
 }
 
 /**
@@ -1788,7 +1788,7 @@ function makeLayoutJson(root) {
  * @param {SceneNode} node
  * @param style
  */
-function assignCanvasGroup(json, node, style) {
+function addCanvasGroup(json, node, style) {
   let canvasGroup = style[STYLE_CANVAS_GROUP]
   if (canvasGroup != null) {
     Object.assign(json, {
@@ -1802,7 +1802,7 @@ function assignCanvasGroup(json, node, style) {
  * @param {*} json
  * @param {SceneNode} node
  */
-function assignDrawRectTransform(json, node) {
+function addDrawRectTransform(json, node) {
   let param = getDrawRectTransform(node)
   if (param) {
     Object.assign(json, param)
@@ -1815,7 +1815,7 @@ function assignDrawRectTransform(json, node) {
  * @param json
  * @param style
  */
-function assignRectTransformAnchorOffsetX(json, style) {
+function addRectTransformAnchorOffsetX(json, style) {
   // 指定が会った場合、上書きする
   if (!style) return
   const anchorsX = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X]
@@ -1846,7 +1846,7 @@ function assignRectTransformAnchorOffsetX(json, style) {
  * @param {SceneNode} node
  * @returns {null}
  */
-function assignRectTransform(json, node) {
+function addRectTransform(json, node) {
   let param = getRectTransform(node)
   if (param != null) {
     Object.assign(json, param)
@@ -1858,7 +1858,7 @@ function assignRectTransform(json, node) {
  * @param json
  * @param style
  */
-function assignState(json, style) {
+function addState(json, style) {
   /**
    * @type {string}
    */
@@ -1877,7 +1877,7 @@ function assignState(json, style) {
  * @param {*} json
  * @param {{cx:number, cy:number, width:number, height:number}} boundsCm
  */
-function assignBoundsCM(json, boundsCm) {
+function addBoundsCM(json, boundsCm) {
   Object.assign(json, {
     x: boundsCm.cx,
     y: boundsCm.cy,
@@ -1895,7 +1895,7 @@ function assignBoundsCM(json, boundsCm) {
  * @param renditions
  * @return {Promise<void>}
  */
-async function assignImage(json, node, root, subFolder, renditions) {
+async function addImage(json, node, root, subFolder, renditions) {
   let { node_name, style } = getNodeNameAndStyle(node)
 
   // 今回出力するためのユニークな名前をつける
@@ -1967,7 +1967,7 @@ async function assignImage(json, node, root, subFolder, renditions) {
     opacity: 100,
   })
 
-  assignDrawRectTransform(json, node)
+  addDrawRectTransform(json, node)
 
   const stylePreserveAspect = style[STYLE_PRESERVE_ASPECT]
   if (stylePreserveAspect != null) {
@@ -2019,7 +2019,7 @@ async function assignImage(json, node, root, subFolder, renditions) {
  * @param json
  * @param {{}} style
  */
-function assignContentSizeFitter(json, style) {
+function addContentSizeFitter(json, style) {
   const contentSizeFitterJson = getContentSizeFitterParam(style)
   if (contentSizeFitterJson != null) {
     Object.assign(json, {
@@ -2032,7 +2032,7 @@ function assignContentSizeFitter(json, style) {
  * @param json
  * @param style
  */
-function assignScrollRect(json, style) {
+function addScrollRect(json, style) {
   const styleScrollRect = style[STYLE_SCROLL_RECT]
   if (!styleScrollRect) return
   const {
@@ -2048,7 +2048,7 @@ function assignScrollRect(json, style) {
   })
 }
 
-function assignRectMask2d(json, style) {
+function addRectMask2d(json, style) {
   const styleRectMask2D = style[STYLE_RECT_MASK_2D]
   if (!styleRectMask2D) return
   Object.assign(json, {
@@ -2064,7 +2064,7 @@ function assignRectMask2d(json, style) {
  * @param {SceneNodeList} children
  * @param style
  */
-function assignLayout(json, viewportNode, maskNode, children, style) {
+function addLayout(json, viewportNode, maskNode, children, style) {
   let layoutJson = getLayoutJson(json, viewportNode, maskNode, children, style)
   if (!layoutJson) return
 
@@ -2085,7 +2085,7 @@ function assignLayout(json, viewportNode, maskNode, children, style) {
  * @param layoutJson
  * @param style
  */
-function assignLayoutParam(layoutJson, style) {
+function addLayoutParam(layoutJson, style) {
   if (style == null) return
   const styleChildAlignment = style[STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT]
   if (styleChildAlignment) {
@@ -2136,7 +2136,7 @@ function assignLayoutParam(layoutJson, style) {
  * @param {SceneNodeClass} node
  * @param {{}} style
  */
-function assignLayoutElement(json, node, style) {
+function addLayoutElement(json, node, style) {
   const styleElement = style[STYLE_LAYOUT_ELEMENT]
   if (styleElement == null) return
   const bounds = getGlobalDrawBounds(node)
@@ -2158,7 +2158,7 @@ function assignLayoutElement(json, node, style) {
   }
 }
 
-function assignLayer(json, style) {
+function addLayer(json, style) {
   const styleLayer = style[STYLE_LAYER]
   if (styleLayer != null) {
     Object.assign(json, { layer: styleLayer })
@@ -2244,7 +2244,7 @@ async function createViewport(json, node, root, funcForEachChild) {
       getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     )
 
-    assignLayout(contentJson, node, maskNode, node.children, contentStyle)
+    addLayout(contentJson, node, maskNode, node.children, contentStyle)
   } else if (node.constructor.name === 'RepeatGrid') {
     // リピートグリッドでViewportを作成する
     // リピードグリッド内、Itemとするか、全部実態化するか、
@@ -2290,15 +2290,15 @@ async function createViewport(json, node, root, funcForEachChild) {
     }
   }
 
-  assignDrawRectTransform(json, node)
-  assignContentSizeFitter(json, style)
-  assignScrollRect(json, style)
-  assignRectMask2d(json, style)
+  addDrawRectTransform(json, node)
+  addContentSizeFitter(json, style)
+  addScrollRect(json, style)
+  addRectMask2d(json, style)
 
   // Content系
   // SizeFit
-  assignContentSizeFitter(contentJson, contentStyle)
-  assignLayer(contentJson, contentStyle)
+  addContentSizeFitter(contentJson, contentStyle)
+  addLayer(contentJson, contentStyle)
 
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
@@ -2317,7 +2317,7 @@ async function createViewport(json, node, root, funcForEachChild) {
     offset_min: offsetMin,
     offset_max: offsetMax,
   })
-  assignRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
+  addRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
 }
 
 /**
@@ -2344,28 +2344,29 @@ async function createGroup(json, node, root, funcForEachChild) {
   })
   await funcForEachChild()
 
-  if( style["active"]) {
+  if (style['active']) {
     Object.assign(json, {
-      deactive: checkBoolean(style["active"])
+      deactive: checkBoolean(style['active']),
     })
   }
-  assignDrawRectTransform(json, node)
-  assignLayer(json, style)
-  assignState(json, style)
-  assignCanvasGroup(json, node, style)
-  assignLayoutElement(json, node, style)
-  assignLayout(json, node, node, node.children, style)
-  assignContentSizeFitter(json, style)
+  addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
+  addCanvasGroup(json, node, style)
+  addLayoutElement(json, node, style)
+  addLayout(json, node, node, node.children, style)
+  addContentSizeFitter(json, style)
 }
 
 /**
- * @param style
  * @param json
  * @param node
  * @param funcForEachChild
  * @returns {Promise<void>}
  */
-async function createScrollbar(style, json, node, funcForEachChild) {
+async function createScrollbar(json, node, funcForEachChild) {
+  let { style } = getNodeNameAndStyle(node)
+
   const type = 'Scrollbar'
   Object.assign(json, {
     type: type,
@@ -2380,13 +2381,13 @@ async function createScrollbar(style, json, node, funcForEachChild) {
 
   await funcForEachChild()
 
-  assignDrawRectTransform(json, node)
-  assignLayer(json, style)
-  assignState(json, style)
-  assignCanvasGroup(json, node, style)
-  assignLayoutElement(json, node, style)
-  assignLayout(json, node, node, node.children, style)
-  assignContentSizeFitter(json, style)
+  addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
+  addCanvasGroup(json, node, style)
+  addLayoutElement(json, node, style)
+  addLayout(json, node, node, node.children, style)
+  addContentSizeFitter(json, style)
 
   //return type
 }
@@ -2413,13 +2414,13 @@ async function createToggle(json, node, root, funcForEachChild) {
     })
   }
 
-  assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  addBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
-  assignDrawRectTransform(json, node)
-  assignLayer(json, style)
-  assignState(json, style)
-  assignLayoutElement(json, node, style)
-  assignContentSizeFitter(json, style)
+  addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
+  addLayoutElement(json, node, style)
+  addContentSizeFitter(json, style)
 }
 
 /**
@@ -2439,11 +2440,11 @@ async function createButton(json, node, root, funcForEachChild) {
     name: getUnityName(node),
   })
 
-  assignBoundsCM(json, getDrawBoundsCMInBase(node, root))
+  addBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
-  assignDrawRectTransform(json, node)
-  assignLayer(json, style)
-  assignState(json, style)
+  addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
 
   return type
 }
@@ -2529,8 +2530,9 @@ async function createText(json, node, artboard, subfolder, renditions) {
   })
 
   // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
-  assignRectTransform(json, node)
-  assignLayer(json, style)
+  addRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
 }
 
 /**
@@ -2557,8 +2559,8 @@ async function createImage(json, node, root, subFolder, renditions) {
         },
       ],
     })
-    assignDrawRectTransform(json, node)
-    await assignImage(json.elements[0], node, root, subFolder, renditions)
+    addDrawRectTransform(json, node)
+    await addImage(json.elements[0], node, root, subFolder, renditions)
     //ボタン画像はボタンとぴったりサイズをあわせる
     let imageJson = json['elements'][0]
     Object.assign(imageJson, {
@@ -2572,10 +2574,10 @@ async function createImage(json, node, root, subFolder, renditions) {
       type: 'Image',
       name: node_name,
     })
-    assignLayer(json, style)
-    assignDrawRectTransform(json, node)
-    assignState(json, style)
-    await assignImage(json, node, root, subFolder, renditions)
+    addLayer(json, style)
+    addDrawRectTransform(json, node)
+    addState(json, style)
+    await addImage(json, node, root, subFolder, renditions)
     // assignComponent
     if (style[STYLE_COMPONENT] != null) {
       Object.assign(json, {
@@ -2629,68 +2631,7 @@ async function createRoot(layoutJson, node, funcForEachChild) {
     })
   }
   await funcForEachChild()
-  assignLayer(layoutJson, style)
-}
-
-/**
- * Groupの処理 戻り値は処理したType
- * 注意:ここで､子供の処理もしてしまう
- * @param {*} json
- * @param {SceneNode} node
- * @param root
- * @param subFolder
- * @param renditions
- * @param {*} funcForEachChild
- * @returns {Promise<void>}
- */
-async function nodeGroup(
-  json,
-  node,
-  root,
-  subFolder,
-  renditions,
-  funcForEachChild,
-) {
-  let { style } = getNodeNameAndStyle(node)
-
-  if (checkStyleImage(style)) {
-    await createImage(json, node, root, subFolder, renditions)
-    return
-  }
-
-  if (checkStyleButton(style)) {
-    await createButton(json, node, root, funcForEachChild)
-    return
-  }
-
-  if (checkStyleSlider(style)) {
-    const type = 'Slider'
-    Object.assign(json, {
-      type: type,
-      name: getUnityName(node),
-    })
-    assignDrawRectTransform(json, node)
-    await funcForEachChild()
-    return
-  }
-
-  if (checkStyleScrollbar(style)) {
-    await createScrollbar(style, json, node, funcForEachChild)
-    return
-  }
-
-  if (checkStyleToggle(style)) {
-    await createToggle(json, node, root, funcForEachChild)
-    return
-  }
-
-  if (checkStyleViewport(style)) {
-    await createViewport(json, node, root, funcForEachChild)
-    return
-  }
-
-  // 通常のグループ
-  await createGroup(json, node, root, funcForEachChild)
+  addLayer(layoutJson, style)
 }
 
 /**
@@ -2713,15 +2654,14 @@ function nodeWalker(node, func) {
  * @param {Artboard} root
  */
 async function nodeRoot(renditions, outputFolder, root) {
-  let subFolder
   let nodeNameAndStyle = getNodeNameAndStyle(root)
-
   let subFolderName = nodeNameAndStyle.node_name
 
   // フォルダ名に使えない文字を'_'に変換
   subFolderName = convertToFileName(subFolderName, false)
 
   // アートボード毎にフォルダを作成する
+  let subFolder
   if (!optionImageNoExport) {
     // TODO:他にやりかたはないだろうか
     try {
@@ -2768,7 +2708,8 @@ async function nodeRoot(renditions, outputFolder, root) {
      * @param funcFilter
      * @returns {Promise<void>}
      */
-    let funcForEachChild = async (numChildren, funcFilter) => {
+    let funcForEachChild = async (numChildren = null, funcFilter = null) => {
+      // node、nodeStackが依存しているため、関数化しない
       const maxNumChildren = node.children.length
       if (numChildren == null) {
         numChildren = maxNumChildren
@@ -2807,14 +2748,40 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'Group':
       case 'RepeatGrid':
       case 'SymbolInstance':
-        await nodeGroup(
-          layoutJson,
-          node,
-          root,
-          subFolder,
-          renditions,
-          funcForEachChild,
-        )
+        {
+          if (checkStyleImage(style)) {
+            await createImage(layoutJson, node, root, subFolder, renditions)
+            return
+          }
+          if (checkStyleButton(style)) {
+            await createButton(layoutJson, node, root, funcForEachChild)
+            return
+          }
+          if (checkStyleSlider(style)) {
+            const type = 'Slider'
+            Object.assign(layoutJson, {
+              type: type,
+              name: getUnityName(node),
+            })
+            addDrawRectTransform(layoutJson, node)
+            await funcForEachChild()
+            return
+          }
+          if (checkStyleScrollbar(style)) {
+            await createScrollbar(layoutJson, node, funcForEachChild)
+            return
+          }
+          if (checkStyleToggle(style)) {
+            await createToggle(layoutJson, node, root, funcForEachChild)
+            return
+          }
+          if (checkStyleViewport(style)) {
+            await createViewport(layoutJson, node, root, funcForEachChild)
+            return
+          }
+          // 通常のグループ
+          await createGroup(layoutJson, node, root, funcForEachChild)
+        }
         break
       case 'Line':
       case 'Ellipse':
@@ -2836,27 +2803,6 @@ async function nodeRoot(renditions, outputFolder, root) {
   }
 
   await nodeWalker([root], layoutJson.root, 0)
-
-  // rootにPivot情報があった場合､canvas.baseの位置を調整する
-  let pivot = layoutJson.root['pivot']
-  if (pivot && root.parent) {
-    let node = getGlobalDrawBounds(root)
-    let parent = getGlobalDrawBounds(root.parent)
-    if (pivot.indexOf('left') >= 0) {
-      layoutJson.info.canvas.base.x = parent.x - node.x - node.width / 2
-    }
-    if (pivot.indexOf('right') >= 0) {
-      layoutJson.info.canvas.base.x =
-        parent.x + parent.width - (node.x + node.width / 2)
-    }
-    if (pivot.indexOf('top') >= 0) {
-      layoutJson.info.canvas.base.y = parent.y - node.y - node.height / 2
-    }
-    if (pivot.indexOf('bottom') >= 0) {
-      layoutJson.info.canvas.base.y =
-        parent.y + parent.height - (node.y + node.height / 2)
-    }
-  }
 
   // レイアウトファイルの出力
   await layoutFile.write(JSON.stringify(layoutJson, null, '  '))
@@ -3247,9 +3193,9 @@ async function pluginExportBaum2Command(selection, root) {
               // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
             } else {
               // 同じ名前のものは上書きされる
-              exportRoots.push( node)
+              exportRoots.push(node)
               if (isArtboard) {
-                responsiveCheckArtboards.push( node)
+                responsiveCheckArtboards.push(node)
               } else {
                 // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
                 if (currentArtboard != null) {
