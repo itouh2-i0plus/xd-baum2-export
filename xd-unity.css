@@ -202,3 +202,10 @@ repeatgrid > * {
 .button {
   button: true;
 }
+
+#menu > * > .text {
+  unity-name: "unity-text";
+  repeatgrid-attach-text-data-series: "aaaaaa" "bbbbbb" "ccccccc"
+}
+
+

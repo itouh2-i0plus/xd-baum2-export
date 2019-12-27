@@ -71,6 +71,9 @@ const STYLE_TYPE_TEXTMP = 'textmp' // textmeshpro
 const STYLE_TYPE_TOGGLE = 'toggle'
 const STYLE_TYPE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
+const STYLE_TEXT_CONTENT = 'text-content'
+const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
+  'repeatgrid-attach-text-data-series'
 
 /**
  * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
@@ -90,7 +93,10 @@ async function loadCssRules() {
   for (const rule of rules) {
     let nameOps = parseCssSelector(rule.selector)
     if (!nameOps) {
-      throw 'failed to parse CSS:"' + rule + '"'
+      throw 'CSSの解析に失敗しました\n"}"は"\\{"としてください\n' +
+        '------\n' +
+        rule.selector +
+        '\n------'
     }
     cssRules.push({ selector_ops: nameOps, style: rule.style })
   }
@@ -103,13 +109,14 @@ async function loadCssRules() {
  * @return {[{selector:string, style:{}}]}
  */
 function parseCss(text) {
-  let tokenizer = /([\s\S]+?)\{([\s\S]*?)\}/gi,
+  let tokenizer = /(?<selector>[\s\S]+?){(?<style>[\s\S]*?)(?<!\\)}/gi,
     rules = [],
     token
+  // コメントアウト処理
   text = text.replace(/\/\*[\s\S]*?\*\//g, '')
   while ((token = tokenizer.exec(text))) {
-    let style = parseCssRule(token[2].trim())
-    const selector = token[1].trim().replace(/\s*\,\s*/, ', ')
+    let style = parseCssRule(token.groups.style.trim())
+    const selector = token.groups.selector.trim().replace(/\s*\,\s*/, ', ')
     rules.push({ selector, style })
   }
   return rules
@@ -471,6 +478,21 @@ function getArtboard(node) {
   let parent = node
   while (parent != null) {
     if (parent.constructor.name === 'Artboard') {
+      return parent
+    }
+    parent = parent.parent
+  }
+  return null
+}
+
+/**
+ * @param node
+ * @returns {RepeatGrid|null}
+ */
+function getRepeatGrid(node) {
+  let parent = node
+  while (parent != null) {
+    if (parent.constructor.name === 'RepeatGrid') {
       return parent
     }
     parent = parent.parent
@@ -1082,12 +1104,16 @@ function forEachReverseElements(elements, func) {
  * @param {SceneNodeClass} node
  */
 function getUnityName(node) {
-  const nodeName = getNodeName(node)
-  const id = getIdFromNodeName(nodeName)
-  if (!id) {
-    return nodeName
+  const { node_name: nodeName, style }= getNodeNameAndStyle(node)
+  const unityName = style['unity-name']
+  if( unityName ) {
+    return unityName
   }
-  return id
+  const id = getIdFromNodeName(nodeName)
+  if (id) {
+    return id
+  }
+  return nodeName
 }
 
 /**
@@ -1505,7 +1531,7 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
 }
 
 /**
- * レスポンシブパラメータを取得するため､Artboardのサイズを変更し元にもどす
+ * レスポンシブパラメータを取得するため､Artboardのサイズを比較し元にもどすことを試みる
  * 元通りのサイズに戻ったかどうかのチェック
  * @param {ResponsiveParameter[]} hashBounds
  * @param {boolean|null} repair
@@ -1891,11 +1917,11 @@ function addBoundsCM(json, boundsCm) {
  * @param json
  * @param {SceneNode} node
  * @param root
- * @param subFolder
+ * @param outputFolder
  * @param renditions
  * @return {Promise<void>}
  */
-async function addImage(json, node, root, subFolder, renditions) {
+async function addImage(json, node, root, outputFolder, renditions) {
   let { node_name, style } = getNodeNameAndStyle(node)
 
   // 今回出力するためのユニークな名前をつける
@@ -1995,12 +2021,12 @@ async function addImage(json, node, root, subFolder, renditions) {
     Object.assign(json, {
       image: fileName,
     })
-    if (!optionImageNoExport) {
+    if (outputFolder && !optionImageNoExport) {
       // 画像出力登録
       // この画像サイズが、0になっていた場合出力に失敗する
       // 例：レスポンシブパラメータを取得するため、リサイズする→しかし元にもどらなかった
       // 出力画像ファイル
-      const file = await subFolder.createFile(fileName + fileExtension, {
+      const file = await outputFolder.createFile(fileName + fileExtension, {
         overwrite: true,
       })
       renditions.push({
@@ -2454,15 +2480,38 @@ async function createButton(json, node, root, funcForEachChild) {
  * @param {*} json
  * @param {SceneNode} node
  * @param {Artboard} artboard
- * @param {*} subfolder
+ * @param {*} outputFolder
  * @param {[]} renditions
  */
-async function createText(json, node, artboard, subfolder, renditions) {
+async function createText(json, node, artboard, outputFolder, renditions) {
   let { style } = getNodeNameAndStyle(node)
+
+  /** @type {Text} */
+  let nodeText = node
+
+  const styleTextContent = style[STYLE_TEXT_CONTENT]
+  const styleRepeatGridAttachText =
+    style[STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES]
+  if (styleTextContent || styleRepeatGridAttachText) {
+    let repeatGrid = getRepeatGrid(nodeText)
+    // RepeatGrid内のテキストは操作できない
+    if (!repeatGrid && styleTextContent) {
+      nodeText.text = styleTextContent
+    }
+    // RepeatGrid内専用の操作
+    if (repeatGrid && styleRepeatGridAttachText) {
+      repeatGrid.attachTextDataSeries(nodeText, [
+        'aaaa',
+        'bbbb',
+        'ccccc',
+        'ddddd',
+      ])
+    }
+  }
 
   // ラスタライズオプションチェック
   if (checkStyleImage(style)) {
-    await createImage(json, node, artboard, subfolder, renditions)
+    await createImage(json, node, artboard, outputFolder, renditions)
     return
   }
 
@@ -2471,14 +2520,12 @@ async function createText(json, node, artboard, subfolder, renditions) {
     !checkStyleInput(style) &&
     !checkStyleTextMeshPro(style)
   ) {
-    await createImage(json, node, artboard, subfolder, renditions)
+    await createImage(json, node, artboard, outputFolder, renditions)
     return
   }
 
   const boundsCM = getBoundsCMInBase(node, artboard)
 
-  /** @type {Text} */
-  let nodeText = node
   let type = 'Text'
   if (checkStyleTextMeshPro(style)) {
     type = 'TextMeshPro'
@@ -2540,10 +2587,10 @@ async function createText(json, node, artboard, subfolder, renditions) {
  * @param {*} json
  * @param {SceneNode} node
  * @param {Artboard} root
- * @param {*} subFolder
+ * @param {*} outputFolder
  * @param {*} renditions
  */
-async function createImage(json, node, root, subFolder, renditions) {
+async function createImage(json, node, root, outputFolder, renditions) {
   let { node_name, style } = getNodeNameAndStyle(node)
 
   const unityName = getUnityName(node)
@@ -2560,7 +2607,7 @@ async function createImage(json, node, root, subFolder, renditions) {
       ],
     })
     addDrawRectTransform(json, node)
-    await addImage(json.elements[0], node, root, subFolder, renditions)
+    await addImage(json.elements[0], node, root, outputFolder, renditions)
     //ボタン画像はボタンとぴったりサイズをあわせる
     let imageJson = json['elements'][0]
     Object.assign(imageJson, {
@@ -2577,7 +2624,7 @@ async function createImage(json, node, root, subFolder, renditions) {
     addLayer(json, style)
     addDrawRectTransform(json, node)
     addState(json, style)
-    await addImage(json, node, root, subFolder, renditions)
+    await addImage(json, node, root, outputFolder, renditions)
     // assignComponent
     if (style[STYLE_COMPONENT] != null) {
       Object.assign(json, {
@@ -2650,32 +2697,10 @@ function nodeWalker(node, func) {
 /**
  * アートボードの処理
  * @param {*} renditions
- * @param {*} outputFolder
+ * @param outputFolder
  * @param {Artboard} root
  */
 async function nodeRoot(renditions, outputFolder, root) {
-  let nodeNameAndStyle = getNodeNameAndStyle(root)
-  let subFolderName = nodeNameAndStyle.node_name
-
-  // フォルダ名に使えない文字を'_'に変換
-  subFolderName = convertToFileName(subFolderName, false)
-
-  // アートボード毎にフォルダを作成する
-  let subFolder
-  if (!optionImageNoExport) {
-    // TODO:他にやりかたはないだろうか
-    try {
-      subFolder = await outputFolder.getEntry(subFolderName)
-    } catch (e) {
-      subFolder = await outputFolder.createFolder(subFolderName)
-    }
-  }
-
-  const layoutFileName = subFolderName + '.layout.json'
-  const layoutFile = await outputFolder.createFile(layoutFileName, {
-    overwrite: true,
-  })
-
   let layoutJson = makeLayoutJson(root)
 
   let nodeWalker = async (nodeStack, layoutJson, depth, parentJson) => {
@@ -2750,7 +2775,7 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'SymbolInstance':
         {
           if (checkStyleImage(style)) {
-            await createImage(layoutJson, node, root, subFolder, renditions)
+            await createImage(layoutJson, node, root, outputFolder, renditions)
             return
           }
           if (checkStyleButton(style)) {
@@ -2788,11 +2813,11 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'Rectangle':
       case 'Path':
       case 'Polygon':
-        await createImage(layoutJson, node, root, subFolder, renditions)
+        await createImage(layoutJson, node, root, outputFolder, renditions)
         await funcForEachChild()
         break
       case 'Text':
-        await createText(layoutJson, node, root, subFolder, renditions)
+        await createText(layoutJson, node, root, outputFolder, renditions)
         await funcForEachChild()
         break
       default:
@@ -2804,9 +2829,10 @@ async function nodeRoot(renditions, outputFolder, root) {
 
   await nodeWalker([root], layoutJson.root, 0)
 
-  // レイアウトファイルの出力
-  await layoutFile.write(JSON.stringify(layoutJson, null, '  '))
+  return layoutJson
 }
+
+let optionChangeContentOnly = false
 
 /**
  * Baum2 export
@@ -2820,11 +2846,13 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
   let renditions = []
 
   responsiveBounds = {}
-  // レスポンシブパラメータの作成
-  for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
-    makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
+  if (!optionChangeContentOnly) {
+    // レスポンシブパラメータの作成
+    for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
+      makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
+    }
+    //checkHashBounds(responsiveBounds, true)
   }
-  checkHashBounds(responsiveBounds, true)
 
   // シンボル用サブフォルダの作成
   // try {
@@ -2835,37 +2863,64 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
 
   // アートボード毎の処理
   for (let root of roots) {
-    await nodeRoot(renditions, outputFolder, root)
+    let nodeNameAndStyle = getNodeNameAndStyle(root)
+    let subFolderName = nodeNameAndStyle.node_name
+    // フォルダ名に使えない文字を'_'に変換
+    subFolderName = convertToFileName(subFolderName, false)
+
+    let subFolder
+    // アートボード毎にフォルダを作成する
+    if (!optionChangeContentOnly && !optionImageNoExport && outputFolder) {
+      // TODO:他にやりかたはないだろうか
+      try {
+        subFolder = await outputFolder.getEntry(subFolderName)
+      } catch (e) {
+        subFolder = await outputFolder.createFolder(subFolderName)
+      }
+    }
+
+    const layoutJson = await nodeRoot(renditions, subFolder, root)
+
+    if (outputFolder && !optionChangeContentOnly) {
+      const layoutFileName = subFolderName + '.layout.json'
+      const layoutFile = await outputFolder.createFile(layoutFileName, {
+        overwrite: true,
+      })
+      // レイアウトファイルの出力
+      await layoutFile.write(JSON.stringify(layoutJson, null, '  '))
+    }
   }
 
   // すべて可視にする
   // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
-  for (let root of roots) {
-    nodeWalker(root, node => {
-      const { node_name: nodeName, style } = getNodeNameAndStyle(node)
-      if (checkStyleCommentOut(style)) {
-        return false // 子供には行かないようにする
-      }
-      try {
-        node.visible = true
-      } catch (e) {
-        console.log('***error ' + nodeName + ': visible true failed.')
-      }
-      try {
-        if (node.blur != null) {
-          // ぼかしをオフ
-          node.blur = null
+  if (!optionChangeContentOnly) {
+    for (let root of roots) {
+      nodeWalker(root, node => {
+        const { node_name: nodeName, style } = getNodeNameAndStyle(node)
+        if (checkStyleCommentOut(style)) {
+          return false // 子供には行かないようにする
         }
-      } catch (e) {
-        console.log('***error ' + nodeName + ': blur off failed.')
-      }
-      // IMAGEであった場合、そのグループの不可視情報はそのまま活かすため
-      // 自身は可視にし、子供の不可視情報は生かす
-      // 本来は sourceImageをNaturalWidth,Heightで出力する
-      if (style[STYLE_IMAGE] != null || style[STYLE_IMAGE_SLICE] != null) {
-        return false
-      }
-    })
+        try {
+          node.visible = true
+        } catch (e) {
+          console.log('***error ' + nodeName + ': visible true failed.')
+        }
+        try {
+          if (node.blur != null) {
+            // ぼかしをオフ
+            node.blur = null
+          }
+        } catch (e) {
+          console.log('***error ' + nodeName + ': blur off failed.')
+        }
+        // IMAGEであった場合、そのグループの不可視情報はそのまま活かすため
+        // 自身は可視にし、子供の不可視情報は生かす
+        // 本来は sourceImageをNaturalWidth,Heightで出力する
+        if (style[STYLE_IMAGE] != null || style[STYLE_IMAGE_SLICE] != null) {
+          return false
+        }
+      })
+    }
   }
 
   if (renditions.length !== 0 && !optionImageNoExport) {
@@ -3126,7 +3181,7 @@ async function pluginExportBaum2Command(selection, root) {
               }
               scale = tmpScale
               // 出力フォルダは設定してあるか
-              if (outputFolder == null) {
+              if (!optionChangeContentOnly && outputFolder == null) {
                 errorLabel.textContent = 'invalid output folder'
                 return
               }
@@ -3166,63 +3221,65 @@ async function pluginExportBaum2Command(selection, root) {
     exportRootNodes = root.children
   }
 
-  // Dialogの結果チェック
-  if (result === 'export') {
-    try {
-      await loadCssRules()
-      // 出力ノードリスト
-      /**
-       * @type {SceneNodeClass[]}
-       */
-      let exportRoots = []
-      // レスポンシブパラメータを取得するため､操作を行うアートボード
-      /**
-       * @type {SceneNodeClass[]}
-       */
-      let responsiveCheckArtboards = []
+  // Dialogの結果チェック 出力しないのなら終了
+  if (result !== 'export') return
 
-      // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
-      let currentArtboard = null
-      let funcForEach = nodes => {
-        nodes.forEach(node => {
-          let nodeNameAndStyle = getNodeNameAndStyle(node)
-          const isArtboard = node instanceof Artboard
-          if (isArtboard) {
-            if (isArtboard) currentArtboard = node
-            if (optionCheckMarkedForExport && !node.markedForExport) {
-              // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
+  try {
+    await loadCssRules()
+    // 出力ノードリスト
+    /**
+     * @type {SceneNodeClass[]}
+     */
+    let exportRoots = []
+    // レスポンシブパラメータを取得するため､操作を行うアートボード
+    /**
+     * @type {SceneNodeClass[]}
+     */
+    let responsiveCheckArtboards = []
+
+    // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
+    let currentArtboard = null
+    let funcForEach = nodes => {
+      nodes.forEach(node => {
+        let nodeNameAndStyle = getNodeNameAndStyle(node)
+        const isArtboard = node instanceof Artboard
+        if (isArtboard) {
+          if (isArtboard) currentArtboard = node
+          if (optionCheckMarkedForExport && !node.markedForExport) {
+            // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
+          } else {
+            // 同じ名前のものは上書きされる
+            exportRoots.push(node)
+            if (isArtboard) {
+              responsiveCheckArtboards.push(node)
             } else {
-              // 同じ名前のものは上書きされる
-              exportRoots.push(node)
-              if (isArtboard) {
-                responsiveCheckArtboards.push(node)
-              } else {
-                // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
-                if (currentArtboard != null) {
-                  responsiveCheckArtboards.push(currentArtboard)
-                }
+              // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
+              if (currentArtboard != null) {
+                responsiveCheckArtboards.push(currentArtboard)
               }
             }
           }
-          const children = node.children
-          if (children) funcForEach(children)
-        })
-      }
-
-      funcForEach(exportRootNodes)
-
-      if (exportRoots.length === 0) {
-        // 出力するものが見つからなかった
-        await alert('no selected artboards.')
-        return
-      }
-      await exportBaum2(exportRoots, outputFolder, responsiveCheckArtboards)
-    } catch (e) {
-      console.log(e)
-      console.log(e.stack)
-      await alert(e, 'error')
+        }
+        const children = node.children
+        if (children) funcForEach(children)
+      })
     }
-    // データをもとに戻すため､意図的にエラーをスローする
+
+    funcForEach(exportRootNodes)
+
+    if (!optionChangeContentOnly && exportRoots.length === 0) {
+      // 出力するものが見つからなかった
+      await alert('対象が見つかりません')
+      return
+    }
+    await exportBaum2(exportRoots, outputFolder, responsiveCheckArtboards)
+  } catch (e) {
+    console.log(e)
+    console.log(e.stack)
+    await alert(e, 'error')
+  }
+  // データをもとに戻すため､意図的にエラーをスローする
+  if (!optionChangeContentOnly) {
     throw 'throw error for UNDO'
   }
 }
