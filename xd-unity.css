@@ -77,35 +77,35 @@ repeatgrid > * {
   viewport: true;
   scroll-rect: x y;
   rect-mask-two-d: true;
-  content-name: '.content';
+  content-name: ".content";
 }
 
 .viewport-x {
   viewport: true;
   scroll-rect: x;
   rect-mask-two-d: true;
-  content-name: '.content .layout-x';
+  content-name: ".content .layout-x";
 }
 
 .viewport-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: '.content .layout-y';
+  scroll-rect-content: ".content .layout-y";
 }
 
 .viewport-grid-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: '.content .layout-grid-x';
+  scroll-rect-content: ".content .layout-grid-x";
 }
 
 .viewport-grid-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: '.content .layout-grid-y';
+  scroll-rect-content: ".content .layout-grid-y";
 }
 
 .viewport-x > .content {
@@ -205,7 +205,9 @@ repeatgrid > * {
 
 #menu > * > .text {
   unity-name: "unity-text";
+  /*
   repeatgrid-attach-text-data-series: "aaaaaa" "bbbbbb" "ccccccc"
+   */
 }
 
 

@@ -74,9 +74,10 @@ const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント 
 const STYLE_TEXT_CONTENT = 'text-content'
 const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
   'repeatgrid-attach-text-data-series'
+const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
 
 /**
- * @type {[{selector_ops:[{name:string,op:string}], style:{}}]}
+ * @type {{selector_ops:[{name:string,op:string}], style:{}, declarations:CssDeclarations}[]}
  */
 let cssRules = null
 
@@ -98,42 +99,105 @@ async function loadCssRules() {
         rule.selector +
         '\n------'
     }
-    cssRules.push({ selector_ops: nameOps, style: rule.style })
+    cssRules.push({
+      selector_ops: nameOps,
+      style: rule.style,
+      declarations: rule.declarations,
+    })
   }
 }
 
 /**
  * CSS Parser
- * @author Jason Miller https://jsfiddle.net/user/developit/fiddles/ https://jsfiddle.net/developit/vzkckrw4/
+ * 正規表現テスト https://regex101.com/
  * @param {string} text
- * @return {[{selector:string, style:{}}]}
+ * @return {[{selector:string, declarations:CssDeclarations }]}
  */
 function parseCss(text) {
-  let tokenizer = /(?<selector>[\s\S]+?){(?<style>[\s\S]*?)(?<!\\)}/gi,
-    rules = [],
-    token
+  // ruleブロック selectorとdeclaration部に分ける
+  let tokenizer = /(?<selector>(("([^"\\]|\\.)*")|[^{"]*)*){(?<declaration>(("([^"\\]|\\.)*")|[^}"]*)*)}/gi
+  let rules = []
   // コメントアウト処理
   text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  let token
   while ((token = tokenizer.exec(text))) {
-    let style = parseCssRule(token.groups.style.trim())
-    const selector = token.groups.selector.trim().replace(/\s*\,\s*/, ', ')
-    rules.push({ selector, style })
+    const selector = token.groups.selector.trim()
+    const cssDecl = new CssDeclarations(token.groups.declaration)
+    // console.log(cssDecl.declarations)
+    rules.push({
+      selector,
+      declarations: cssDecl,
+    })
   }
   return rules
 }
 
 /**
- * @param css
+ * CSS宣言部のパース
  * @return {{}}
+ * @param declaration
  */
-function parseCssRule(css) {
+function parseCssDeclarationBlock(declaration) {
   let tokenizer = /\s*([a-z\-]+)\s*:\s*((?:[^;]*url\(.*?\)[^;]*|[^;]*)*)\s*(?:;|$)/gi,
     obj = {},
     token
-  while ((token = tokenizer.exec(css))) {
+  while ((token = tokenizer.exec(declaration))) {
     obj[token[1].toLowerCase()] = token[2]
   }
   return obj
+}
+
+class CssDeclarations {
+  /**
+   * @param {null|string} declarationBlock
+   */
+  constructor(declarationBlock = null) {
+    /**
+     * @type {string[][]}
+     */
+    if (declarationBlock) {
+      this.declarations = this.parse(declarationBlock)
+    } else {
+      this.declarations = null
+    }
+  }
+
+  /**
+   * @param {string} declarationBlock
+   * @return {string[][]}
+   */
+  parse(declarationBlock) {
+    declarationBlock = declarationBlock.trim()
+    let tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
+    /**
+     *
+     * @type {string[][]}
+     */
+    let values = {}
+    /**
+     * @type {string[]}
+     */
+    let currentValues = null
+    let token
+    while ((token = tokenizer.exec(declarationBlock))) {
+      const property = token.groups.property
+      if (property) {
+        currentValues = []
+        values[property] = currentValues
+      }
+      let value = token.groups.value
+      if (value) {
+        if (token.groups.string) {
+          value = token.groups.string
+        }
+        if (!currentValues) {
+          throw 'パースに失敗しました'
+        }
+        currentValues.push(value)
+      }
+    }
+    return values
+  }
 }
 
 /**
@@ -369,46 +433,53 @@ function parseCssSelector(selectorString) {
 }
 
 function checkStyleButton(style) {
-  return checkBoolean(style[STYLE_TYPE_BUTTON])
+  return checkBoolean(style.first(STYLE_TYPE_BUTTON))
 }
 
 function checkStyleCommentOut(style) {
-  return checkBoolean(style[STYLE_COMMENT_OUT])
+  return checkBoolean(style.first(STYLE_COMMENT_OUT))
 }
 
 function checkStyleImage(style) {
-  if (checkBoolean(style[STYLE_IMAGE_SLICE])) {
+  if (checkBoolean(style.first(STYLE_IMAGE_SLICE))) {
     return true
   }
-  return checkBoolean(style[STYLE_TYPE_IMAGE])
+  return checkBoolean(style.first(STYLE_TYPE_IMAGE))
 }
 
 function checkStyleInput(style) {
-  return checkBoolean(style[STYLE_TYPE_INPUT])
+  return checkBoolean(style.first(STYLE_TYPE_INPUT))
 }
 
 function checkStyleScrollbar(style) {
-  return checkBoolean(style[STYLE_TYPE_SCROLLBAR])
+  return checkBoolean(style.first(STYLE_TYPE_SCROLLBAR))
 }
 
 function checkStyleSlider(style) {
-  return checkBoolean(style[STYLE_TYPE_SLIDER])
+  return checkBoolean(style.first(STYLE_TYPE_SLIDER))
 }
 
 function checkStyleText(style) {
-  return checkBoolean(style[STYLE_TYPE_TEXT])
+  return checkBoolean(style.first(STYLE_TYPE_TEXT))
 }
 
 function checkStyleTextMeshPro(style) {
-  return checkBoolean(style[STYLE_TYPE_TEXTMP])
+  return checkBoolean(style.first(STYLE_TYPE_TEXTMP))
 }
 
 function checkStyleToggle(style) {
-  return checkBoolean(style[STYLE_TYPE_TOGGLE])
+  return checkBoolean(style.first(STYLE_TYPE_TOGGLE))
 }
 
+/**
+ *
+ * @param {Style} style
+ * @return {boolean}
+ */
 function checkStyleViewport(style) {
-  return checkBoolean(style[STYLE_TYPE_VIEWPORT])
+  console.log('----------check viewport----------')
+  console.log(style.style)
+  return checkBoolean(style.first(STYLE_TYPE_VIEWPORT))
 }
 
 /**
@@ -691,24 +762,24 @@ function hasAnyParamInStr(str, ...params) {
 }
 
 /**
- * @param style
+ * @param {Style} style
  * @return {{}|null}
  */
 function getContentSizeFitterParam(style) {
   if (style == null) return null
-  /*
-  const styleContentSizeFitter = style[STYLE_CONTENT_SIZE_FITTER]
-  if (styleContentSizeFitter == null) return null
-  */
+  console.log('-------- get-c-s-f -----------')
+  console.log(style.style)
 
   let param = {}
-  const styleHorizontalFit = style[STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT]
+  const styleHorizontalFit = style.first(
+    STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT,
+  )
   if (styleHorizontalFit) {
     Object.assign(param, {
       horizontal_fit: styleHorizontalFit.trim(),
     })
   }
-  const styleVerticalFit = style[STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT]
+  const styleVerticalFit = style.first(STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT)
   if (styleVerticalFit) {
     Object.assign(param, {
       vertical_fit: styleVerticalFit.trim(),
@@ -720,16 +791,6 @@ function getContentSizeFitterParam(style) {
   }
 
   return param
-}
-
-/**
- * @param styleScrollRect
- * @returns {{horizontal: boolean, vertical: boolean}}
- */
-function getScrollRectStyle(styleScrollRect) {
-  const horizontal = hasAnyParamInStr(styleScrollRect, 'x', STR_HORIZONTAL)
-  const vertical = hasAnyParamInStr(styleScrollRect, 'y', STR_VERTICAL)
-  return { horizontal, vertical }
 }
 
 /**
@@ -769,7 +830,7 @@ function sortElementsByPositionDesc(jsonElements) {
 /**
  * リピートグリッドから、GridLayoutGroup用パラメータを取得する
  * @param {RepeatGrid} repeatGrid
- * @param style
+ * @param {Style} style
  * @return {{}}
  */
 function getLayoutFromRepeatGrid(repeatGrid, style) {
@@ -792,11 +853,10 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
   addLayoutParam(layoutJson, style)
 
   if (style != null) {
-    const contentStyleLayout = style[STYLE_LAYOUT_GROUP]
-    if (hasAnyParamInStr(contentStyleLayout, 'x', STR_HORIZONTAL)) {
+    if (style.hasValue(STYLE_LAYOUT_GROUP, 'x', STR_HORIZONTAL)) {
       // gridLayoutJson を Horizontalに変える
       layoutJson['method'] = STR_HORIZONTAL
-    } else if (hasAnyParamInStr(contentStyleLayout, 'y', STR_VERTICAL)) {
+    } else if (style.hasValue(STYLE_LAYOUT_GROUP, 'y', STR_VERTICAL)) {
       // gridLayoutJson を Verticalに変える
       layoutJson['method'] = STR_VERTICAL
     }
@@ -820,7 +880,7 @@ function getNodeListBounds(nodeList, withoutNode) {
   nodeList.forEach(node => {
     const { style } = getNodeNameAndStyle(node)
     // コンポーネントにする場合は除く
-    if (style[STYLE_COMPONENT]) return
+    if (style.first(STYLE_COMPONENT)) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
     if (node === withoutNode) return
     const childBounds = getGlobalBounds(node)
@@ -1063,19 +1123,19 @@ function calcGridLayout(json, viewportNode, maskNode, children) {
  * @param viewportNode
  * @param maskNode
  * @param children
- * @param style
+ * @param {Style} style
  * @return {null}
  */
 function getLayoutJson(json, viewportNode, maskNode, children, style) {
   if (style == null) return null
-  let styleLayout = style[STYLE_LAYOUT_GROUP]
-  if (styleLayout == null) return null
+  let styleLayout = style.values(STYLE_LAYOUT_GROUP)
+  if (!styleLayout) return null
   let layoutJson = null
-  if (hasAnyParamInStr(styleLayout, 'y', STR_VERTICAL)) {
+  if (hasAnyValue(styleLayout, 'y', STR_VERTICAL)) {
     layoutJson = calcVLayout(json, viewportNode, maskNode, children)
-  } else if (hasAnyParamInStr(styleLayout, 'x', STR_HORIZONTAL)) {
+  } else if (hasAnyValue(styleLayout, 'x', STR_HORIZONTAL)) {
     layoutJson = calcHLayout(json, viewportNode, maskNode, children)
-  } else if (hasAnyParamInStr(styleLayout, 'grid')) {
+  } else if (hasAnyValue(styleLayout, 'grid')) {
     layoutJson = calcGridLayout(json, viewportNode, maskNode, children)
   }
   if (layoutJson != null) {
@@ -1104,9 +1164,9 @@ function forEachReverseElements(elements, func) {
  * @param {SceneNodeClass} node
  */
 function getUnityName(node) {
-  const { node_name: nodeName, style }= getNodeNameAndStyle(node)
-  const unityName = style['unity-name']
-  if( unityName ) {
+  const { node_name: nodeName, style } = getNodeNameAndStyle(node)
+  const unityName = style.first('unity-name')
+  if (unityName) {
     return unityName
   }
   const id = getIdFromNodeName(nodeName)
@@ -1117,7 +1177,7 @@ function getUnityName(node) {
 }
 
 /**
- * @param {string} styleFix
+ * @param {[]} styleFix
  * @returns {null|{top: boolean, left: boolean, bottom: boolean, width: boolean, right: boolean, height: boolean}}
  */
 function getStyleFix(styleFix) {
@@ -1131,29 +1191,29 @@ function getStyleFix(styleFix) {
   let styleFixLeft = false
   let styleFixRight = false
 
-  if (hasAnyParamInStr(styleFix, 'w', 'width', 'size')) {
+  if (hasAnyValue(styleFix, 'w', 'width', 'size')) {
     styleFixWidth = true
   }
-  if (hasAnyParamInStr(styleFix, 'h', 'height', 'size')) {
+  if (hasAnyValue(styleFix, 'h', 'height', 'size')) {
     styleFixHeight = true
   }
-  if (hasAnyParamInStr(styleFix, 't', 'top')) {
+  if (hasAnyValue(styleFix, 't', 'top')) {
     styleFixTop = true
   }
-  if (hasAnyParamInStr(styleFix, 'b', 'bottom')) {
+  if (hasAnyValue(styleFix, 'b', 'bottom')) {
     styleFixBottom = true
   }
-  if (hasAnyParamInStr(styleFix, 'l', 'left')) {
+  if (hasAnyValue(styleFix, 'l', 'left')) {
     styleFixLeft = true
   }
-  if (hasAnyParamInStr(styleFix, 'r', 'right')) {
+  if (hasAnyValue(styleFix, 'r', 'right')) {
     styleFixRight = true
   }
-  if (hasParamInStr(styleFix, 'x')) {
+  if (hasAnyValue(styleFix, 'x')) {
     styleFixLeft = true
     styleFixRight = true
   }
-  if (hasParamInStr(styleFix, 'y')) {
+  if (hasAnyValue(styleFix, 'y')) {
     styleFixTop = true
     styleFixBottom = true
   }
@@ -1187,7 +1247,7 @@ function getStyleFix(styleFix) {
  offset_min: offsetMin,
  offset_max: offsetMax,
  * @param {SceneNodeClass} node
- * @param style
+ * @param {Style} style
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
@@ -1207,7 +1267,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
   let styleFixLeft = null
   let styleFixRight = null
 
-  const styleFix = style[STYLE_FIX]
+  const styleFix = style.values(STYLE_FIX)
   if (styleFix != null) {
     // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
     const fix = getStyleFix(styleFix)
@@ -1405,7 +1465,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
     }
   }
 
-  if (styleFix != null && hasAnyParamInStr(styleFix, 'c', 'center')) {
+  if (style.hasValue(STYLE_FIX, 'c', 'center')) {
     anchorMin.x = 0.5
     anchorMax.x = 0.5
     const center = beforeBounds.x + beforeBounds.width / 2
@@ -1414,7 +1474,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
     offsetMax.x = center - parentCenter + beforeBounds.width / 2
   }
 
-  if (styleFix != null && hasAnyParamInStr(styleFix, 'm', 'middle')) {
+  if (style.hasValue(STYLE_FIX, 'm', 'middle')) {
     anchorMin.y = 0.5
     anchorMax.y = 0.5
     const middle = beforeBounds.y + beforeBounds.height / 2
@@ -1622,13 +1682,97 @@ function getIdFromNodeName(nodeName) {
 
 const STYLE_MATCH_LOG = 'match-log'
 
+class Style {
+  /**
+   *
+   * @param {*[][]} style
+   */
+  constructor(style) {
+    this.style = style
+    console.log('---------------new Style---------------')
+    console.log(style)
+  }
+
+  /**
+   * @param {string} property
+   * @return {*|null}
+   */
+  first(property) {
+    const values = this.values(property)
+    if (values == null) return null
+    return values[0]
+  }
+
+  /**
+   *
+   * @param {string} property
+   * @param {*} value
+   */
+  setFirst(property, value) {
+    let values = this.values(property)
+    if (!values) {
+      values = this.style[property] = []
+    }
+    values[0] = value
+  }
+
+  values(property) {
+    return this.style[property]
+  }
+
+  /**
+   * @param {string} property
+   * @return {boolean}
+   */
+  has(property) {
+    let values = this.values(property)
+    return !!values
+  }
+
+  /**
+   * @param {string} property
+   * @param checkValues
+   * @return {boolean}
+   */
+  hasValue(property, ...checkValues) {
+    //hasAnyValue(this.values(), checkValues)
+    let values = this.values(property)
+    if (!values) {
+      return false
+    }
+    for (let value of values) {
+      for (let checkValue of checkValues) {
+        if (value === checkValue) return true
+      }
+    }
+    return false
+  }
+}
+
+/**
+ * @param {[]} values
+ * @param {*} checkValues
+ * @return {boolean}
+ */
+function hasAnyValue(values, ...checkValues) {
+  if (!values) {
+    return false
+  }
+  for (let value of values) {
+    for (let checkValue of checkValues) {
+      if (value === checkValue) return true
+    }
+  }
+  return false
+}
+
 /**
  *
  * @param {string} nodeName
  * @param {SceneNodeClass} parent
  * @param cssRules
  * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
- * @returns {*}
+ * @returns {Style}
  */
 function getStyleFromNodeName(
   nodeName,
@@ -1636,7 +1780,7 @@ function getStyleFromNodeName(
   cssRules,
   addNodeNameArgs = null,
 ) {
-  const style = {}
+  const declarations = {}
   let nodeNameArgs = parseNodeName(nodeName)
   nodeNameArgs = nodeNameArgs.concat(addNodeNameArgs)
   for (const rule of cssRules) {
@@ -1657,20 +1801,24 @@ function getStyleFromNodeName(
       tmpParent = result.next_parent
     }
     if (selectorMatch) {
-      Object.assign(style, rule.style)
+      Object.assign(declarations, rule.declarations.declarations)
     }
   }
 
   const localCss = parseCss(nodeName)
   if (localCss != null && localCss.length > 0) {
     // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
-    Object.assign(style, localCss[0].style) // 上書きする
+    Object.assign(declarations, localCss[0].declarations) // 上書きする
     console.log('-----------local style------------', style)
   }
 
-  const log = style[STYLE_MATCH_LOG]
-  if (log) console.log(log)
-  //console.log(nodeNameArgs)
+  let style = new Style(declarations)
+  if (style.hasValue(STYLE_MATCH_LOG)) {
+    console.log(style.values(STYLE_MATCH_LOG))
+  }
+
+  //console.log('------------ declarations ----------------')
+  //console.log(declarations)
 
   return style
 }
@@ -1688,7 +1836,7 @@ const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
  * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
  * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
  * @param {SceneNodeClass} node
- * @returns {{node_name: string, name: string, style: *}|null}
+ * @returns {{node_name: string, name: string, style: Style}|null}
  */
 function getNodeNameAndStyle(node) {
   if (node == null) {
@@ -1709,7 +1857,7 @@ function getNodeNameAndStyle(node) {
 
   // 名前の最初が//ならコメントNode
   if (nodeName.startsWith('//')) {
-    style[STYLE_COMMENT_OUT] = true
+    style.setFirst(STYLE_COMMENT_OUT, true)
     nodeName = nodeName.substring(2)
   }
 
@@ -1742,7 +1890,7 @@ function getNodeNameAndStyle(node) {
     //     - item_text
     // 以上のような構成になる
     nodeName = 'repeatgrid-child'
-    const styleRepeatgridChildName = style[STYLE_REPEATGRID_CHILD_NAME]
+    const styleRepeatgridChildName = style.first(STYLE_REPEATGRID_CHILD_NAME)
     if (styleRepeatgridChildName) {
       nodeName = styleRepeatgridChildName
     }
@@ -1757,11 +1905,14 @@ function getNodeNameAndStyle(node) {
     value['name'] = nodeName
 
     // RepeatGridで、子供がすべてコメントアウトなら、子供を包括するグループもコメントアウトする
-    style[STYLE_COMMENT_OUT] = !node.children.some(child => {
-      // コメントアウトしてないものが一つでもあるか
-      const childStyle = getNodeNameAndStyle(child).style
-      return !childStyle[STYLE_COMMENT_OUT]
-    })
+    style.setFirst(
+      STYLE_COMMENT_OUT,
+      !node.children.some(child => {
+        // コメントアウトしてないものが一つでもあるか
+        const childStyle = getNodeNameAndStyle(child).style
+        return !childStyle.first(STYLE_COMMENT_OUT)
+      }),
+    )
   }
 
   return value
@@ -1815,7 +1966,7 @@ function makeLayoutJson(root) {
  * @param style
  */
 function addCanvasGroup(json, node, style) {
-  let canvasGroup = style[STYLE_CANVAS_GROUP]
+  let canvasGroup = style.first(STYLE_CANVAS_GROUP)
   if (canvasGroup != null) {
     Object.assign(json, {
       canvas_group: { alpha: 0 },
@@ -1844,7 +1995,7 @@ function addDrawRectTransform(json, node) {
 function addRectTransformAnchorOffsetX(json, style) {
   // 指定が会った場合、上書きする
   if (!style) return
-  const anchorsX = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X]
+  const anchorsX = style.first(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X)
   if (anchorsX) {
     const anchorArgs = anchorsX.split(' ')
     if (anchorArgs.length >= 4) {
@@ -1854,7 +2005,7 @@ function addRectTransformAnchorOffsetX(json, style) {
       json['offset_max']['x'] = parseFloat(anchorArgs[3])
     }
   }
-  const anchorsY = style[STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y]
+  const anchorsY = style.first(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
   if (anchorsY) {
     const anchorArgs = anchorsX.split(' ')
     if (anchorArgs.length >= 4) {
@@ -1888,7 +2039,7 @@ function addState(json, style) {
   /**
    * @type {string}
    */
-  const styleState = style['state']
+  const styleState = style.first('state')
   if (!styleState) return
   const state = styleState.split(',').map(value => value.trim())
   Object.assign(json, {
@@ -1943,10 +2094,10 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
 
   let fileExtension = '.png'
-  if (checkBoolean(style[STYLE_IMAGE_NO_SLICE])) {
+  if (checkBoolean(style.first(STYLE_IMAGE_NO_SLICE))) {
     fileExtension = '-noslice.png'
   }
-  const image9Slice = style[STYLE_IMAGE_SLICE]
+  const image9Slice = style.first(STYLE_IMAGE_SLICE)
   if (image9Slice) {
     // RegexTest https://regex101.com/
     const pattern = /(?<t>[0-9]+)(px)?(\s+)?(?<r>[0-9]+)?(px)?(\s+)?(?<b>[0-9]+)?(px)?(\s+)?(?<l>[0-9]+)?(px)?/
@@ -1995,14 +2146,14 @@ async function addImage(json, node, root, outputFolder, renditions) {
 
   addDrawRectTransform(json, node)
 
-  const stylePreserveAspect = style[STYLE_PRESERVE_ASPECT]
+  const stylePreserveAspect = style.first(STYLE_PRESERVE_ASPECT)
   if (stylePreserveAspect != null) {
     Object.assign(json, {
       preserve_aspect: checkBoolean(stylePreserveAspect),
     })
   }
 
-  const styleRayCastTarget = style[STYLE_RAYCAST_TARGET]
+  const styleRayCastTarget = style.first(STYLE_RAYCAST_TARGET)
   if (styleRayCastTarget != null) {
     Object.assign(json, {
       raycast_target: checkBoolean(styleRayCastTarget),
@@ -2010,14 +2161,14 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
 
   let localScale = 1.0
-  if (style[STYLE_IMAGE_SCALE] != null) {
-    const scaleImage = parseFloat(style[STYLE_IMAGE_SCALE])
+  if (style.first(STYLE_IMAGE_SCALE) != null) {
+    const scaleImage = parseFloat(style.first(STYLE_IMAGE_SCALE))
     if (Number.isFinite(scaleImage)) {
       localScale = scaleImage
     }
   }
 
-  if (!checkBoolean(style[STYLE_BLANK])) {
+  if (!checkBoolean(style.first(STYLE_BLANK))) {
     Object.assign(json, {
       image: fileName,
     })
@@ -2043,7 +2194,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
 /**
  *
  * @param json
- * @param {{}} style
+ * @param {Style} style
  */
 function addContentSizeFitter(json, style) {
   const contentSizeFitterJson = getContentSizeFitterParam(style)
@@ -2056,26 +2207,23 @@ function addContentSizeFitter(json, style) {
 
 /**
  * @param json
- * @param style
+ * @param {Style} style
  */
 function addScrollRect(json, style) {
-  const styleScrollRect = style[STYLE_SCROLL_RECT]
+  const styleScrollRect = style.first(STYLE_SCROLL_RECT)
   if (!styleScrollRect) return
-  const {
-    horizontal: scrollRectHorizontal,
-    vertical: scrollRectVertical,
-  } = getScrollRectStyle(styleScrollRect)
+
   Object.assign(json, {
     scroll_rect: {
-      horizontal: scrollRectHorizontal,
-      vertical: scrollRectVertical,
+      horizontal: style.hasValue(STYLE_SCROLL_RECT, 'x', STR_HORIZONTAL),
+      vertical: style.hasValue(STYLE_SCROLL_RECT, 'y', STR_VERTICAL),
       auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
     },
   })
 }
 
 function addRectMask2d(json, style) {
-  const styleRectMask2D = style[STYLE_RECT_MASK_2D]
+  const styleRectMask2D = style.first(STYLE_RECT_MASK_2D)
   if (!styleRectMask2D) return
   Object.assign(json, {
     rect_mask_2d: true, // 受け取り側、boolで判定しているためbool値でいれる　それ以外は弾かれる
@@ -2088,13 +2236,13 @@ function addRectMask2d(json, style) {
  * @param {SceneNodeClass} viewportNode
  * @param {SceneNodeClass} maskNode
  * @param {SceneNodeList} children
- * @param style
+ * @param {Style} style
  */
 function addLayout(json, viewportNode, maskNode, children, style) {
   let layoutJson = getLayoutJson(json, viewportNode, maskNode, children, style)
   if (!layoutJson) return
 
-  const layoutSpacingX = style[STYLE_LAYOUT_GROUP_SPACING_X]
+  const layoutSpacingX = style.first(STYLE_LAYOUT_GROUP_SPACING_X)
   if (layoutSpacingX != null) {
     Object.assign(layoutJson, {
       spacing_x: parseInt(layoutSpacingX), //TODO: pxやenを無視している
@@ -2109,29 +2257,33 @@ function addLayout(json, viewportNode, maskNode, children, style) {
 /**
  * レイアウトコンポーネント各種パラメータをStyleから設定する
  * @param layoutJson
- * @param style
+ * @param {Style} style
  */
 function addLayoutParam(layoutJson, style) {
   if (style == null) return
-  const styleChildAlignment = style[STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT]
+  const styleChildAlignment = style.first(STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT)
   if (styleChildAlignment) {
     Object.assign(layoutJson, {
       control_child_size: styleChildAlignment,
     })
   }
-  const styleControlChildSize = style[STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE]
+  const styleControlChildSize = style.first(
+    STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE,
+  )
   if (styleControlChildSize) {
     Object.assign(layoutJson, {
       control_child_size: styleControlChildSize,
     })
   }
-  const styleUseChildScale = style[STYLE_LAYOUT_GROUP_USE_CHILD_SCALE]
+  const styleUseChildScale = style.first(STYLE_LAYOUT_GROUP_USE_CHILD_SCALE)
   if (styleUseChildScale) {
     Object.assign(layoutJson, {
       use_child_scale: styleUseChildScale,
     })
   }
-  const styleChildForceExpand = style[STYLE_LAYOUT_GROUP_CHILD_FORCE_EXPAND]
+  const styleChildForceExpand = style.first(
+    STYLE_LAYOUT_GROUP_CHILD_FORCE_EXPAND,
+  )
   if (styleChildForceExpand) {
     Object.assign(layoutJson, {
       child_force_expand: styleChildForceExpand,
@@ -2139,16 +2291,16 @@ function addLayoutParam(layoutJson, style) {
   }
 
   // GridLayoutGroupのみ適応される
-  const styleStartAxis = style[STYLE_LAYOUT_GROUP_START_AXIS]
+  const styleStartAxis = style.first(STYLE_LAYOUT_GROUP_START_AXIS)
   if (styleStartAxis) {
     // まず横方向へ並べる
-    if (hasAnyParamInStr(styleStartAxis, 'x', STR_HORIZONTAL)) {
+    if (style.hasValue(STYLE_LAYOUT_GROUP_START_AXIS, 'x', STR_HORIZONTAL)) {
       Object.assign(layoutJson, {
         start_axis: STR_HORIZONTAL,
       })
     }
     // まず縦方向へ並べる
-    if (hasAnyParamInStr(styleStartAxis, 'y', STR_VERTICAL)) {
+    if (style.hasValue(STYLE_LAYOUT_GROUP_START_AXIS, 'y', STR_VERTICAL)) {
       Object.assign(layoutJson, {
         start_axis: STR_VERTICAL,
       })
@@ -2160,13 +2312,11 @@ function addLayoutParam(layoutJson, style) {
  *
  * @param {{}} json
  * @param {SceneNodeClass} node
- * @param {{}} style
+ * @param {Style} style
  */
 function addLayoutElement(json, node, style) {
-  const styleElement = style[STYLE_LAYOUT_ELEMENT]
-  if (styleElement == null) return
   const bounds = getGlobalDrawBounds(node)
-  if (hasParamInStr(styleElement, 'min')) {
+  if (style.hasValue(STYLE_LAYOUT_ELEMENT, 'min')) {
     Object.assign(json, {
       layout_element: {
         min_width: bounds.width,
@@ -2174,7 +2324,7 @@ function addLayoutElement(json, node, style) {
       },
     })
   }
-  if (hasAnyParamInStr(styleElement, 'preferred')) {
+  if (style.hasValue(STYLE_LAYOUT_ELEMENT, 'preferred')) {
     Object.assign(json, {
       layout_element: {
         preferred_width: bounds.width,
@@ -2185,13 +2335,11 @@ function addLayoutElement(json, node, style) {
 }
 
 function addLayer(json, style) {
-  const styleLayer = style[STYLE_LAYER]
+  const styleLayer = style.first(STYLE_LAYER)
   if (styleLayer != null) {
     Object.assign(json, { layer: styleLayer })
   }
 }
-
-const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
 
 /**
  *
@@ -2213,14 +2361,10 @@ async function createViewport(json, node, root, funcForEachChild) {
 
   // Viewportは必ずcontentを持つ
   // contentのアサインと名前設定
-  let contentName = '.content'
-  const styleScrollRectContent = style[STYLE_SCROLL_RECT_CONTENT]
+  let contentName = 'content'
+  const styleScrollRectContent = style.first(STYLE_SCROLL_RECT_CONTENT)
   if (styleScrollRectContent) {
-    const regex = /\s*['"](?<name>.*)['"]\s*/
-    const token = regex.exec(styleScrollRectContent)
-    if (token && token.groups.name) {
-      contentName = token.groups.name
-    }
+    contentName = styleScrollRectContent
   }
 
   Object.assign(json, {
@@ -2329,7 +2473,7 @@ async function createViewport(json, node, root, funcForEachChild) {
   // ContentのRectTransformを決める
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentStyleFix = getStyleFix(contentStyle[STYLE_FIX])
+  const contentStyleFix = getStyleFix(contentStyle.values(STYLE_FIX))
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
@@ -2370,9 +2514,9 @@ async function createGroup(json, node, root, funcForEachChild) {
   })
   await funcForEachChild()
 
-  if (style['active']) {
+  if (style.first('active')) {
     Object.assign(json, {
-      deactive: checkBoolean(style['active']),
+      deactive: checkBoolean(style.first('active')),
     })
   }
   addDrawRectTransform(json, node)
@@ -2398,7 +2542,7 @@ async function createScrollbar(json, node, funcForEachChild) {
     type: type,
     name: getUnityName(node),
   })
-  let direction = style[STYLE_DIRECTION]
+  let direction = style.first(STYLE_DIRECTION)
   if (direction != null) {
     Object.assign(json, {
       scroll_direction: direction,
@@ -2434,9 +2578,9 @@ async function createToggle(json, node, root, funcForEachChild) {
   })
 
   // Toggle group
-  if (style[STYLE_TOGGLE_GROUP]) {
+  if (style.first(STYLE_TOGGLE_GROUP)) {
     Object.assign(json, {
-      group: style[STYLE_TOGGLE_GROUP],
+      group: style.first(STYLE_TOGGLE_GROUP),
     })
   }
 
@@ -2489,9 +2633,10 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   /** @type {Text} */
   let nodeText = node
 
-  const styleTextContent = style[STYLE_TEXT_CONTENT]
-  const styleRepeatGridAttachText =
-    style[STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES]
+  const styleTextContent = style.first(STYLE_TEXT_CONTENT)
+  const styleRepeatGridAttachText = style.first(
+    STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES,
+  )
   if (styleTextContent || styleRepeatGridAttachText) {
     let repeatGrid = getRepeatGrid(nodeText)
     // RepeatGrid内のテキストは操作できない
@@ -2545,14 +2690,14 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   }
 
   // @ALIGN オプションがあった場合､上書きする
-  const styleAlign = style[STYLE_ALIGN]
+  const styleAlign = style.first(STYLE_ALIGN)
   if (styleAlign != null) {
     hAlign = styleAlign
   }
 
   // @v-align オプションがあった場合、上書きする
   // XDでは、left-center-rightは設定できるため
-  const styleVAlign = style[STYLE_V_ALIGN]
+  const styleVAlign = style.first(STYLE_V_ALIGN)
   if (styleVAlign != null) {
     vAlign = styleVAlign
   }
@@ -2626,15 +2771,15 @@ async function createImage(json, node, root, outputFolder, renditions) {
     addState(json, style)
     await addImage(json, node, root, outputFolder, renditions)
     // assignComponent
-    if (style[STYLE_COMPONENT] != null) {
+    if (style.first(STYLE_COMPONENT) != null) {
       Object.assign(json, {
         component: {},
       })
     }
     // image type
-    if (style[STYLE_IMAGE_TYPE] != null) {
+    if (style.first(STYLE_IMAGE_TYPE) != null) {
       Object.assign(json, {
-        image_type: style[STYLE_IMAGE_TYPE],
+        image_type: style.first(STYLE_IMAGE_TYPE),
       })
     }
   }
@@ -2916,7 +3061,10 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
         // IMAGEであった場合、そのグループの不可視情報はそのまま活かすため
         // 自身は可視にし、子供の不可視情報は生かす
         // 本来は sourceImageをNaturalWidth,Heightで出力する
-        if (style[STYLE_IMAGE] != null || style[STYLE_IMAGE_SLICE] != null) {
+        if (
+          style.first(STYLE_IMAGE) != null ||
+          style.first(STYLE_IMAGE_SLICE) != null
+        ) {
           return false
         }
       })
@@ -3430,25 +3578,82 @@ async function testRendition(selection, root) {
     })
 }
 
+class CssSelectorArg {
+  /**
+   *
+   * @param {null} name
+   */
+  constructor() {
+    this.name = name
+    this.opValue = null
+    this.value = null
+    this.op = ''
+  }
+}
+
+class CssSelector {
+  constructor() {
+    /**
+     * @type {CssSelectorArg[]}
+     */
+    this.args = []
+  }
+
+  /**
+   *
+   * @param name
+   */
+  pushName(name) {
+    let arg = new CssSelectorArg()
+    this.args.push(arg)
+  }
+  lastArg() {
+    return this.args[this.args.length - 1]
+  }
+  pushToken(token) {
+    if (token.op) {
+      this.lastArg().op = op
+    }
+  }
+}
+
+class CssRule {
+  constructor() {
+    this.MODE_SELECTOR = 0
+    this.MODE_STYLE = 1
+    this.mode = this.MODE_SELECTOR
+  }
+}
+
 /**
  *
  * @param {Selection} selection
  * @param {RootNode} root
  * @return {Promise<void>}
  */
-async function testInteractions(selection, root) {
-  // Print all the interactions triggered by a node
-  const node = selection.items[0]
-  console.log('test interactions:' + node.name)
-  node.triggeredInteractions.forEach(interaction => {
-    console.log(
-      'Trigger: ' +
-        interaction.trigger.type +
-        ' -> Action: ' +
-        interaction.action.type,
-    )
-    printAllProperties(interaction.action.destination)
-  })
+async function testParse(selection, root) {
+  const folder = await fs.getPluginFolder()
+  const file = await folder.getEntry('xd-unity.css')
+  let text = await file.read()
+
+  let tokenizer = /("(?<string>([^"\\]|\\.)*)")|(?<key>[\w\-]+:)|(?<name>[.:#]?[\w\-*]+(\([\w+\-,]*\))?)|(?<op>\s*[;{}\=>[\]() ]\s*)/gi
+  let rules = []
+  let token
+  // コメントアウト処理
+  text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  let str = ''
+  while ((token = tokenizer.exec(text))) {
+    if (token.groups.type) str += token.groups.class
+    if (token.groups.key) str += token.groups.key
+    if (token.groups.op) {
+      const op = token.groups.op
+      str += op
+      if (op === '}') str += '\n'
+    }
+    if (token.groups.string) str += '"' + token.groups.string + ' "'
+    if (token.groups.name) str += ' ' + token.groups.name
+  }
+  console.log(str)
 }
 
 module.exports = {
@@ -3457,6 +3662,6 @@ module.exports = {
     exportBaum2Command: pluginExportBaum2Command,
     addResponsiveParam: pluginResponsiveParamName,
     addImageSizeFix: pluginAddImageSizeFix,
-    testInteractions: testInteractions,
+    testInteractions: testParse,
   },
 }
