@@ -75,9 +75,11 @@ const STYLE_TEXT_CONTENT = 'text-content'
 const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
   'repeatgrid-attach-text-data-series'
 const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
+const STYLE_MATCH_LOG = 'match-log'
+const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
 
 /**
- * @type {{selector_ops:[{name:string,op:string}], style:{}, declarations:CssDeclarations}[]}
+ * @type {{selector:CssSelector, declarations:CssDeclarations }[]}
  */
 let cssRules = null
 
@@ -90,61 +92,45 @@ async function loadCssRules() {
   const folder = await fs.getPluginFolder()
   const file = await folder.getEntry('xd-unity.css')
   const contents = await file.read()
-  const rules = parseCss(contents)
-  for (const rule of rules) {
-    let nameOps = parseCssSelector(rule.selector)
-    if (!nameOps) {
-      throw 'CSSの解析に失敗しました\n"}"は"\\{"としてください\n' +
-        '------\n' +
-        rule.selector +
-        '\n------'
-    }
-    cssRules.push({
-      selector_ops: nameOps,
-      style: rule.style,
-      declarations: rule.declarations,
-    })
-  }
+  cssRules = parseCss(contents)
 }
 
 /**
  * CSS Parser
  * 正規表現テスト https://regex101.com/
  * @param {string} text
- * @return {[{selector:string, declarations:CssDeclarations }]}
+ * @return {{selector:CssSelector, declarations:CssDeclarations }[]}
  */
 function parseCss(text) {
   // ruleブロック selectorとdeclaration部に分ける
-  let tokenizer = /(?<selector>(("([^"\\]|\\.)*")|[^{"]*)*){(?<declaration>(("([^"\\]|\\.)*")|[^}"]*)*)}/gi
+  // declaration部がなくてもSelectorだけでも取得できるようにする　NodeNameのパースに使うため
+  let tokenizer = /(?<selector>(("([^"\\]|\\.)*")|[^{"]+)+)({(?<declaration>(("([^"\\]|\\.)*")|[^}"]*)*)}\s*)?/gi
   let rules = []
   // コメントアウト処理
   text = text.replace(/\/\*[\s\S]*?\*\//g, '')
   let token
   while ((token = tokenizer.exec(text))) {
-    const selector = token.groups.selector.trim()
-    const cssDecl = new CssDeclarations(token.groups.declaration)
-    // console.log(cssDecl.declarations)
-    rules.push({
-      selector,
-      declarations: cssDecl,
-    })
+    try {
+      const selector = new CssSelector(
+        cssSelectorParser.parse(token.groups.selector),
+      )
+      let declarations = null
+      if (token.groups.declaration) {
+        declarations = new CssDeclarations(token.groups.declaration)
+      }
+      rules.push({
+        selector,
+        declarations,
+      })
+    } catch (e) {
+      // 以下はデバッグように残してある
+      //console.log('CSSのパースに失敗しました')
+      //console.log(e.stack)
+      //console.log(text)
+      throw e.message
+    }
   }
   return rules
-}
-
-/**
- * CSS宣言部のパース
- * @return {{}}
- * @param declaration
- */
-function parseCssDeclarationBlock(declaration) {
-  let tokenizer = /\s*([a-z\-]+)\s*:\s*((?:[^;]*url\(.*?\)[^;]*|[^;]*)*)\s*(?:;|$)/gi,
-    obj = {},
-    token
-  while ((token = tokenizer.exec(declaration))) {
-    obj[token[1].toLowerCase()] = token[2]
-  }
-  return obj
 }
 
 class CssDeclarations {
@@ -156,71 +142,114 @@ class CssDeclarations {
      * @type {string[][]}
      */
     if (declarationBlock) {
-      this.declarations = this.parse(declarationBlock)
+      this.declarations = parseCssDeclarationBlock(declarationBlock)
     } else {
-      this.declarations = null
+      this.declarations = {}
     }
   }
 
   /**
-   * @param {string} declarationBlock
-   * @return {string[][]}
+   * @return {string[]}
    */
-  parse(declarationBlock) {
-    declarationBlock = declarationBlock.trim()
-    let tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
-    /**
-     *
-     * @type {string[][]}
-     */
-    let values = {}
-    /**
-     * @type {string[]}
-     */
-    let currentValues = null
-    let token
-    while ((token = tokenizer.exec(declarationBlock))) {
-      const property = token.groups.property
-      if (property) {
-        currentValues = []
-        values[property] = currentValues
-      }
-      let value = token.groups.value
-      if (value) {
-        if (token.groups.string) {
-          value = token.groups.string
-        }
-        if (!currentValues) {
-          throw 'パースに失敗しました'
-        }
-        currentValues.push(value)
-      }
+  properties() {
+    return Object.keys(this.declarations)
+  }
+
+  /**
+   * @param property
+   * @return {string[]|*}
+   */
+  values(property) {
+    return this.declarations[property]
+  }
+
+  setFirst(property, value) {
+    let values = this.values(property)
+    if (!values) {
+      values = this.declarations[property] = []
     }
-    return values
+    values[0] = value
   }
 }
 
 /**
+ * @param {string} declarationBlock
+ * @return {string[][]}
+ */
+function parseCssDeclarationBlock(declarationBlock) {
+  declarationBlock = declarationBlock.trim()
+  let tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
+  /**
+   * @type {string[][]}
+   */
+  let values = {}
+  /**
+   * @type {string[]}
+   */
+  let currentValues = null
+  let token
+  while ((token = tokenizer.exec(declarationBlock))) {
+    const property = token.groups.property
+    if (property) {
+      currentValues = []
+      values[property] = currentValues
+    }
+    let value = token.groups.value
+    if (value) {
+      if (token.groups.string) {
+        value = token.groups.string
+      }
+      if (!currentValues) {
+        throw 'パースに失敗しました'
+      }
+      currentValues.push(value)
+    }
+  }
+  return values
+}
+
+const cacheParseNodeName = {}
+/**
  * NodeNameを分解
- * 現在、スペース有りも無しも区別していない
- * .a.b .c  -> [".a",".b",".c"]
- * .a.b.c  -> [".a",".b",".c"]
  * @param {string} nodeName
  * @param nodeName
- * @return {string[]}
+ * @return {{type:string, classNames:string[], id:string, tagName:string, nestingOperator:string, declarations:CssDeclarations}}
  */
 function parseNodeName(nodeName) {
-  // nodeNameもCSS selectorフォーマットのため
-  const args = parseCssSelector(nodeName)
-  if (args) {
-    const names = []
-    for (let arg of args) {
-      names.push(arg.name)
+  const cache = cacheParseNodeName[nodeName]
+  if (cache) return cache
+  // コメントアウトチェック
+  let result = null
+  if (nodeName.startsWith('//')) {
+    // コメントアウトのスタイルを追加する
+    const declarations = new CssDeclarations()
+    declarations.setFirst(STYLE_COMMENT_OUT, true)
+    result = { declarations }
+  } else {
+    try {
+      let rules = parseCss(nodeName)
+      /*
+    console.log('parseNodeName--------------------')
+    console.log(nodeName)
+    console.log('--------------------')
+    console.log(rules)
+    console.log('--------------------')
+     */
+      if (!rules || rules.length === 0 || !rules[0].selector) {
+        // パースできなかった場合はそのまま返す
+        result = { tagName: nodeName }
+      } else {
+        result = rules[0].selector.json
+        Object.assign(result, {
+          declarations: rules[0].declarations,
+        })
+      }
+    } catch (e) {
+      result = { tagName: nodeName }
     }
-    return names
   }
-  // parseできなかった場合はそのまま帰す
-  return [nodeName]
+  cacheParseNodeName[nodeName] = result
+  return result
 }
 
 class MinMaxSize {
@@ -321,117 +350,6 @@ class ResponsiveParameter {
   }
 }
 
-class SelectorArg {
-  constructor(parsedTokenGroups) {
-    /*
-    pseudo_name 例: :not
-    pseudo_open
-    name　例: #aaa .bbb ccc
-    attr
-    attr_name 例:
-      attr_op 例: *= ^= $=
-      attr_val 例: dddd
-    bracket_close
-     */
-    this.name = parsedTokenGroups.name
-
-    let op = parsedTokenGroups.op
-    if (!op) {
-      // opがNull・Undefinedで会った場合 ''に置き換える
-      op = ''
-    } else {
-      op = op.trim()
-      if (op === '') op = '%20' // 空白が全部きえてしまった場合　→ '%20'(スペース)
-    }
-    this.op = op
-  }
-
-  /**
-   * セレクターのArgとマッチするかの判定
-   * 戻り値next_parentに先登った親がはいる　これにより連続して判定することができる
-   * namesが文字列なのは、content等のSceneNodeを持たないもの用
-   * @param {string[]} names
-   * @param {SceneNodeClass} parent
-   * @returns {null|{next_parent: SceneNodeClass}}
-   */
-  match(names, parent) {
-    //console.log('---------check----------')
-    //console.log(this, names)
-    switch (this.op) {
-      case '':
-        break
-      case '>':
-        if (parent == null) {
-          // 親の名前でチェックしなければならないが、親がなかった
-          return null
-        }
-        const parentNodeName = getNodeName(parent)
-        names = parseNodeName(parentNodeName)
-        names.push(getElementName(parent))
-        parent = parent.parent
-        break
-      default:
-      case '%20':
-        throw 'CSS error'
-    }
-    if (this.name !== '*') {
-      if (!names.find(name => name === this.name)) return null
-    }
-    return {
-      next_parent: parent,
-    }
-  }
-}
-
-/**
- * TODO:この関数にキャッシュを導入すると良いのでは
- * @param {string} selectorString
- * @return {[SelectorArg]}
- */
-function parseCssSelector(selectorString) {
-  if (!selectorString) {
-    return null
-  }
-  selectorString = selectorString.trim()
-  // 正規表現テスト https://re\s*([a-z\-]+)\s*:\s*((?:[^;]*url\(.*?\)[^;]*|[^;]*)*)\s*(?:;|$)gex101.com/
-  // 表現一覧 https://jsoup.org/apidocs/index.html?org/jsoup/select/Selector.html
-  // const regexSelector = /(?<name>[.#]?[a-zA-Z0-9_\-*]+)?(?<attr>\[(?<attr_name>[a-z]+)(?<attr_op>[$=]+)"?(?<attr_val>[a-zA-Z0-9_\-]*)"?])?(?<op>[ >]+)?/g
-  /*
-  pseudo_name 例: :not
-  pseudo_open
-  name　例: #aaa .bbb ccc
-  attr
-  attr_name 例:
-  attr_op 例: *= ^= $=
-  attr_val 例: dddd
-  bracket_close
-   */
-  const regexSelector = /((?<pseudo_name>:[a-zA-Z0-9_\-]+)(?<pseudo_open>\()?\s*)?(?<name>[.#]?[a-zA-Z0-9_\-*]+)?(?<attr>\[\s*(?<attr_name>[a-z]+)(\s*(?<attr_op>[$=]+)\s*)"?(?<attr_val>[a-zA-Z0-9_\-]*)"?\s*])?(\s*(?<bracket_close>\)))?(?<op>[ >]+)?/gi
-  //const regexSelector = /(?<name>[\.#]?[a-zA-Z0-9_\-]+)(?<op>[ >]+)?/gi
-  // セレクターを分解
-  let nameOps = []
-  while (true) {
-    let token = regexSelector.exec(selectorString)
-    if (!token || !token[0]) {
-      // マッチした文字列が空なら終了
-      break
-    }
-    /**
-     * opの種類は　'', '%20'(スペース), '>'
-     * .a.b -> selector_ops:[ {name:".a","op":""}, {name:".b","op":""} ]
-     * .a > .b -> selector_ops:[ {name:".a","op":">"}, {name:".b","op":""} ]
-     */
-    nameOps.push(new SelectorArg(token.groups))
-  }
-  // Validation
-  // 最後の要素のopは'' であるべき
-  // valueのなかに{}の文字がはいっているとエラーになる確率が高い
-  if (nameOps.length === 0) {
-    return null
-  }
-  return nameOps
-}
-
 function checkStyleButton(style) {
   return checkBoolean(style.first(STYLE_TYPE_BUTTON))
 }
@@ -477,8 +395,6 @@ function checkStyleToggle(style) {
  * @return {boolean}
  */
 function checkStyleViewport(style) {
-  console.log('----------check viewport----------')
-  console.log(style.style)
   return checkBoolean(style.first(STYLE_TYPE_VIEWPORT))
 }
 
@@ -733,42 +649,11 @@ function testBounds(a, b) {
 }
 
 /**
- * 文字列の中に所定のパラメータ文字列がるかチェックする
- * option = x
- * option = ,x,
- * option = ,x
- * @param {string} str
- * @param {string} param
- * @return {null|boolean}
- */
-function hasParamInStr(str, param) {
-  if (str == null || param == null) return null
-  if (str === param) return true
-  if (str.startsWith(`${param} `)) return true
-  if (str.indexOf(` ${param} `) >= 0) return true
-  return str.endsWith(` ${param}`)
-}
-
-/**
- * @param {string} str
- * @param {...string} params
- * @return {boolean}
- */
-function hasAnyParamInStr(str, ...params) {
-  for (let param of params) {
-    if (hasParamInStr(str, param)) return true
-  }
-  return false
-}
-
-/**
  * @param {Style} style
  * @return {{}|null}
  */
 function getContentSizeFitterParam(style) {
   if (style == null) return null
-  console.log('-------- get-c-s-f -----------')
-  console.log(style.style)
 
   let param = {}
   const styleHorizontalFit = style.first(
@@ -1169,11 +1054,8 @@ function getUnityName(node) {
   if (unityName) {
     return unityName
   }
-  const id = getIdFromNodeName(nodeName)
-  if (id) {
-    return id
-  }
-  return nodeName
+  const id = getCssIdFromNodeName(nodeName)
+  return id ? id : nodeName
 }
 
 /**
@@ -1667,30 +1549,41 @@ function getNodeName(node) {
  * @param nodeName
  * @return {string|null}
  */
-function getIdFromNodeName(nodeName) {
+function getCssIdFromNodeName(nodeName) {
   if (nodeName == null) {
     return null
   }
-  const names = parseNodeName(nodeName)
-  for (let name of names) {
-    if (name.startsWith('#')) {
-      return name.substring(1)
-    }
-  }
+  const parsed = parseNodeName(nodeName)
+  if (parsed && parsed.id) return parsed.id
   return null
 }
-
-const STYLE_MATCH_LOG = 'match-log'
 
 class Style {
   /**
    *
    * @param {*[][]} style
    */
-  constructor(style) {
-    this.style = style
-    console.log('---------------new Style---------------')
-    console.log(style)
+  constructor(style = null) {
+    if (style != null) {
+      this.style = style
+    } else {
+      this.style = {}
+    }
+  }
+
+  /**
+   * スタイルの宣言部を追加する
+   * @param {CssDeclarations} declarations
+   */
+  addDeclarations(declarations) {
+    const properties = declarations.properties()
+    for (let property of properties) {
+      this.style[property] = declarations.values(property)
+    }
+  }
+
+  values(property) {
+    return this.style[property]
   }
 
   /**
@@ -1714,10 +1607,6 @@ class Style {
       values = this.style[property] = []
     }
     values[0] = value
-  }
-
-  values(property) {
-    return this.style[property]
   }
 
   /**
@@ -1768,51 +1657,39 @@ function hasAnyValue(values, ...checkValues) {
 
 /**
  *
- * @param {string} nodeName
- * @param {SceneNodeClass} parent
+ * @param {{name:string, parent:*}} node
  * @param cssRules
  * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
  * @returns {Style}
  */
-function getStyleFromNodeName(
-  nodeName,
-  parent,
-  cssRules,
-  addNodeNameArgs = null,
-) {
-  const declarations = {}
-  let nodeNameArgs = parseNodeName(nodeName)
-  nodeNameArgs = nodeNameArgs.concat(addNodeNameArgs)
+// TODO: 引数を { name:string parent:* } にかえる
+function getStyleFromNode(node) {
+  let style = new Style()
+  let localCss = null
+  try {
+    localCss = parseNodeName(node.name)
+  } catch (e) {
+    //node.nameがパースできなかった
+  }
+
+  //TODO: もし　nodeがコンストラクタをもっているのなら、tagNameに追加する
   for (const rule of cssRules) {
-    const selectorOps = rule.selector_ops
-    let selectorMatch = true
-    let tmpParent = parent // セレクタチェック用のParent
-    for (
-      let indexSelectorOp = selectorOps.length - 1;
-      indexSelectorOp >= 0 && selectorMatch; // selectorOpのトップまでいくか、このルールにマッチしなかったことが確定したら停止
-      indexSelectorOp--
-    ) {
-      const currentSelectorOp = selectorOps[indexSelectorOp]
-      const result = currentSelectorOp.match(nodeNameArgs, tmpParent)
-      if (!result) {
-        selectorMatch = false
-        break // 次のルール
-      }
-      tmpParent = result.next_parent
-    }
-    if (selectorMatch) {
-      Object.assign(declarations, rule.declarations.declarations)
+    /**
+     * @type {CssSelector}
+     */
+    const selector = rule.selector
+    if (selector.matchRule(node)) {
+      // マッチした宣言をスタイルに追加
+      style.addDeclarations(rule.declarations)
     }
   }
 
-  const localCss = parseCss(nodeName)
-  if (localCss != null && localCss.length > 0) {
-    // nodeNameのCSSパースに成功している -> ローカルStyleを持っている
-    Object.assign(declarations, localCss[0].declarations) // 上書きする
+  if (localCss && localCss.declarations) {
+    // nodeNameのCSSパースに成功している -> ローカル宣言部を持っている
+    style.addDeclarations(localCss.declarations)
     console.log('-----------local style------------', style)
   }
 
-  let style = new Style(declarations)
   if (style.hasValue(STYLE_MATCH_LOG)) {
     console.log(style.values(STYLE_MATCH_LOG))
   }
@@ -1828,8 +1705,6 @@ function getElementName(node) {
 }
 
 const cacheNodeNameAndStyle = {}
-
-const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
 
 /**
  * node.nameをパースしオプションに分解する
@@ -1851,15 +1726,7 @@ function getNodeNameAndStyle(node) {
 
   let parentNode = node.parent
   let nodeName = node.name.trim()
-  const style = getStyleFromNodeName(nodeName, parentNode, cssRules, [
-    getElementName(node),
-  ])
-
-  // 名前の最初が//ならコメントNode
-  if (nodeName.startsWith('//')) {
-    style.setFirst(STYLE_COMMENT_OUT, true)
-    nodeName = nodeName.substring(2)
-  }
+  const style = getStyleFromNode(node)
 
   const value = {
     node_name: nodeName,
@@ -2099,6 +1966,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
   const image9Slice = style.first(STYLE_IMAGE_SLICE)
   if (image9Slice) {
+    //TODO: 9sliceに対応していない
     // RegexTest https://regex101.com/
     const pattern = /(?<t>[0-9]+)(px)?(\s+)?(?<r>[0-9]+)?(px)?(\s+)?(?<b>[0-9]+)?(px)?(\s+)?(?<l>[0-9]+)?(px)?/
 
@@ -2379,7 +2247,7 @@ async function createViewport(json, node, root, funcForEachChild) {
 
   let contentJson = json[STR_CONTENT]
   //自動生成されるContentはNodeからできていないため getStyleFromNodeNameを呼び出す
-  const contentStyle = getStyleFromNodeName(contentName, node, cssRules)
+  const contentStyle = getStyleFromNode({ name: contentName, parent: node })
 
   if (node.constructor.name === 'Group') {
     // 通常グループ､マスクグループでViewportをつかう
@@ -2764,7 +2632,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
   } else {
     Object.assign(json, {
       type: 'Image',
-      name: node_name,
+      name: unityName,
     })
     addLayer(json, style)
     addDrawRectTransform(json, node)
@@ -3578,52 +3446,88 @@ async function testRendition(selection, root) {
     })
 }
 
-class CssSelectorArg {
-  /**
-   *
-   * @param {null} name
-   */
-  constructor() {
-    this.name = name
-    this.opValue = null
-    this.value = null
-    this.op = ''
-  }
-}
-
 class CssSelector {
-  constructor() {
-    /**
-     * @type {CssSelectorArg[]}
-     */
-    this.args = []
-  }
-
-  /**
-   *
-   * @param name
-   */
-  pushName(name) {
-    let arg = new CssSelectorArg()
-    this.args.push(arg)
-  }
-  lastArg() {
-    return this.args[this.args.length - 1]
-  }
-  pushToken(token) {
-    if (token.op) {
-      this.lastArg().op = op
+  constructor(parsed) {
+    this.json = parsed.rule
+    //console.log('----------CssSelector')
+    //console.log(this.json)
+    if (!parsed) {
+      throw 'CssSelectorがNULLで作成されました'
     }
   }
-}
 
-class CssRule {
-  constructor() {
-    this.MODE_SELECTOR = 0
-    this.MODE_STYLE = 1
-    this.mode = this.MODE_SELECTOR
+  /**
+   *
+   * @param {{name:string, parent:*}} node
+   * @param {{type:string, classNames:string[], id:string, tagName:string, nestingOperator:string, rule:*}|null} rule
+   * @return {boolean}
+   */
+  matchRule(node, rule = null) {
+    if (!rule) {
+      rule = this.json
+    }
+    if (!rule) {
+      return false
+    }
+    switch (rule.type) {
+      case 'rule': {
+        // まず奥へ入っていく
+        if (rule.rule) {
+          const result = this.matchRule(node, rule.rule)
+          if (!result) return false
+          if (rule.rule.nestingOperator === '>') {
+            node = node.parent
+          }
+        }
+        return this.check(node.name, rule)
+      }
+      default:
+        break
+    }
+    return false
+  }
+
+  /**
+   * @param {string} nodeName
+   * @param rule
+   * @return {boolean}
+   */
+  check(nodeName, rule) {
+    const parsedNodeName = parseNodeName(nodeName)
+    if (rule.tagName && rule.tagName !== '*') {
+      if (rule.tagName !== parsedNodeName.tagName) {
+        //console.log('tagName not found')
+        return false
+      }
+    }
+    if (rule.id && rule.id !== parsedNodeName.id) {
+      //console.log('id not found')
+      return false
+    }
+    if (rule.classNames) {
+      if (!parsedNodeName.classNames) return false
+      for (let className of rule.classNames) {
+        const found = parsedNodeName.classNames.find(c => c === className)
+        if (!found) {
+          //console.log('classNames not found')
+          return false
+        }
+      }
+    }
+    //console.log('---------------found')
+    //console.log(nodeName)
+    //console.log(JSON.stringify(parsedNodeName, null, '  '))
+    return true
   }
 }
+
+const CssSelectorParser = require('./node_modules/css-selector-parser/lib/css-selector-parser')
+  .CssSelectorParser
+let cssSelectorParser = new CssSelectorParser()
+cssSelectorParser.registerSelectorPseudos('has')
+cssSelectorParser.registerNestingOperators('>', '+', '~')
+cssSelectorParser.registerAttrEqualityMods('^', '$', '*', '~')
+cssSelectorParser.enableSubstitutes()
 
 /**
  *
@@ -3636,24 +3540,16 @@ async function testParse(selection, root) {
   const file = await folder.getEntry('xd-unity.css')
   let text = await file.read()
 
-  let tokenizer = /("(?<string>([^"\\]|\\.)*)")|(?<key>[\w\-]+:)|(?<name>[.:#]?[\w\-*]+(\([\w+\-,]*\))?)|(?<op>\s*[;{}\=>[\]() ]\s*)/gi
-  let rules = []
-  let token
-  // コメントアウト処理
-  text = text.replace(/\/\*[\s\S]*?\*\//g, '')
-  let str = ''
-  while ((token = tokenizer.exec(text))) {
-    if (token.groups.type) str += token.groups.class
-    if (token.groups.key) str += token.groups.key
-    if (token.groups.op) {
-      const op = token.groups.op
-      str += op
-      if (op === '}') str += '\n'
-    }
-    if (token.groups.string) str += '"' + token.groups.string + ' "'
-    if (token.groups.name) str += ' ' + token.groups.name
-  }
-  console.log(str)
+  //parser.parse('#a bb > .cc > [attr^="STR"]:nth-child(1) '),
+  //parser.parse('a.b,#c > d.e'),
+  //parser.parse('a > #b1, #b2 {key:value}'),
+  //const parsed = cssSelectorParser.parse('.e > #a.b.c')['rule']
+  const parsed = cssSelectorParser.parse('r > *')['rule']
+  console.log(JSON.stringify(parsed, null, '  '))
+  const cssSelector = new CssSelector(parsed)
+
+  const result = cssSelector.matchRule(selection.items[0])
+  console.log(result)
 }
 
 module.exports = {

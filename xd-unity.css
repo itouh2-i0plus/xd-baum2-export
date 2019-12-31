@@ -75,37 +75,36 @@ repeatgrid > * {
 
 .viewport-xy {
   viewport: true;
-  scroll-rect: x y;
   rect-mask-two-d: true;
-  content-name: ".content";
+  scroll-rect-content: ".content";
 }
 
 .viewport-x {
   viewport: true;
   scroll-rect: x;
   rect-mask-two-d: true;
-  content-name: ".content .layout-x";
+  scroll-rect-content: ".content.layout-x";
 }
 
 .viewport-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: ".content .layout-y";
+  scroll-rect-content: ".content.layout-y";
 }
 
 .viewport-grid-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: ".content .layout-grid-x";
+  scroll-rect-content: ".content.layout-grid-x";
 }
 
 .viewport-grid-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: ".content .layout-grid-y";
+  scroll-rect-content: ".content.layout-grid-y";
 }
 
 .viewport-x > .content {
