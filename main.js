@@ -30,6 +30,7 @@ const STR_PREFERRED = 'preferred'
 // OPTION名に H V　X Yといった、高さ方向をしめすものはできるだけ出さないようにする
 const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
 const STYLE_BLANK = 'blank'
+const STYLE_BUTTON = 'button'
 const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
 const STYLE_COMMENT_OUT = 'comment-out'
 const STYLE_COMPONENT = 'component'
@@ -45,6 +46,7 @@ const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アト�
 const STYLE_IMAGE_SCALE = 'image-scale'
 const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
 const STYLE_IMAGE_TYPE = 'image-type' // sliced tiled simple filled
+const STYLE_INPUT = 'input'
 const STYLE_LAYER = 'layer'
 const STYLE_LAYOUT_ELEMENT = 'layout-element'
 const STYLE_LAYOUT_GROUP = 'layout-group' //子供を自動的にどうならべるかのオプション
@@ -54,29 +56,26 @@ const STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE = 'layout-group-control-child-size'
 const STYLE_LAYOUT_GROUP_SPACING_X = 'layout-spacing-x'
 const STYLE_LAYOUT_GROUP_START_AXIS = 'layout-group-start-axis'
 const STYLE_LAYOUT_GROUP_USE_CHILD_SCALE = 'layout-group-use-child-scale'
+const STYLE_MATCH_LOG = 'match-log'
 const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
 const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
+const STYLE_RECT_MASK_2D = 'rect-mask-two-d'
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X = 'rect-transform-anchor-offset-x'
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y = 'rect-transform-anchor-offset-x'
-const STYLE_RECT_MASK_2D = 'rect-mask-two-d'
-const STYLE_SCROLL_RECT = 'scroll-rect'
-const STYLE_TOGGLE_GROUP = 'toggle-group'
-const STYLE_TYPE_BUTTON = 'button'
-const STYLE_TYPE_IMAGE = 'image'
-const STYLE_TYPE_INPUT = 'input'
-const STYLE_TYPE_SCROLLBAR = 'scrollbar'
-const STYLE_TYPE_SLIDER = 'slider'
-const STYLE_TYPE_TEXT = 'text'
-const STYLE_TYPE_TEXTMP = 'textmp' // textmeshpro
-const STYLE_TYPE_TOGGLE = 'toggle'
-const STYLE_TYPE_VIEWPORT = 'viewport'
-const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
-const STYLE_TEXT_CONTENT = 'text-content'
 const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
   'repeatgrid-attach-text-data-series'
-const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
-const STYLE_MATCH_LOG = 'match-log'
 const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
+const STYLE_SCROLLBAR = 'scrollbar'
+const STYLE_SCROLL_RECT = 'scroll-rect'
+const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
+const STYLE_SLIDER = 'slider'
+const STYLE_TEXT = 'text'
+const STYLE_TEXTMP = 'textmp' // textmeshpro
+const STYLE_TEXT_CONTENT = 'text-content'
+const STYLE_TOGGLE = 'toggle'
+const STYLE_TOGGLE_GROUP = 'toggle-group'
+const STYLE_VIEWPORT = 'viewport'
+const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 
 /**
  * @type {{selector:CssSelector, declarations:CssDeclarations }[]}
@@ -178,7 +177,7 @@ class CssDeclarations {
  */
 function parseCssDeclarationBlock(declarationBlock) {
   declarationBlock = declarationBlock.trim()
-  let tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
+  const tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
   /**
    * @type {string[][]}
    */
@@ -350,52 +349,11 @@ class ResponsiveParameter {
   }
 }
 
-function checkStyleButton(style) {
-  return checkBoolean(style.first(STYLE_TYPE_BUTTON))
-}
-
-function checkStyleCommentOut(style) {
-  return checkBoolean(style.first(STYLE_COMMENT_OUT))
-}
-
 function checkStyleImage(style) {
-  if (checkBoolean(style.first(STYLE_IMAGE_SLICE))) {
+  if (checkBool(style.first(STYLE_IMAGE_SLICE))) {
     return true
   }
-  return checkBoolean(style.first(STYLE_TYPE_IMAGE))
-}
-
-function checkStyleInput(style) {
-  return checkBoolean(style.first(STYLE_TYPE_INPUT))
-}
-
-function checkStyleScrollbar(style) {
-  return checkBoolean(style.first(STYLE_TYPE_SCROLLBAR))
-}
-
-function checkStyleSlider(style) {
-  return checkBoolean(style.first(STYLE_TYPE_SLIDER))
-}
-
-function checkStyleText(style) {
-  return checkBoolean(style.first(STYLE_TYPE_TEXT))
-}
-
-function checkStyleTextMeshPro(style) {
-  return checkBoolean(style.first(STYLE_TYPE_TEXTMP))
-}
-
-function checkStyleToggle(style) {
-  return checkBoolean(style.first(STYLE_TYPE_TOGGLE))
-}
-
-/**
- *
- * @param {Style} style
- * @return {boolean}
- */
-function checkStyleViewport(style) {
-  return checkBoolean(style.first(STYLE_TYPE_VIEWPORT))
+  return checkBool(style.first(STYLE_IMAGE))
 }
 
 /**
@@ -614,7 +572,7 @@ function searchFileName(renditions, fileName) {
  * @param r
  * @returns {boolean}
  */
-function checkBoolean(r) {
+function checkBool(r) {
   if (typeof r == 'string') {
     const val = r.toLowerCase()
     if (val === 'false' || val === '0' || val === 'null') return false
@@ -1636,6 +1594,10 @@ class Style {
     }
     return false
   }
+
+  checkBool(property) {
+    return checkBool(this.first(property))
+  }
 }
 
 /**
@@ -1961,7 +1923,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
 
   let fileExtension = '.png'
-  if (checkBoolean(style.first(STYLE_IMAGE_NO_SLICE))) {
+  if (checkBool(style.first(STYLE_IMAGE_NO_SLICE))) {
     fileExtension = '-noslice.png'
   }
   const image9Slice = style.first(STYLE_IMAGE_SLICE)
@@ -2017,14 +1979,14 @@ async function addImage(json, node, root, outputFolder, renditions) {
   const stylePreserveAspect = style.first(STYLE_PRESERVE_ASPECT)
   if (stylePreserveAspect != null) {
     Object.assign(json, {
-      preserve_aspect: checkBoolean(stylePreserveAspect),
+      preserve_aspect: checkBool(stylePreserveAspect),
     })
   }
 
   const styleRayCastTarget = style.first(STYLE_RAYCAST_TARGET)
   if (styleRayCastTarget != null) {
     Object.assign(json, {
-      raycast_target: checkBoolean(styleRayCastTarget),
+      raycast_target: checkBool(styleRayCastTarget),
     })
   }
 
@@ -2036,7 +1998,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
     }
   }
 
-  if (!checkBoolean(style.first(STYLE_BLANK))) {
+  if (!checkBool(style.first(STYLE_BLANK))) {
     Object.assign(json, {
       image: fileName,
     })
@@ -2384,7 +2346,7 @@ async function createGroup(json, node, root, funcForEachChild) {
 
   if (style.first('active')) {
     Object.assign(json, {
-      deactive: checkBoolean(style.first('active')),
+      deactive: checkBool(style.first('active')),
     })
   }
   addDrawRectTransform(json, node)
@@ -2511,7 +2473,7 @@ async function createText(json, node, artboard, outputFolder, renditions) {
     if (!repeatGrid && styleTextContent) {
       nodeText.text = styleTextContent
     }
-    // RepeatGrid内専用の操作
+    //TODO: RepeatGrid内専用の操作
     if (repeatGrid && styleRepeatGridAttachText) {
       repeatGrid.attachTextDataSeries(nodeText, [
         'aaaa',
@@ -2523,15 +2485,15 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   }
 
   // ラスタライズオプションチェック
-  if (checkStyleImage(style)) {
+  if (style.checkBool(STYLE_IMAGE) || style.checkBool(STYLE_IMAGE_SLICE)) {
     await createImage(json, node, artboard, outputFolder, renditions)
     return
   }
 
   if (
-    !checkStyleText(style) &&
-    !checkStyleInput(style) &&
-    !checkStyleTextMeshPro(style)
+    !style.checkBool(STYLE_TEXT) &&
+    !style.checkBool(STYLE_INPUT) &&
+    !style.checkBool(STYLE_TEXTMP)
   ) {
     await createImage(json, node, artboard, outputFolder, renditions)
     return
@@ -2540,10 +2502,10 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   const boundsCM = getBoundsCMInBase(node, artboard)
 
   let type = 'Text'
-  if (checkStyleTextMeshPro(style)) {
+  if (style.checkBool(STYLE_TEXTMP)) {
     type = 'TextMeshPro'
   }
-  if (checkStyleInput(style)) {
+  if (style.checkBool(STYLE_INPUT)) {
     type = 'Input'
   }
 
@@ -2608,7 +2570,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
 
   const unityName = getUnityName(node)
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
-  if (checkStyleButton(style)) {
+  if (style.checkBool(STYLE_BUTTON)) {
     Object.assign(json, {
       type: 'Button',
       name: unityName,
@@ -2736,7 +2698,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     */
 
     // コメントアウトチェック
-    if (checkStyleCommentOut(style)) {
+    if (style.checkBool(STYLE_COMMENT_OUT)) {
       return
     }
 
@@ -2787,15 +2749,18 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'RepeatGrid':
       case 'SymbolInstance':
         {
-          if (checkStyleImage(style)) {
+          if (
+            style.checkBool(STYLE_IMAGE) ||
+            style.checkBool(STYLE_IMAGE_SLICE)
+          ) {
             await createImage(layoutJson, node, root, outputFolder, renditions)
             return
           }
-          if (checkStyleButton(style)) {
+          if (style.checkBool(STYLE_BUTTON)) {
             await createButton(layoutJson, node, root, funcForEachChild)
             return
           }
-          if (checkStyleSlider(style)) {
+          if (style.checkBool(STYLE_SLIDER)) {
             const type = 'Slider'
             Object.assign(layoutJson, {
               type: type,
@@ -2805,15 +2770,15 @@ async function nodeRoot(renditions, outputFolder, root) {
             await funcForEachChild()
             return
           }
-          if (checkStyleScrollbar(style)) {
+          if (style.checkBool(STYLE_SCROLLBAR)) {
             await createScrollbar(layoutJson, node, funcForEachChild)
             return
           }
-          if (checkStyleToggle(style)) {
+          if (style.checkBool(STYLE_TOGGLE)) {
             await createToggle(layoutJson, node, root, funcForEachChild)
             return
           }
-          if (checkStyleViewport(style)) {
+          if (style.checkBool(STYLE_VIEWPORT)) {
             await createViewport(layoutJson, node, root, funcForEachChild)
             return
           }
@@ -2910,7 +2875,7 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
     for (let root of roots) {
       nodeWalker(root, node => {
         const { node_name: nodeName, style } = getNodeNameAndStyle(node)
-        if (checkStyleCommentOut(style)) {
+        if (style.checkBool(STYLE_COMMENT_OUT)) {
           return false // 子供には行かないようにする
         }
         try {
