@@ -76,13 +76,14 @@ repeatgrid > * {
 .viewport-xy {
   viewport: true;
   rect-mask-two-d: true;
+  scroll-rect: x y;
   scroll-rect-content: ".content";
 }
 
 .viewport-x {
   viewport: true;
-  scroll-rect: x;
   rect-mask-two-d: true;
+  scroll-rect: x;
   scroll-rect-content: ".content.layout-x";
 }
 

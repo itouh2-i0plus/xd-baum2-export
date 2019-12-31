@@ -1597,6 +1597,21 @@ class Style {
   checkBool(property) {
     return checkBool(this.first(property))
   }
+
+  /**
+   * Valuesの値を連結した文字列を返す
+   * @param {string} property
+   * @return {string|null}
+   */
+  str(property) {
+    const values = this.values(property)
+    if (!values) return null
+    let str = ''
+    for (let value of values) {
+      str += value.toString() + ' '
+    }
+    return str
+  }
 }
 
 /**
@@ -2104,9 +2119,7 @@ function addLayoutParam(layoutJson, style) {
       control_child_size: styleChildAlignment,
     })
   }
-  const styleControlChildSize = style.first(
-    STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE,
-  )
+  const styleControlChildSize = style.str(STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE)
   if (styleControlChildSize) {
     Object.assign(layoutJson, {
       control_child_size: styleControlChildSize,
