@@ -19,7 +19,7 @@ booleangroup {
 }
 
 repeatgrid > * {
-  repeatgrid-child-name: "repeatgrid-child";
+  repeatgrid-child-name: "rg-child(${childIndex})";
   layout-element: preferred;
 }
 
@@ -204,9 +204,7 @@ repeatgrid > * {
 
 #menu > * > .text {
   unity-name: "unity-text";
-  /*
-  repeatgrid-attach-text-data-series: "aaaaaa" "bbbbbb" "ccccccc"
-   */
+  repeatgrid-attach-text-data-series: "1" "2" "3"
 }
 
 

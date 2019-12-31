@@ -209,14 +209,20 @@ function parseCssDeclarationBlock(declarationBlock) {
 
 const cacheParseNodeName = {}
 /**
- * NodeNameを分解
+ * NodeNameをCSSパースする　これによりローカルCSSも取得する
+ * WARN: ※ここの戻り値を変更するとキャッシュも変更されてしまう
+ * NodeNameとは node.nameのこと
+ * // によるコメントアウト処理もここでする
  * @param {string} nodeName
  * @param nodeName
- * @return {{type:string, classNames:string[], id:string, tagName:string, nestingOperator:string, declarations:CssDeclarations}}
+ * @return {{classNames:string[], id:string, tagName:string, declarations:CssDeclarations}}
  */
 function parseNodeName(nodeName) {
+  nodeName = nodeName.trim()
   const cache = cacheParseNodeName[nodeName]
-  if (cache) return cache
+  if (cache) {
+    return cache
+  }
   // コメントアウトチェック
   let result = null
   if (nodeName.startsWith('//')) {
@@ -347,13 +353,6 @@ class ResponsiveParameter {
     // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
     this.responsiveParameterGlobal = calcRectTransform(this.node, null, false)
   }
-}
-
-function checkStyleImage(style) {
-  if (checkBool(style.first(STYLE_IMAGE_SLICE))) {
-    return true
-  }
-  return checkBool(style.first(STYLE_IMAGE))
 }
 
 /**
@@ -716,7 +715,7 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
  * @returns {{node_max_height: number, node_max_width: number, bounds: Bounds}}
  */
 function getNodeListBounds(nodeList, withoutNode) {
-  // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
+  //ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   let childrenCalcBounds = new CalcBounds()
   // セルサイズを決めるため最大サイズを取得する
   let childrenMinMaxSize = new MinMaxSize()
@@ -1012,7 +1011,7 @@ function getUnityName(node) {
   if (unityName) {
     return unityName
   }
-  const id = getCssIdFromNodeName(nodeName)
+  const id = getCssIdFromNodeName(node)
   return id ? id : nodeName
 }
 
@@ -1504,14 +1503,14 @@ function getNodeName(node) {
 
 /**
  * IDを取得する #を削除する
- * @param nodeName
+ * @param {SceneNodeClass} node SceneNodeClassでないといけない
  * @return {string|null}
  */
-function getCssIdFromNodeName(nodeName) {
-  if (nodeName == null) {
+function getCssIdFromNodeName(node) {
+  if (node == null) {
     return null
   }
-  const parsed = parseNodeName(nodeName)
+  const parsed = parseNodeName(getNodeName(node))
   if (parsed && parsed.id) return parsed.id
   return null
 }
@@ -1624,7 +1623,6 @@ function hasAnyValue(values, ...checkValues) {
  * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
  * @returns {Style}
  */
-// TODO: 引数を { name:string parent:* } にかえる
 function getStyleFromNode(node) {
   let style = new Style()
   let localCss = null
@@ -1656,9 +1654,8 @@ function getStyleFromNode(node) {
     console.log(style.values(STYLE_MATCH_LOG))
   }
 
-  //console.log('------------ declarations ----------------')
-  //console.log(declarations)
-
+  //console.log('------------ style ----------------')
+  //console.log(style)
   return style
 }
 
@@ -1671,8 +1668,9 @@ const cacheNodeNameAndStyle = {}
 /**
  * node.nameをパースしオプションに分解する
  * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
- * オプションのダイナミックな追加など､ここで処理しないと辻褄があわないケースがでてくる
- * @param {SceneNodeClass} node
+ * ここで処理しないと辻褄があわないケースがでてくる
+ * 例：repeatgrid-child-nameで得られる名前
+ * @param {SceneNodeClass} node ここのNodeはSceneNodeClassでないといけない
  * @returns {{node_name: string, name: string, style: Style}|null}
  */
 function getNodeNameAndStyle(node) {
@@ -1681,12 +1679,17 @@ function getNodeNameAndStyle(node) {
   }
 
   // キャッシュ確認
-  const cache = cacheNodeNameAndStyle[node.guid]
-  if (cache) {
-    return cache
+  if (node.guid) {
+    const cache = cacheNodeNameAndStyle[node.guid]
+    if (cache) {
+      return cache
+    }
   }
 
   let parentNode = node.parent
+  /**
+   * @type {string}
+   */
   let nodeName = node.name.trim()
   const style = getStyleFromNode(node)
 
@@ -1724,9 +1727,13 @@ function getNodeNameAndStyle(node) {
       nodeName = styleRepeatgridChildName
     }
     // 自身のChildインデックスを名前に利用する
-    for (let i = 0; i < parentNode.children.length; i++) {
-      if (parentNode.children.at(i) === node) {
-        nodeName += '-' + i
+    for (
+      let childIndex = 0;
+      childIndex < parentNode.children.length;
+      childIndex++
+    ) {
+      if (parentNode.children.at(childIndex) === node) {
+        nodeName = nodeName.replace(/\${childIndex}/, childIndex.toString())
         break
       }
     }
@@ -1928,8 +1935,8 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
   const image9Slice = style.first(STYLE_IMAGE_SLICE)
   if (image9Slice) {
-    //TODO: 9sliceに対応していない
     // RegexTest https://regex101.com/
+    //TODO: 9sliceに対応していない
     const pattern = /(?<t>[0-9]+)(px)?(\s+)?(?<r>[0-9]+)?(px)?(\s+)?(?<b>[0-9]+)?(px)?(\s+)?(?<l>[0-9]+)?(px)?/
 
     const result = image9Slice.match(pattern)
@@ -2464,23 +2471,19 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   let nodeText = node
 
   const styleTextContent = style.first(STYLE_TEXT_CONTENT)
-  const styleRepeatGridAttachText = style.first(
+  const styleValuesAttachText = style.values(
     STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES,
   )
-  if (styleTextContent || styleRepeatGridAttachText) {
+  // console.log('---------------')
+  // console.log(styleValuesAttachText)
+  if (styleTextContent || styleValuesAttachText) {
     let repeatGrid = getRepeatGrid(nodeText)
     // RepeatGrid内のテキストは操作できない
     if (!repeatGrid && styleTextContent) {
       nodeText.text = styleTextContent
     }
-    //TODO: RepeatGrid内専用の操作
-    if (repeatGrid && styleRepeatGridAttachText) {
-      repeatGrid.attachTextDataSeries(nodeText, [
-        'aaaa',
-        'bbbb',
-        'ccccc',
-        'ddddd',
-      ])
+    if (repeatGrid && styleValuesAttachText) {
+      repeatGrid.attachTextDataSeries(nodeText, styleValuesAttachText)
     }
   }
 
@@ -2566,7 +2569,7 @@ async function createText(json, node, artboard, outputFolder, renditions) {
  * @param {*} renditions
  */
 async function createImage(json, node, root, outputFolder, renditions) {
-  let { node_name, style } = getNodeNameAndStyle(node)
+  let { style } = getNodeNameAndStyle(node)
 
   const unityName = getUnityName(node)
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
@@ -2577,7 +2580,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
       elements: [
         {
           type: 'Image',
-          name: unityName + '-image',
+          name: unityName + ' image',
         },
       ],
     })
@@ -3032,6 +3035,7 @@ async function pluginExportBaum2Command(selection, root) {
   let checkImageNoExport
   let checkCheckMarkedForExport
   let checkAllArtboard
+  let checkChangeContentOnly
   let dialog = h(
     'dialog',
     h(
@@ -3126,6 +3130,19 @@ async function pluginExportBaum2Command(selection, root) {
         })),
         h('span', 'イメージは出力しない'),
       ),
+      h(
+        'label',
+        {
+          style: {
+            flexDirection: 'row',
+            alignItems: 'center',
+          },
+        },
+        (checkChangeContentOnly = h('input', {
+          type: 'checkbox',
+        })),
+        h('span', 'CSSによるコンテンツの変更のみ実行'),
+      ),
       (errorLabel = h(
         'label',
         {
@@ -3160,15 +3177,17 @@ async function pluginExportBaum2Command(selection, root) {
                 errorLabel.textContent = 'invalid scale value'
                 return
               }
+
               scale = tmpScale
+              optionImageNoExport = checkImageNoExport.checked
+              optionCheckMarkedForExport = checkCheckMarkedForExport.checked
+              optionChangeContentOnly = checkChangeContentOnly.checked
+
               // 出力フォルダは設定してあるか
               if (!optionChangeContentOnly && outputFolder == null) {
                 errorLabel.textContent = 'invalid output folder'
                 return
               }
-              //
-              optionImageNoExport = checkImageNoExport.checked
-              optionCheckMarkedForExport = checkCheckMarkedForExport.checked
 
               dialog.close('export')
             },
@@ -3192,6 +3211,7 @@ async function pluginExportBaum2Command(selection, root) {
   // Responsive Parameter
   checkImageNoExport.checked = optionImageNoExport
   checkCheckMarkedForExport.checked = optionCheckMarkedForExport
+  checkChangeContentOnly.checked = optionChangeContentOnly
 
   // Dialog表示
   document.body.appendChild(dialog)
@@ -3425,64 +3445,80 @@ class CssSelector {
    *
    * @param {{name:string, parent:*}} node
    * @param {{type:string, classNames:string[], id:string, tagName:string, nestingOperator:string, rule:*}|null} rule
-   * @return {boolean}
+   * @return {null|*}
    */
   matchRule(node, rule = null) {
     if (!rule) {
       rule = this.json
     }
     if (!rule) {
-      return false
+      return null
     }
     switch (rule.type) {
       case 'rule': {
         // まず奥へ入っていく
         if (rule.rule) {
-          const result = this.matchRule(node, rule.rule)
-          if (!result) return false
-          if (rule.rule.nestingOperator === '>') {
-            node = node.parent
-          }
+          node = this.matchRule(node, rule.rule)
+          if (!node) return null
         }
-        return this.check(node.name, rule)
+        return this.check(node, rule)
       }
       default:
         break
     }
-    return false
+    return null
   }
 
   /**
-   * @param {string} nodeName
+   * @param node
    * @param rule
-   * @return {boolean}
+   * @return {null|*}
    */
-  check(nodeName, rule) {
+  check(node, rule) {
+    //console.log('---------- check ----------')
+    //console.log(node)
+    //console.log('----- rule -----')
+    //console.log(rule)
+    //console.log('----------')
+    const nodeName = node.name
     const parsedNodeName = parseNodeName(nodeName)
+    let typeName = null
+    if (node.constructor) {
+      typeName = node.constructor.name.toLowerCase()
+    }
     if (rule.tagName && rule.tagName !== '*') {
-      if (rule.tagName !== parsedNodeName.tagName) {
-        //console.log('tagName not found')
-        return false
+      if (
+        rule.tagName !== parsedNodeName.tagName &&
+        rule.tagName !== typeName
+      ) {
+        // console.log('tagName not found')
+        return null
       }
     }
     if (rule.id && rule.id !== parsedNodeName.id) {
-      //console.log('id not found')
-      return false
+      // console.log('id not found')
+      return null
     }
     if (rule.classNames) {
-      if (!parsedNodeName.classNames) return false
+      if (!parsedNodeName.classNames) return null
       for (let className of rule.classNames) {
         const found = parsedNodeName.classNames.find(c => c === className)
         if (!found) {
-          //console.log('classNames not found')
-          return false
+          // console.log('classNames not found')
+          return null
         }
       }
     }
     //console.log('---------------found')
     //console.log(nodeName)
     //console.log(JSON.stringify(parsedNodeName, null, '  '))
-    return true
+    if (rule.nestingOperator === '>') {
+      // 上記がマッチしても >オペレータがみつかり、parentがNullならマッチ失敗となる
+      node = node.parent
+      //console.log('found > ---------------')
+      //console.log(node)
+    }
+    return node
   }
 }
 
