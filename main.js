@@ -1,5 +1,8 @@
+// CSSテストサイト
+// https://www.w3schools.com/css/tryit.asp?filename=trycss_sel_attribute_end
+
 // XD拡張APIのクラスをインポート
-const { Artboard, Color, Rectangle } = require('scenegraph')
+const { Artboard, Color, Rectangle, ImageFill, root } = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
@@ -40,7 +43,7 @@ const STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT =
 const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
   'content-size-fitter-vertical-fit'
 const STYLE_DIRECTION = 'direction'
-const STYLE_FIX = 'fix'
+const STYLE_FIX = 'margin-fix'
 const STYLE_IMAGE = 'image'
 const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const STYLE_IMAGE_SCALE = 'image-scale'
@@ -64,7 +67,8 @@ const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X = 'rect-transform-anchor-offset-x'
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y = 'rect-transform-anchor-offset-x'
 const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
   'repeatgrid-attach-text-data-series'
-const STYLE_REPEATGRID_CHILD_NAME = 'repeatgrid-child-name'
+const STYLE_REPEATGRID_ATTACH_IMAGE_DATA_SERIES =
+  'repeatgrid-attach-image-data-series'
 const STYLE_SCROLLBAR = 'scrollbar'
 const STYLE_SCROLL_RECT = 'scroll-rect'
 const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
@@ -208,6 +212,7 @@ function parseCssDeclarationBlock(declarationBlock) {
 }
 
 const cacheParseNodeName = {}
+
 /**
  * NodeNameをCSSパースする　これによりローカルCSSも取得する
  * WARN: ※ここの戻り値を変更するとキャッシュも変更されてしまう
@@ -233,18 +238,11 @@ function parseNodeName(nodeName) {
   } else {
     try {
       let rules = parseCss(nodeName)
-      /*
-    console.log('parseNodeName--------------------')
-    console.log(nodeName)
-    console.log('--------------------')
-    console.log(rules)
-    console.log('--------------------')
-     */
       if (!rules || rules.length === 0 || !rules[0].selector) {
         // パースできなかった場合はそのまま返す
         result = { tagName: nodeName }
       } else {
-        result = rules[0].selector.json
+        result = rules[0].selector.json['rule'] // 一番外側の｛｝をはずす
         Object.assign(result, {
           declarations: rules[0].declarations,
         })
@@ -330,7 +328,7 @@ class GlobalBounds {
   constructor(node) {
     this.visible = node.visible
     this.bounds = getGlobalDrawBounds(node)
-    this.global_bounds = getGlobalDrawBounds(node)
+    this.global_bounds = getGlobalBounds(node)
   }
 }
 
@@ -338,15 +336,20 @@ class ResponsiveParameter {
   constructor(node) {
     this.node = node
   }
+
   updateBefore() {
+    // Before
     this.before = new GlobalBounds(this.node)
   }
+
   updateAfter() {
     this.after = new GlobalBounds(this.node)
   }
+
   updateRestore() {
     this.restore = new GlobalBounds(this.node)
   }
+
   update() {
     // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
     this.responsiveParameter = calcRectTransform(this.node, null)
@@ -444,55 +447,8 @@ function getRepeatGrid(node) {
   return null
 }
 
-/**
- * グローバル座標とサイズを取得する
- * responsiveBoundsの中の値は壊れないようにする
- * @param {SceneNodeClass} node
- * @return {null|Bounds}
- */
-function getGlobalDrawBounds(node) {
-  // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
-  // それを利用するようにする
-  const hashBounds = responsiveBounds
-  let bounds = null
-  if (hashBounds) {
-    const hBounds = hashBounds[node.guid]
-    if (hBounds && hBounds.before) {
-      bounds = Object.assign({}, hBounds.before.bounds)
-    }
-  }
-  if (bounds) return bounds
-
-  bounds = node.globalDrawBounds
-  const viewPortHeight = node.viewportHeight
-  if (viewPortHeight != null) bounds.height = viewPortHeight
-  return {
-    x: bounds.x * scale,
-    y: bounds.y * scale,
-    width: bounds.width * scale,
-    height: bounds.height * scale,
-    ex: (bounds.x + bounds.width) * scale,
-    ey: (bounds.y + bounds.height) * scale,
-  }
-}
-
-/**
- * グローバル座標とサイズを取得する
- * @param {SceneNodeClass} node
- * @return {null|Bounds}
- */
 function getGlobalBounds(node) {
-  const hashBounds = responsiveBounds
-  let bounds = null
-  if (hashBounds != null) {
-    const hBounds = hashBounds[node.guid]
-    if (hBounds && hBounds.before) {
-      bounds = Object.assign({}, hBounds.before.global_bounds)
-    }
-  }
-  if (bounds) return bounds
-
-  bounds = node.globalBounds
+  const bounds = node.globalBounds
   // Artboardにあるスクロール領域のボーダー
   const viewPortHeight = node.viewportHeight
   if (viewPortHeight != null) bounds.height = viewPortHeight
@@ -506,6 +462,61 @@ function getGlobalBounds(node) {
   }
 }
 
+function getGlobalDrawBounds(node) {
+  let bounds = node.globalDrawBounds
+  const viewPortHeight = node.viewportHeight
+  if (viewPortHeight != null) bounds.height = viewPortHeight
+  return {
+    x: bounds.x * scale,
+    y: bounds.y * scale,
+    width: bounds.width * scale,
+    height: bounds.height * scale,
+    ex: (bounds.x + bounds.width) * scale,
+    ey: (bounds.y + bounds.height) * scale,
+  }
+}
+
+/**
+ * リサイズされる前のグローバル座標とサイズを取得する
+ * responsiveBoundsの中の値は壊れないようにする
+ * @param {SceneNodeClass} node
+ * @return {null|Bounds}
+ */
+function getBeforeGlobalDrawBounds(node) {
+  // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
+  // それを利用するようにする
+  let bounds = null
+  const hashBounds = responsiveBounds
+  if (hashBounds) {
+    const hBounds = hashBounds[node.guid]
+    if (hBounds && hBounds.before) {
+      bounds = Object.assign({}, hBounds.before.bounds)
+    }
+  }
+  if (bounds) return bounds
+  // throw 'リサイズ前のGlobalDrawBoundsの情報がありません'+node.name
+  return null
+}
+
+/**
+ * リサイズされる前のグローバル座標とサイズを取得する
+ * @param {SceneNodeClass} node
+ * @return {null|Bounds}
+ */
+function getBeforeGlobalBounds(node) {
+  const hashBounds = responsiveBounds
+  let bounds = null
+  if (hashBounds != null) {
+    const hBounds = hashBounds[node.guid]
+    if (hBounds && hBounds.before) {
+      bounds = Object.assign({}, hBounds.before.global_bounds)
+    }
+  }
+  if (bounds) return bounds
+  // throw 'リサイズ前のGlobalBoundsの情報がありません'+node.name
+  return null
+}
+
 /**
  * Baum2用Boundsパラメータの取得
  * Artboard内でのDrawBoundsを取得する
@@ -515,8 +526,8 @@ function getGlobalBounds(node) {
  * @return {{cx: number, cy: number, width: number, height: number}}
  */
 function getDrawBoundsCMInBase(node, base) {
-  const nodeDrawBounds = getGlobalDrawBounds(node)
-  const baseBounds = getGlobalDrawBounds(base)
+  const nodeDrawBounds = getBeforeGlobalDrawBounds(node)
+  const baseBounds = getBeforeGlobalDrawBounds(base)
   return {
     cx: nodeDrawBounds.x - baseBounds.x + nodeDrawBounds.width / 2,
     cy: nodeDrawBounds.y - baseBounds.y + nodeDrawBounds.height / 2,
@@ -546,8 +557,8 @@ function getBoundsInBase(bounds, baseBounds) {
  * @return {{cx: number, cy: number, width: number, height: number}}
  */
 function getBoundsCMInBase(node, base) {
-  const nodeBounds = getGlobalBounds(node)
-  const baseBounds = getGlobalBounds(base)
+  const nodeBounds = getBeforeGlobalBounds(node)
+  const baseBounds = getBeforeGlobalBounds(base)
   return {
     cx: nodeBounds.x - baseBounds.x + nodeBounds.width / 2,
     cy: nodeBounds.y - baseBounds.y + nodeBounds.height / 2,
@@ -677,7 +688,7 @@ function sortElementsByPositionDesc(jsonElements) {
  */
 function getLayoutFromRepeatGrid(repeatGrid, style) {
   let layoutJson = {}
-  const repeatGridBounds = getGlobalBounds(repeatGrid)
+  const repeatGridBounds = getBeforeGlobalBounds(repeatGrid)
   const nodesBounds = getNodeListBounds(repeatGrid.children, null)
   Object.assign(layoutJson, {
     method: 'grid',
@@ -725,7 +736,7 @@ function getNodeListBounds(nodeList, withoutNode) {
     if (style.first(STYLE_COMPONENT)) return
     // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
     if (node === withoutNode) return
-    const childBounds = getGlobalBounds(node)
+    const childBounds = getBeforeGlobalBounds(node)
     childrenCalcBounds.addBounds(childBounds)
     childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
   })
@@ -749,7 +760,7 @@ function getPaddingAndCellMaxSize(parentNode, maskNode, nodeChildren) {
   let childrenCalcBounds = getNodeListBounds(nodeChildren, maskNode)
   //
   // Paddingの計算
-  let viewportBounds = getGlobalDrawBounds(parentNode) // 描画でのサイズを取得する　影など増えた分も考慮したPaddingを取得する
+  let viewportBounds = getBeforeGlobalDrawBounds(parentNode) // 描画でのサイズを取得する　影など増えた分も考慮したPaddingを取得する
   const childrenBounds = childrenCalcBounds.bounds
   let paddingLeft = childrenBounds.x - viewportBounds.x
   if (paddingLeft < 0) paddingLeft = 0
@@ -1002,13 +1013,17 @@ function forEachReverseElements(elements, func) {
   }
 }
 
+const STYLE_UNITY_NAME = 'unity-name'
+
 /**
  * @param {SceneNodeClass} node
  */
 function getUnityName(node) {
   const { node_name: nodeName, style } = getNodeNameAndStyle(node)
-  const unityName = style.first('unity-name')
+  let unityName = style.first(STYLE_UNITY_NAME)
   if (unityName) {
+    const childIndex = getChildIndex(node)
+    unityName = unityName.replace(/\${childIndex}/, childIndex)
     return unityName
   }
   const id = getCssIdFromNodeName(node)
@@ -1163,7 +1178,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
     (afterBounds.x + afterBounds.width)
 
   if (styleFixRight == null) {
-    if (styleFixRight == null && approxEqual(beforeRight, afterRight, 0.001)) {
+    if (approxEqual(beforeRight, afterRight, 0.001)) {
       // ロックされている 0.001以下の誤差が起きることを確認した
       styleFixRight = true
     } else {
@@ -1175,11 +1190,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
 
   // Y座標
   if (styleFixHeight == null) {
-    styleFixHeight = approxEqual(
-      beforeBounds.height,
-      afterBounds.height,
-      0.0005,
-    )
+    styleFixHeight = approxEqual(beforeBounds.height, afterBounds.height, 0.001)
   }
 
   if (styleFixTop == null) {
@@ -1187,6 +1198,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
       approxEqual(
         beforeBounds.y - parentBeforeBounds.y,
         afterBounds.y - parentAfterBounds.y,
+        0.001,
       )
     ) {
       styleFixTop = true
@@ -1200,10 +1212,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
   const afterBottom = parentAfterBounds.ey - afterBounds.ey
   if (styleFixBottom == null) {
-    if (
-      styleFixBottom == null &&
-      approxEqual(beforeBottom, afterBottom, 0.0005)
-    ) {
+    if (approxEqual(beforeBottom, afterBottom, 0.001)) {
       styleFixBottom = true
     } else {
       // 親のY座標･Heightをもとに､Bottom座標がきまる
@@ -1352,6 +1361,8 @@ function makeResponsiveParameter(root) {
     hashBounds[node.guid] = param
   })
 
+  if (optionChangeContentOnly) return hashBounds
+
   const rootWidth = root.globalBounds.width
   const rootHeight = root.globalBounds.height
   const resizePlusWidth = 100
@@ -1455,7 +1466,7 @@ function checkHashBounds(hashBounds, repair) {
               node.moveInParentCoordinates(dx, dy)
               node.resize(beforeBounds.width, beforeBounds.height)
             } catch (e) {}
-            if (checkBounds(beforeBounds, getGlobalDrawBounds(node))) {
+            if (checkBounds(beforeBounds, getBeforeGlobalDrawBounds(node))) {
             } else {
               console.log('***修復できませんでした')
               result = false
@@ -1478,7 +1489,7 @@ function checkHashBounds(hashBounds, repair) {
  * @param {SceneNode} node
  * @returns {*}
  */
-function getDrawRectTransform(node) {
+function getRectTransformDraw(node) {
   let bounds = responsiveBounds[node.guid]
   return bounds ? bounds.responsiveParameter : null
 }
@@ -1634,8 +1645,6 @@ function hasAnyValue(values, ...checkValues) {
 /**
  *
  * @param {{name:string, parent:*}} node
- * @param cssRules
- * @param {string[]} addNodeNameArgs 追加するNodeNameArgs
  * @returns {Style}
  */
 function getStyleFromNode(node) {
@@ -1647,7 +1656,6 @@ function getStyleFromNode(node) {
     //node.nameがパースできなかった
   }
 
-  //TODO: もし　nodeがコンストラクタをもっているのなら、tagNameに追加する
   for (const rule of cssRules) {
     /**
      * @type {CssSelector}
@@ -1662,10 +1670,10 @@ function getStyleFromNode(node) {
   if (localCss && localCss.declarations) {
     // nodeNameのCSSパースに成功している -> ローカル宣言部を持っている
     style.addDeclarations(localCss.declarations)
-    console.log('-----------local style------------', style)
+    //console.log('-----------local style------------', style)
   }
 
-  if (style.hasValue(STYLE_MATCH_LOG)) {
+  if (style.has(STYLE_MATCH_LOG)) {
     console.log(style.values(STYLE_MATCH_LOG))
   }
 
@@ -1674,8 +1682,24 @@ function getStyleFromNode(node) {
   return style
 }
 
-function getElementName(node) {
-  return node.constructor.name.toLowerCase()
+/**
+ * 自分が何番目の子供か
+ * @param node
+ * @return {number}
+ */
+function getChildIndex(node) {
+  const parentNode = node.parent
+  if (!parentNode) return -1
+  for (
+    let childIndex = 0;
+    childIndex < parentNode.children.length;
+    childIndex++
+  ) {
+    if (parentNode.children.at(childIndex) === node) {
+      return childIndex
+    }
+  }
+  return -1
 }
 
 const cacheNodeNameAndStyle = {}
@@ -1737,21 +1761,16 @@ function getNodeNameAndStyle(node) {
     //     - item_text
     // 以上のような構成になる
     nodeName = 'repeatgrid-child'
+    /*
     const styleRepeatgridChildName = style.first(STYLE_REPEATGRID_CHILD_NAME)
     if (styleRepeatgridChildName) {
       nodeName = styleRepeatgridChildName
     }
     // 自身のChildインデックスを名前に利用する
-    for (
-      let childIndex = 0;
-      childIndex < parentNode.children.length;
-      childIndex++
-    ) {
-      if (parentNode.children.at(childIndex) === node) {
-        nodeName = nodeName.replace(/\${childIndex}/, childIndex.toString())
-        break
-      }
-    }
+    const childIndex = getChildIndex(node)
+    nodeName = nodeName.replace(/\${childIndex}/, childIndex.toString())
+     */
+
     value['node_name'] = nodeName
     value['name'] = nodeName
 
@@ -1776,7 +1795,7 @@ function getNodeNameAndStyle(node) {
 function makeLayoutJson(root) {
   let rootBounds
   if (root instanceof Artboard) {
-    rootBounds = getGlobalDrawBounds(root)
+    rootBounds = getBeforeGlobalDrawBounds(root)
     rootBounds.cx = rootBounds.width / 2
     rootBounds.cy = rootBounds.height / 2
   } else {
@@ -1831,7 +1850,7 @@ function addCanvasGroup(json, node, style) {
  * @param {SceneNode} node
  */
 function addDrawRectTransform(json, node) {
-  let param = getDrawRectTransform(node)
+  let param = getRectTransformDraw(node)
   if (param) {
     Object.assign(json, param)
   }
@@ -1843,28 +1862,22 @@ function addDrawRectTransform(json, node) {
  * @param json
  * @param style
  */
-function addRectTransformAnchorOffsetX(json, style) {
+function overwriteRectTransformAnchorOffsetX(json, style) {
   // 指定が会った場合、上書きする
   if (!style) return
-  const anchorsX = style.first(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X)
+  const anchorsX = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X)
   if (anchorsX) {
-    const anchorArgs = anchorsX.split(' ')
-    if (anchorArgs.length >= 4) {
-      json['anchor_min']['x'] = parseFloat(anchorArgs[0])
-      json['anchor_max']['x'] = parseFloat(anchorArgs[1])
-      json['offset_min']['x'] = parseFloat(anchorArgs[2])
-      json['offset_max']['x'] = parseFloat(anchorArgs[3])
-    }
+    json['anchor_min']['x'] = parseFloat(anchorsX[0])
+    json['anchor_max']['x'] = parseFloat(anchorsX[1])
+    json['offset_min']['x'] = parseFloat(anchorsX[2])
+    json['offset_max']['x'] = parseFloat(anchorsX[3])
   }
-  const anchorsY = style.first(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
+  const anchorsY = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
   if (anchorsY) {
-    const anchorArgs = anchorsX.split(' ')
-    if (anchorArgs.length >= 4) {
-      json['anchor_min']['y'] = parseFloat(anchorArgs[0])
-      json['anchor_max']['y'] = parseFloat(anchorArgs[1])
-      json['offset_min']['y'] = parseFloat(anchorArgs[2])
-      json['offset_max']['y'] = parseFloat(anchorArgs[3])
-    }
+    json['anchor_min']['y'] = parseFloat(anchorsY[0])
+    json['anchor_max']['y'] = parseFloat(anchorsY[1])
+    json['offset_min']['y'] = parseFloat(anchorsY[2])
+    json['offset_max']['y'] = parseFloat(anchorsY[3])
   }
 }
 
@@ -1931,9 +1944,9 @@ async function addImage(json, node, root, outputFolder, renditions) {
 
   let hashStringLength = 5
   // ファイル名が長すぎるとエラーになる可能性もある
-  let fileName = convertToFileName(parentName + '-' + node_name, true)
+  let fileName = convertToFileName(parentName + '+' + node_name, true)
   while (true) {
-    const guidStr = '-' + node.guid.slice(0, hashStringLength)
+    const guidStr = '+' + node.guid.slice(0, hashStringLength)
     // すでに同じものがあるか検索
     const found = searchFileName(renditions, fileName + guidStr)
     if (!found) {
@@ -1948,13 +1961,8 @@ async function addImage(json, node, root, outputFolder, renditions) {
   if (checkBool(style.first(STYLE_IMAGE_NO_SLICE))) {
     fileExtension = '-noslice.png'
   }
-  const image9Slice = style.first(STYLE_IMAGE_SLICE)
-  if (image9Slice) {
-    // RegexTest https://regex101.com/
-    //TODO: 9sliceに対応していない
-    const pattern = /(?<t>[0-9]+)(px)?(\s+)?(?<r>[0-9]+)?(px)?(\s+)?(?<b>[0-9]+)?(px)?(\s+)?(?<l>[0-9]+)?(px)?/
-
-    const result = image9Slice.match(pattern)
+  const image9SliceValues = style.values(STYLE_IMAGE_SLICE)
+  if (image9SliceValues && image9SliceValues.length > 1) {
     /*
     省略については、CSSに準拠
     http://www.htmq.com/css3/border-image-slice.shtml
@@ -1963,28 +1971,15 @@ async function addImage(json, node, root, outputFolder, renditions) {
     3番目の値が省略された場合には、1番目の値と同じ。
     2番目の値が省略された場合には、1番目の値と同じ。
     */
-    if (!result.groups.r) {
-      result.groups.r = result.groups.t
-    }
-    if (!result.groups.b) {
-      result.groups.b = result.groups.t
-    }
-    if (!result.groups.l) {
-      result.groups.l = result.groups.r
-    }
-    if (result[1]) {
-      let offset =
-        parseInt(result.groups.t) * scale +
-        'px,' +
-        parseInt(result.groups.r) * scale +
-        'px,' +
-        parseInt(result.groups.b) * scale +
-        'px,' +
-        parseInt(result.groups.l) * scale +
-        'px'
-      //console.log(offset)
-      fileExtension = '-9slice,' + offset + '.png'
-    }
+    const paramLength = image9SliceValues.length
+    const top = parseInt(image9SliceValues[0]) * scale
+    const right = paramLength > 1 ? parseInt(image9SliceValues[1]) * scale : top
+    const bottom =
+      paramLength > 2 ? parseInt(image9SliceValues[2]) * scale : top
+    const left =
+      paramLength > 3 ? parseInt(image9SliceValues[3]) * scale : right
+    let offset = top + 'px,' + right + 'px,' + bottom + 'px,' + left + 'px'
+    fileExtension = '-9slice,' + offset + '.png'
   }
 
   const drawBounds = getDrawBoundsCMInBase(node, root)
@@ -2165,7 +2160,7 @@ function addLayoutParam(layoutJson, style) {
  * @param {Style} style
  */
 function addLayoutElement(json, node, style) {
-  const bounds = getGlobalDrawBounds(node)
+  const bounds = getBeforeGlobalDrawBounds(node)
   if (style.hasValue(STYLE_LAYOUT_ELEMENT, 'min')) {
     Object.assign(json, {
       layout_element: {
@@ -2241,7 +2236,7 @@ async function createViewport(json, node, root, funcForEachChild) {
     }
     let calcContentBounds = new CalcBounds()
     await funcForEachChild(null, child => {
-      const childBounds = getGlobalBounds(child)
+      const childBounds = getBeforeGlobalBounds(child)
       calcContentBounds.addBounds(childBounds) // maskもContentBoundsの処理にいれる
       return child !== maskNode // maskNodeはFalse 処理をしない
     })
@@ -2249,7 +2244,7 @@ async function createViewport(json, node, root, funcForEachChild) {
     // 縦の並び順を正常にするため､Yでソートする
     sortElementsByPositionAsc(json.elements)
 
-    const maskBounds = getGlobalBounds(maskNode)
+    const maskBounds = getBeforeGlobalBounds(maskNode)
     const maskBoundsCM = getDrawBoundsCMInBase(maskNode, root)
 
     Object.assign(json, {
@@ -2273,13 +2268,13 @@ async function createViewport(json, node, root, funcForEachChild) {
     let calcContentBounds = new CalcBounds()
     /** @type {RepeatGrid} */
     let viewportNode = node
-    const viewportBounds = getGlobalBounds(viewportNode)
+    const viewportBounds = getBeforeGlobalBounds(viewportNode)
     calcContentBounds.addBounds(viewportBounds)
     // AdobeXDの問題で　リピートグリッドの枠から外れているものもデータがくるケースがある
     // そういったものを省くための処理
     // Contentの領域も計算する
     await funcForEachChild(null, child => {
-      const childBounds = getGlobalBounds(child)
+      const childBounds = getBeforeGlobalBounds(child)
       if (!testBounds(viewportBounds, childBounds)) {
         console.log(child.name + 'はViewportにはいっていない')
         return false // 処理しない
@@ -2337,7 +2332,7 @@ async function createViewport(json, node, root, funcForEachChild) {
     offset_min: offsetMin,
     offset_max: offsetMax,
   })
-  addRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
+  overwriteRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
 }
 
 /**
@@ -2483,19 +2478,25 @@ async function createText(json, node, artboard, outputFolder, renditions) {
   /** @type {Text} */
   let nodeText = node
 
+  // コンテンツ書き換え対応
   const styleTextContent = style.first(STYLE_TEXT_CONTENT)
+  if (styleTextContent) {
+    /** @type {SymbolInstance} */
+    const si = nodeText.parent
+    // RepeatGrid内は操作できない
+    // コンポーネント内は操作できない　例外としてインスタンスが生成されていないマスターは操作できる
+    console.log(si, si.isMaster)
+    if (!si.isMaster) {
+      nodeText.text = styleTextContent
+    }
+  }
+
   const styleValuesAttachText = style.values(
     STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES,
   )
-  // console.log('---------------')
-  // console.log(styleValuesAttachText)
-  if (styleTextContent || styleValuesAttachText) {
+  if (styleValuesAttachText) {
     let repeatGrid = getRepeatGrid(nodeText)
-    // RepeatGrid内のテキストは操作できない
-    if (!repeatGrid && styleTextContent) {
-      nodeText.text = styleTextContent
-    }
-    if (repeatGrid && styleValuesAttachText) {
+    if (repeatGrid) {
       repeatGrid.attachTextDataSeries(nodeText, styleValuesAttachText)
     }
   }
@@ -2623,11 +2624,32 @@ async function createImage(json, node, root, outputFolder, renditions) {
       })
     }
     // image type
-    if (style.first(STYLE_IMAGE_TYPE) != null) {
+    const styleImageType = style.first(STYLE_IMAGE_TYPE)
+    if (styleImageType != null) {
       Object.assign(json, {
-        image_type: style.first(STYLE_IMAGE_TYPE),
+        image_type: styleImageType,
       })
     }
+  }
+  //
+  const imageDataValues = style.values(
+    STYLE_REPEATGRID_ATTACH_IMAGE_DATA_SERIES,
+  )
+  if (imageDataValues && imageDataValues.length > 0) {
+    console.log('--------image data series -----------')
+    let repeatGrid = getRepeatGrid(node)
+
+    const dataSeries = []
+    for (let value of imageDataValues) {
+      if (value.startsWith('data:image/')) {
+        let imageFill = new ImageFill(value)
+        dataSeries.push(imageFill)
+      } else {
+        let imageNode = searchNode('icon_alignment_01')
+        dataSeries.push(imageNode.fill)
+      }
+    }
+    repeatGrid.attachImageDataSeries(node, dataSeries)
   }
 }
 
@@ -2673,8 +2695,23 @@ async function createRoot(layoutJson, node, funcForEachChild) {
 }
 
 /**
+ * @param {string} nodeName
+ * @return {SceneNodeClass|null}
+ */
+function searchNode(nodeName) {
+  let found = null
+  nodeWalker(root, node => {
+    if (node.name === nodeName) {
+      found = node
+      return false
+    }
+  })
+  return found
+}
+
+/**
  * func : node => {}  nodeを引数とした関数
- * @param {*} node
+ * @param {SceneNodeClass} node
  * @param {*} func
  */
 function nodeWalker(node, func) {
@@ -2699,20 +2736,6 @@ async function nodeRoot(renditions, outputFolder, root) {
     // レイヤー名から名前とオプションの分割
     let { style } = getNodeNameAndStyle(node)
 
-    /*
-        const indent = (() => {
-      let sp = ''
-      for (let i = 0; i < depth; i++) sp += '  '
-      return sp
-    })()
-
-    console.log(
-      indent + "'" + name + "':" + constructorName,
-      style,
-      responsiveBounds[node.guid]['responsiveParameter'],
-    )
-    */
-
     // コメントアウトチェック
     if (style.checkBool(STYLE_COMMENT_OUT)) {
       return
@@ -2725,7 +2748,7 @@ async function nodeRoot(renditions, outputFolder, root) {
      * @returns {Promise<void>}
      */
     let funcForEachChild = async (numChildren = null, funcFilter = null) => {
-      // node、nodeStackが依存しているため、関数化しない
+      // node、nodeStackが依存しているため、グローバル関数化しない
       const maxNumChildren = node.children.length
       if (numChildren == null) {
         numChildren = maxNumChildren
@@ -2840,13 +2863,11 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
   let renditions = []
 
   responsiveBounds = {}
-  if (!optionChangeContentOnly) {
-    // レスポンシブパラメータの作成
-    for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
-      makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
-    }
-    //checkHashBounds(responsiveBounds, true)
+  // レスポンシブパラメータの作成
+  for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
+    makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
   }
+  //checkHashBounds(responsiveBounds, true)
 
   // シンボル用サブフォルダの作成
   // try {
@@ -2895,13 +2916,9 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
           return false // 子供には行かないようにする
         }
         try {
-          node.visible = true
-        } catch (e) {
-          console.log('***error ' + nodeName + ': visible true failed.')
-        }
-        try {
+          if (!node.visible) node.visible = true
           if (node.blur != null) {
-            // ぼかしをオフ
+            // ぼかしをオフ　ぼかした絵がそのまま画像になるため
             node.blur = null
           }
         } catch (e) {
@@ -2912,7 +2929,8 @@ async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
         // 本来は sourceImageをNaturalWidth,Heightで出力する
         if (
           style.first(STYLE_IMAGE) != null ||
-          style.first(STYLE_IMAGE_SLICE) != null
+          style.first(STYLE_IMAGE_SLICE) != null ||
+          node.constructor.name == 'RepeatGrid'
         ) {
           return false
         }
@@ -3013,12 +3031,13 @@ async function alert(message, title) {
 }
 
 /**
- * 出力対象を得る
+ * Selectionから出力対象アートボードを得る
+ * アートボード直下のノードが選択されているかも確認（EditContext対応）
  * @param {Selection} selection
  * @param {RootNode} root
  * @returns {SceneNode[]}
  */
-async function getExportRootNodes(selection, root) {
+async function getExportArtboards(selection) {
   // 選択されているものがない場合 全てが変換対象
   // return selection.items.length > 0 ? selection.items : root.children
   if (selection.items.length !== 1) {
@@ -3026,13 +3045,14 @@ async function getExportRootNodes(selection, root) {
     throw 'not selected immediate child.'
   }
   const node = selection.items[0]
-  const parentIsArtboard = node.parent instanceof Artboard
+  const parent = node.parent
+  const parentIsArtboard = parent instanceof Artboard
   if (!parentIsArtboard) {
     await alert('出力アートボート直下のノードを1つ選択してください')
     throw 'not selected immediate child.'
   }
 
-  return [selection.items[0].parent]
+  return [parent]
 }
 
 /**
@@ -3211,8 +3231,6 @@ async function pluginExportBaum2Command(selection, root) {
     ),
   )
 
-  let exportRootNodes = await getExportRootNodes(selection, root)
-
   // 出力前にセッションデータをダイアログに反映する
   // Scale
   inputScale.value = scale
@@ -3230,9 +3248,20 @@ async function pluginExportBaum2Command(selection, root) {
   document.body.appendChild(dialog)
   let result = await dialog.showModal()
 
-  // 全てのアートボードが出力対象になっているか確認
-  if (checkAllArtboard.checked) {
-    exportRootNodes = root.children
+  /**
+   * @type {SceneNodeClass[]|SceneNodeList}
+   */
+  let exportSelection = []
+
+  if (optionChangeContentOnly) {
+    exportSelection = [getArtboard(selection.items[0])]
+  } else {
+    // 全てのアートボードが出力対象になっているか確認
+    if (checkAllArtboard.checked) {
+      exportSelection = root.children
+    } else {
+      exportSelection = await getExportArtboards(selection)
+    }
   }
 
   // Dialogの結果チェック 出力しないのなら終了
@@ -3240,11 +3269,13 @@ async function pluginExportBaum2Command(selection, root) {
 
   try {
     await loadCssRules()
+
     // 出力ノードリスト
     /**
      * @type {SceneNodeClass[]}
      */
     let exportRoots = []
+
     // レスポンシブパラメータを取得するため､操作を行うアートボード
     /**
      * @type {SceneNodeClass[]}
@@ -3255,7 +3286,6 @@ async function pluginExportBaum2Command(selection, root) {
     let currentArtboard = null
     let funcForEach = nodes => {
       nodes.forEach(node => {
-        let nodeNameAndStyle = getNodeNameAndStyle(node)
         const isArtboard = node instanceof Artboard
         if (isArtboard) {
           if (isArtboard) currentArtboard = node
@@ -3279,7 +3309,7 @@ async function pluginExportBaum2Command(selection, root) {
       })
     }
 
-    funcForEach(exportRootNodes)
+    funcForEach(exportSelection)
 
     if (!optionChangeContentOnly && exportRoots.length === 0) {
       // 出力するものが見つからなかった
@@ -3446,7 +3476,7 @@ async function testRendition(selection, root) {
 
 class CssSelector {
   constructor(parsed) {
-    this.json = parsed.rule
+    this.json = parsed
     //console.log('----------CssSelector')
     //console.log(this.json)
     if (!parsed) {
@@ -3457,7 +3487,7 @@ class CssSelector {
   /**
    *
    * @param {{name:string, parent:*}} node
-   * @param {{type:string, classNames:string[], id:string, tagName:string, nestingOperator:string, rule:*}|null} rule
+   * @param {{type:string, classNames:string[], id:string, tagName:string, pseudos:*[], nestingOperator:string, rule:*, selectors:*[] }|null} rule
    * @return {null|*}
    */
   matchRule(node, rule = null) {
@@ -3467,79 +3497,184 @@ class CssSelector {
     if (!rule) {
       return null
     }
+    let checkNode = node
+    let ruleRule = rule.rule
     switch (rule.type) {
       case 'rule': {
         // まず奥へ入っていく
-        if (rule.rule) {
-          node = this.matchRule(node, rule.rule)
-          if (!node) return null
+        if (ruleRule) {
+          checkNode = this.matchRule(node, ruleRule)
+          if (!checkNode) {
+            return null
+          }
         }
-        return this.check(node, rule)
+        break
+      }
+      case 'selectors': {
+        for (let selector of rule.selectors) {
+          ruleRule = selector.rule
+          checkNode = this.matchRule(node, ruleRule)
+          if (checkNode) break
+        }
+        if (!checkNode) {
+          return null
+        }
+      }
+      case 'ruleSet': {
+        return this.matchRule(node, ruleRule)
       }
       default:
-        break
+        return null
     }
-    return null
+    if (ruleRule && ruleRule.nestingOperator === null) {
+      // console.log('nullオペレータ確認をする')
+      while (checkNode) {
+        let result = CssSelector.check(checkNode, rule)
+        if (result) {
+          // console.log('nullオペレータで整合したものをみつけた')
+          return checkNode
+        }
+        checkNode = checkNode.parent
+      }
+      // console.log('nullオペレータで整合するものはみつからなかった')
+      return null
+    }
+    let result = CssSelector.check(checkNode, rule)
+    if (!result) {
+      // console.log('このruleは適合しなかった')
+      return null
+    }
+    // console.log('check成功')
+    if (rule.nestingOperator === '>' || rule.nestingOperator === null) {
+      // console.log('nestingオペレータ確認のため、checkNodeを親にすすめる')
+      checkNode = checkNode.parent
+    }
+    return checkNode
   }
 
   /**
    * @param node
-   * @param rule
-   * @return {null|*}
+   * @param {{type:string, classNames:string[], id:string, tagName:string, attrs:*[], pseudos:*[], nestingOperator:string, rule:*, selectors:*[] }|null} rule
+   * @return {boolean}
    */
-  check(node, rule) {
-    //console.log('---------- check ----------')
-    //console.log(node)
-    //console.log('----- rule -----')
-    //console.log(rule)
-    //console.log('----------')
-    const nodeName = node.name
+  static check(node, rule) {
+    if (!node) return false
+    const nodeName = node.name.trim()
     const parsedNodeName = parseNodeName(nodeName)
-    let typeName = null
-    if (node.constructor) {
-      typeName = node.constructor.name.toLowerCase()
-    }
+    /*
+    console.log('ルール check ----------')
+    console.log(node)
+    console.log(parsedNodeName)
+    console.log('以下のruleと照らし合わせる')
+    console.log(rule)
+    console.log('----')
+     */
     if (rule.tagName && rule.tagName !== '*') {
       if (
         rule.tagName !== parsedNodeName.tagName &&
-        rule.tagName !== typeName
+        rule.tagName !== nodeName
       ) {
         // console.log('tagName not found')
-        return null
+        return false
       }
     }
     if (rule.id && rule.id !== parsedNodeName.id) {
       // console.log('id not found')
-      return null
+      return false
     }
     if (rule.classNames) {
-      if (!parsedNodeName.classNames) return null
+      if (!parsedNodeName.classNames) return false
       for (let className of rule.classNames) {
         const found = parsedNodeName.classNames.find(c => c === className)
         if (!found) {
           // console.log('classNames not found')
-          return null
+          return false
         }
       }
     }
-    //console.log('---------------found')
+    if (rule.attrs) {
+      console.log('attrチェック')
+      for (let attr of rule.attrs) {
+        switch (attr.name) {
+          case 'class': {
+            if (
+              !CssSelector.namesCheck(
+                attr.operator,
+                parsedNodeName.classNames,
+                attr.value,
+              )
+            )
+              return false
+            break
+          }
+          default:
+            console.log('***error 未対応の要素名です')
+            return false
+        }
+      }
+    }
+    if (rule.pseudos) {
+      for (let pseudo of rule.pseudos) {
+        switch (pseudo.name) {
+          case 'nth-child':
+            const nthChild = parseInt(pseudo.value)
+            const nodeChildIndex = getChildIndex(node) + 1
+            if (nthChild !== nodeChildIndex) return false
+            break
+          default:
+            console.log('***error 未対応の疑似要素です')
+            return false
+        }
+      }
+    }
     //console.log(nodeName)
     //console.log(JSON.stringify(parsedNodeName, null, '  '))
-    if (rule.nestingOperator === '>') {
-      // 上記がマッチしても >オペレータがみつかり、parentがNullならマッチ失敗となる
-      node = node.parent
-      //console.log('found > ---------------')
-      //console.log(node)
+    return true
+  }
+
+  /**
+   * @param {string} op
+   * @param {string[]} names
+   * @param value
+   */
+  static namesCheck(op, names, value) {
+    if (!op || names == null) return false
+    for (let name of names) {
+      if (this.nameCheck(op, name, value)) return true
     }
-    return node
+    return false
+  }
+
+  /**
+   * @param {string} op
+   * @param {string} name
+   * @param value
+   */
+  static nameCheck(op, name, value) {
+    if (!op || name == null || value == null) return false
+    switch (op) {
+      case '=':
+        return name === value
+      case '*=':
+        return name.includes(value) > 0
+      case '^=':
+        return name.startsWith(value)
+      case '$=':
+        return name.endsWith(value)
+      case '|=':
+        if (name === value) return true
+        return name.startsWith(value + '-')
+    }
+    return false
   }
 }
 
 const CssSelectorParser = require('./node_modules/css-selector-parser/lib/css-selector-parser')
   .CssSelectorParser
 let cssSelectorParser = new CssSelectorParser()
-cssSelectorParser.registerSelectorPseudos('has')
-cssSelectorParser.registerNestingOperators('>', '+', '~')
+//cssSelectorParser.registerSelectorPseudos('has')
+cssSelectorParser.registerNumericPseudos('nth-child')
+cssSelectorParser.registerNestingOperators('>', '+', '~', ' ')
 cssSelectorParser.registerAttrEqualityMods('^', '$', '*', '~')
 cssSelectorParser.enableSubstitutes()
 
@@ -3554,11 +3689,11 @@ async function testParse(selection, root) {
   const file = await folder.getEntry('xd-unity.css')
   let text = await file.read()
 
-  //parser.parse('#a bb > .cc > [attr^="STR"]:nth-child(1) '),
+  //const parsed = cssSelectorParser.parse('.a:nth-child(2)')
+  const parsed = cssSelectorParser.parse('[class$="-aaa"]')
   //parser.parse('a.b,#c > d.e'),
   //parser.parse('a > #b1, #b2 {key:value}'),
-  //const parsed = cssSelectorParser.parse('.e > #a.b.c')['rule']
-  const parsed = cssSelectorParser.parse('r > *')['rule']
+  //const parsed = cssSelectorParser.parse('#id.hello,hello')
   console.log(JSON.stringify(parsed, null, '  '))
   const cssSelector = new CssSelector(parsed)
 
