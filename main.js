@@ -1,5 +1,9 @@
-// CSSテストサイト
-// https://www.w3schools.com/css/tryit.asp?filename=trycss_sel_attribute_end
+/**
+ * 良いCSSとは - Qiita
+ * https://qiita.com/horikowa/items/7e6eb7c4bbb422241d9d
+ * CSSテストサイト
+ * https://www.w3schools.com/css/tryit.asp?filename=trycss_sel_attribute_end
+ */
 
 // XD拡張APIのクラスをインポート
 const { Artboard, Color, Rectangle, ImageFill, root } = require('scenegraph')
@@ -7,15 +11,19 @@ const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 
 // 全体にかけるスケール
-let scale = 1.0
+let globalScale = 1.0
 
-// レスポンシブパラメータを保存する
 /**
+ * レスポンシブパラメータを保存する
  * @type {ResponsiveParameter[]}
  */
-let responsiveBounds = null
+let globalResponsiveBounds = null
 
-// 出力するフォルダ
+//
+/**
+ * 出力するフォルダ
+ * @type {Folder|null}
+ */
 let outputFolder = null
 
 // エキスポートフラグを見るかどうか
@@ -82,55 +90,106 @@ const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 
 /**
- * @type {{selector:CssSelector, declarations:CssDeclarations }[]}
+ * @type {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
  */
-let cssRules = null
+let globalCssRules = null
 
 /**
- * @returns {Promise<void>}
+ * @param {storage.Folder} currentFolder
+ * @param {string} filename
+ * @return {Promise<{selector: CssSelector, declarations: CssDeclarations, at_rule: string}[]>}
  */
-async function loadCssRules() {
-  if (cssRules != null) return
-  cssRules = []
-  const folder = await fs.getPluginFolder()
-  const file = await folder.getEntry('xd-unity.css')
+async function loadCssRules(currentFolder, filename) {
+  const file = await currentFolder.getEntry(filename)
   const contents = await file.read()
-  cssRules = parseCss(contents)
+  let parsed = parseCss(contents)
+  for (let parsedElement of parsed) {
+    const atRule = parsedElement.at_rule
+    if (atRule) {
+      const importTokenizer = /\s*@import\s*url\("(?<file_name>.*)"\);/
+      let token = importTokenizer.exec(atRule)
+      const importFileName = token.groups.file_name
+      if (importFileName) {
+        const p = await loadCssRules(currentFolder, importFileName)
+        parsed = parsed.concat(p)
+      }
+    }
+  }
+  console.log(file.name, 'loaded.')
+  return parsed
+}
+
+let globalCssVars = {}
+
+/**
+ * cssRules内、　:root にある --ではじまる変数定期を抽出する
+ * @param  {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]} cssRules
+ */
+function createCssVars(cssRules) {
+  const vars = {}
+  for (let cssRule of cssRules) {
+    if (cssRule.selector.isRoot()) {
+      // console.log("root:をみつけました")
+      const properties = cssRule.declarations.properties()
+      for (let property of properties) {
+        if (property.startsWith('--')) {
+          const values = cssRule.declarations.values(property)
+          // console.log(`変数${property}=${values}`)
+          vars[property] = values[0]
+        }
+      }
+    }
+  }
+  return vars
 }
 
 /**
  * CSS Parser
- * 正規表現テスト https://regex101.com/
+ * ruleブロック selectorとdeclaration部に分ける
+ * 正規表現テスト https://regex101.com/r/QIifBs/
  * @param {string} text
- * @return {{selector:CssSelector, declarations:CssDeclarations }[]}
+ * @return {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
  */
 function parseCss(text) {
-  // ruleブロック selectorとdeclaration部に分ける
-  // declaration部がなくてもSelectorだけでも取得できるようにする　NodeNameのパースに使うため
-  let tokenizer = /(?<selector>(("([^"\\]|\\.)*")|[^{"]+)+)({(?<declaration>(("([^"\\]|\\.)*")|[^}"]*)*)}\s*)?/gi
-  let rules = []
-  // コメントアウト処理
-  text = text.replace(/\/\*[\s\S]*?\*\//g, '')
+  // コメントアウト処理 エラー時に行数を表示するため、コメント内の改行を残す
+  //TODO: 文字列内の /* */について正しく処理できない
+  text = text.replace(/\/\*[\s\S]*?\*\//g, str => {
+    let replace = ''
+    for (let c of str) {
+      if (c == '\n') replace += c
+    }
+    return replace
+  })
+  // declaration部がなくてもSelectorだけで取得できるようにする　NodeNameのパースに使うため
+  const tokenizer = /(?<at_rule>\s*@[^;]+;\s*)|((?<selector>(("([^"\\]|\\.)*")|[^{"]+)+)({(?<decl_block>(("([^"\\]|\\.)*")|[^}"]*)*)}\s*)?)/gi
+  const rules = []
   let token
   while ((token = tokenizer.exec(text))) {
     try {
-      const selector = new CssSelector(
-        cssSelectorParser.parse(token.groups.selector),
-      )
-      let declarations = null
-      if (token.groups.declaration) {
-        declarations = new CssDeclarations(token.groups.declaration)
+      const tokenAtRule = token.groups.at_rule
+      const tokenSelector = token.groups.selector
+      const tokenDeclBlock = token.groups.decl_block
+      if (tokenAtRule) {
+        rules.push({ at_rule: tokenAtRule })
+      } else if (tokenSelector) {
+        const selector = new CssSelector(tokenSelector)
+        let declarations = null
+        if (tokenDeclBlock) {
+          declarations = new CssDeclarations(tokenDeclBlock)
+        }
+        rules.push({
+          selector,
+          declarations,
+        })
       }
-      rules.push({
-        selector,
-        declarations,
-      })
     } catch (e) {
-      // 以下はデバッグように残してある
-      //console.log('CSSのパースに失敗しました')
-      //console.log(e.stack)
+      // エラー行の算出
+      const parsedText = text.substr(0, token.index) // エラーの起きた文字列までを抜き出す
+      const lines = parsedText.split(/\n/)
+      console.log(lines.length + '行目')
       //console.log(text)
-      throw e.message
+      throw 'CSSのパースに失敗しました:' + lines.length + '行目\n' + e.message
+      console.log(e.stack)
     }
   }
   return rules
@@ -160,7 +219,7 @@ class CssDeclarations {
 
   /**
    * @param property
-   * @return {string[]|*}
+   * @return {string[]}
    */
   values(property) {
     return this.declarations[property]
@@ -181,14 +240,10 @@ class CssDeclarations {
  */
 function parseCssDeclarationBlock(declarationBlock) {
   declarationBlock = declarationBlock.trim()
-  const tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|[^";:\s]+)/gi
-  /**
-   * @type {string[][]}
-   */
+  const tokenizer = /(?<property>[^:";\s]+)\s*:\s*|(?<value>"(?<string>([^"\\]|\\.)*)"|var\([^\)]+\)|[^";:\s]+)/gi
+  /** @type {string[][]}　*/
   let values = {}
-  /**
-   * @type {string[]}
-   */
+  /** @type {string[]}　*/
   let currentValues = null
   let token
   while ((token = tokenizer.exec(declarationBlock))) {
@@ -203,7 +258,8 @@ function parseCssDeclarationBlock(declarationBlock) {
         value = token.groups.string
       }
       if (!currentValues) {
-        throw 'パースに失敗しました'
+        // Propertyが無いのに値がある場合
+        throw 'DeclarationBlockのパースに失敗しました'
       }
       currentValues.push(value)
     }
@@ -361,11 +417,11 @@ class ResponsiveParameter {
 /**
  * ファイル名につかえる文字列に変換する
  * @param {string} name
- * @param {boolean} includeDot ドットも変換対象にするか
+ * @param {boolean} changeDot ドットも変換対象にするか
  * @return {string}
  */
-function convertToFileName(name, includeDot) {
-  if (includeDot) {
+function convertToFileName(name, changeDot = false) {
+  if (changeDot) {
     return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F\.]/g, '_')
   }
   return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F]/g, '_')
@@ -453,12 +509,12 @@ function getGlobalBounds(node) {
   const viewPortHeight = node.viewportHeight
   if (viewPortHeight != null) bounds.height = viewPortHeight
   return {
-    x: bounds.x * scale,
-    y: bounds.y * scale,
-    width: bounds.width * scale,
-    height: bounds.height * scale,
-    ex: (bounds.x + bounds.width) * scale,
-    ey: (bounds.y + bounds.height) * scale,
+    x: bounds.x * globalScale,
+    y: bounds.y * globalScale,
+    width: bounds.width * globalScale,
+    height: bounds.height * globalScale,
+    ex: (bounds.x + bounds.width) * globalScale,
+    ey: (bounds.y + bounds.height) * globalScale,
   }
 }
 
@@ -467,12 +523,12 @@ function getGlobalDrawBounds(node) {
   const viewPortHeight = node.viewportHeight
   if (viewPortHeight != null) bounds.height = viewPortHeight
   return {
-    x: bounds.x * scale,
-    y: bounds.y * scale,
-    width: bounds.width * scale,
-    height: bounds.height * scale,
-    ex: (bounds.x + bounds.width) * scale,
-    ey: (bounds.y + bounds.height) * scale,
+    x: bounds.x * globalScale,
+    y: bounds.y * globalScale,
+    width: bounds.width * globalScale,
+    height: bounds.height * globalScale,
+    ex: (bounds.x + bounds.width) * globalScale,
+    ey: (bounds.y + bounds.height) * globalScale,
   }
 }
 
@@ -486,7 +542,7 @@ function getBeforeGlobalDrawBounds(node) {
   // レスポンシブパラメータ作成用で､すでに取得した変形してしまう前のパラメータがあった場合
   // それを利用するようにする
   let bounds = null
-  const hashBounds = responsiveBounds
+  const hashBounds = globalResponsiveBounds
   if (hashBounds) {
     const hBounds = hashBounds[node.guid]
     if (hBounds && hBounds.before) {
@@ -504,7 +560,7 @@ function getBeforeGlobalDrawBounds(node) {
  * @return {null|Bounds}
  */
 function getBeforeGlobalBounds(node) {
-  const hashBounds = responsiveBounds
+  const hashBounds = globalResponsiveBounds
   let bounds = null
   if (hashBounds != null) {
     const hBounds = hashBounds[node.guid]
@@ -698,10 +754,10 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
       top: nodesBounds.bounds.y - repeatGridBounds.y,
       bottom: 0,
     },
-    spacing_x: repeatGrid.paddingX * scale, // 横の隙間
-    spacing_y: repeatGrid.paddingY * scale, // 縦の隙間
-    cell_max_width: repeatGrid.cellSize.width * scale,
-    cell_max_height: repeatGrid.cellSize.height * scale,
+    spacing_x: repeatGrid.paddingX * globalScale, // 横の隙間
+    spacing_y: repeatGrid.paddingY * globalScale, // 縦の隙間
+    cell_max_width: repeatGrid.cellSize.width * globalScale,
+    cell_max_height: repeatGrid.cellSize.height * globalScale,
   })
   addLayoutParam(layoutJson, style)
 
@@ -742,8 +798,8 @@ function getNodeListBounds(nodeList, withoutNode) {
   })
   return {
     bounds: childrenCalcBounds.bounds,
-    node_max_width: childrenMinMaxSize.maxWidth * scale,
-    node_max_height: childrenMinMaxSize.maxHeight * scale,
+    node_max_width: childrenMinMaxSize.maxWidth * globalScale,
+    node_max_height: childrenMinMaxSize.maxHeight * globalScale,
   }
 }
 
@@ -1106,7 +1162,7 @@ function getStyleFix(styleFix) {
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
 function calcRectTransform(node, style, calcDrawBounds = true) {
-  let hashBounds = responsiveBounds
+  let hashBounds = globalResponsiveBounds
   if (!node || !node.parent) return null
   if (!style) {
     // fix を取得するため
@@ -1353,7 +1409,7 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
  * @return {ResponsiveParameter[]}
  */
 function makeResponsiveParameter(root) {
-  let hashBounds = responsiveBounds
+  let hashBounds = globalResponsiveBounds
   // 現在のboundsを取得する
   nodeWalker(root, node => {
     let param = new ResponsiveParameter(node)
@@ -1441,56 +1497,12 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
 }
 
 /**
- * レスポンシブパラメータを取得するため､Artboardのサイズを比較し元にもどすことを試みる
- * 元通りのサイズに戻ったかどうかのチェック
- * @param {ResponsiveParameter[]} hashBounds
- * @param {boolean|null} repair
- */
-function checkHashBounds(hashBounds, repair) {
-  let result = true
-  for (let key in hashBounds) {
-    let value = hashBounds[key]
-    if (value.before && value.restore) {
-      let beforeBounds = value.before
-      let restoreBounds = value.restore.bounds
-      if (!checkBoundsVerbose(beforeBounds, restoreBounds)) {
-        // 変わってしまった
-        let node = value.node
-        console.log('***error bounds changed:' + node.name)
-        if (repair === true) {
-          // 修復を試みる
-          if (node.symbolId != null) {
-            const dx = restoreBounds.x - beforeBounds.x
-            const dy = restoreBounds.y - beforeBounds.y
-            try {
-              node.moveInParentCoordinates(dx, dy)
-              node.resize(beforeBounds.width, beforeBounds.height)
-            } catch (e) {}
-            if (checkBounds(beforeBounds, getBeforeGlobalDrawBounds(node))) {
-            } else {
-              console.log('***修復できませんでした')
-              result = false
-            }
-          } else {
-            console.log('***Componentのため修復できませんでした')
-            result = false
-          }
-        } else {
-          result = false
-        }
-      }
-    }
-  }
-  return result
-}
-
-/**
  * 描画サイズでのレスポンシブパラメータの取得
  * @param {SceneNode} node
  * @returns {*}
  */
 function getRectTransformDraw(node) {
-  let bounds = responsiveBounds[node.guid]
+  let bounds = globalResponsiveBounds[node.guid]
   return bounds ? bounds.responsiveParameter : null
 }
 
@@ -1499,7 +1511,7 @@ function getRectTransformDraw(node) {
  * @param {SceneNode} node
  */
 function getRectTransform(node) {
-  let bounds = responsiveBounds[node.guid]
+  let bounds = globalResponsiveBounds[node.guid]
   return bounds ? bounds.responsiveParameterGlobal : null
 }
 
@@ -1540,13 +1552,27 @@ class Style {
   }
 
   /**
-   * スタイルの宣言部を追加する
+   * スタイルへ宣言部を追加する
+   * ここで VAR()など値に変わる
    * @param {CssDeclarations} declarations
    */
   addDeclarations(declarations) {
     const properties = declarations.properties()
     for (let property of properties) {
-      this.style[property] = declarations.values(property)
+      const declValues = declarations.values(property)
+      const values = []
+      for (let declValue of declValues) {
+        let value = declValue
+        if (declValue.startsWith('var(')) {
+          const tokenizer = /var\(\s*(?<id>\S*)\s*\)/
+          let token = tokenizer.exec(declValue.trim())
+          const id = token.groups.id
+          value = id ? globalCssVars[id] : null
+          console.log(`var(${id})をみつけました値は${value}`)
+        }
+        values.push(value)
+      }
+      this.style[property] = values
     }
   }
 
@@ -1656,21 +1682,18 @@ function getStyleFromNode(node) {
     //node.nameがパースできなかった
   }
 
-  for (const rule of cssRules) {
-    /**
-     * @type {CssSelector}
-     */
+  for (const rule of globalCssRules) {
+    /** @type {CssSelector} */
     const selector = rule.selector
-    if (selector.matchRule(node)) {
-      // マッチした宣言をスタイルに追加
+    if (selector && selector.matchRule(node)) {
+      console.log('マッチした宣言をスタイルに追加', rule)
       style.addDeclarations(rule.declarations)
     }
   }
 
   if (localCss && localCss.declarations) {
-    // nodeNameのCSSパースに成功している -> ローカル宣言部を持っている
+    // console.log('nodeNameのCSSパースに成功した ローカル宣言部を持っている')
     style.addDeclarations(localCss.declarations)
-    //console.log('-----------local style------------', style)
   }
 
   if (style.has(STYLE_MATCH_LOG)) {
@@ -1972,12 +1995,12 @@ async function addImage(json, node, root, outputFolder, renditions) {
     2番目の値が省略された場合には、1番目の値と同じ。
     */
     const paramLength = image9SliceValues.length
-    const top = parseInt(image9SliceValues[0]) * scale
-    const right = paramLength > 1 ? parseInt(image9SliceValues[1]) * scale : top
+    const top = parseInt(image9SliceValues[0]) * globalScale
+    const right = paramLength > 1 ? parseInt(image9SliceValues[1]) * globalScale : top
     const bottom =
-      paramLength > 2 ? parseInt(image9SliceValues[2]) * scale : top
+      paramLength > 2 ? parseInt(image9SliceValues[2]) * globalScale : top
     const left =
-      paramLength > 3 ? parseInt(image9SliceValues[3]) * scale : right
+      paramLength > 3 ? parseInt(image9SliceValues[3]) * globalScale : right
     let offset = top + 'px,' + right + 'px,' + bottom + 'px,' + left + 'px'
     fileExtension = '-9slice,' + offset + '.png'
   }
@@ -2032,7 +2055,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
         node: node,
         outputFile: file,
         type: application.RenditionType.PNG,
-        scale: scale * localScale,
+        scale: globalScale * localScale,
       })
     }
   }
@@ -2474,6 +2497,7 @@ async function createButton(json, node, root, funcForEachChild) {
  */
 async function createText(json, node, artboard, outputFolder, renditions) {
   let { style } = getNodeNameAndStyle(node)
+  console.log("createText",style)
 
   /** @type {Text} */
   let nodeText = node
@@ -2485,8 +2509,8 @@ async function createText(json, node, artboard, outputFolder, renditions) {
     const si = nodeText.parent
     // RepeatGrid内は操作できない
     // コンポーネント内は操作できない　例外としてインスタンスが生成されていないマスターは操作できる
-    console.log(si, si.isMaster)
     if (!si.isMaster) {
+      // マスターかどうかをチェックして、例外情報（EditContext外例外）が表示されるのをできるだけ抑止している
       nodeText.text = styleTextContent
     }
   }
@@ -2557,7 +2581,7 @@ async function createText(json, node, artboard, outputFolder, renditions) {
     textType: textType,
     font: nodeText.fontFamily,
     style: nodeText.fontStyle,
-    size: nodeText.fontSize * scale,
+    size: nodeText.fontSize * globalScale,
     color: nodeText.fill.toHex(true),
     align: hAlign + vAlign,
     x: boundsCM.cx,
@@ -2726,7 +2750,7 @@ function nodeWalker(node, func) {
  * アートボードの処理
  * @param {*} renditions
  * @param outputFolder
- * @param {Artboard} root
+ * @param {SceneNodeClass} root
  */
 async function nodeRoot(renditions, outputFolder, root) {
   let layoutJson = makeLayoutJson(root)
@@ -2855,29 +2879,25 @@ let optionChangeContentOnly = false
  * Baum2 export
  * @param {SceneNodeClass[]} roots
  * @param outputFolder
- * @param {SceneNodeClass[]} responsiveCheckRootNodes
  * @returns {Promise<void>}
  */
-async function exportBaum2(roots, outputFolder, responsiveCheckRootNodes) {
+async function exportBaum2(roots, outputFolder) {
   // ラスタライズする要素を入れる
   let renditions = []
 
-  responsiveBounds = {}
-  // レスポンシブパラメータの作成
-  for (let responsiveCheckRootNode of responsiveCheckRootNodes) {
-    makeResponsiveParameter(responsiveCheckRootNode) // responsiveBoundsに追加されていく
-  }
-  //checkHashBounds(responsiveBounds, true)
+  globalResponsiveBounds = {}
 
-  // シンボル用サブフォルダの作成
-  // try {
-  //   symbolSubFolder = await outputFolder.getEntry('symbol')
-  // } catch (e) {
-  //   symbolSubFolder = await outputFolder.createFolder('symbol')
-  // }
-
-  // アートボード毎の処理
   for (let root of roots) {
+    globalCssRules = await loadCssRules(await fs.getPluginFolder(), 'xd-unity.css')
+    const artboardCssRoles = await loadCssRules(
+      outputFolder,
+      convertToFileName(root.name) + '.css',
+    )
+    globalCssRules = globalCssRules.concat(artboardCssRoles)
+    globalCssVars = createCssVars(globalCssRules)
+
+    makeResponsiveParameter(root)
+
     let nodeNameAndStyle = getNodeNameAndStyle(root)
     let subFolderName = nodeNameAndStyle.node_name
     // フォルダ名に使えない文字を'_'に変換
@@ -3211,7 +3231,7 @@ async function pluginExportBaum2Command(selection, root) {
                 return
               }
 
-              scale = tmpScale
+              globalScale = tmpScale
               optionImageNoExport = checkImageNoExport.checked
               optionCheckMarkedForExport = checkCheckMarkedForExport.checked
               optionChangeContentOnly = checkChangeContentOnly.checked
@@ -3233,7 +3253,7 @@ async function pluginExportBaum2Command(selection, root) {
 
   // 出力前にセッションデータをダイアログに反映する
   // Scale
-  inputScale.value = scale
+  inputScale.value = globalScale
   // Folder
   inputFolder.value = ''
   if (outputFolder != null) {
@@ -3248,80 +3268,50 @@ async function pluginExportBaum2Command(selection, root) {
   document.body.appendChild(dialog)
   let result = await dialog.showModal()
 
-  /**
-   * @type {SceneNodeClass[]|SceneNodeList}
-   */
-  let exportSelection = []
-
-  if (optionChangeContentOnly) {
-    exportSelection = [getArtboard(selection.items[0])]
-  } else {
-    // 全てのアートボードが出力対象になっているか確認
-    if (checkAllArtboard.checked) {
-      exportSelection = root.children
-    } else {
-      exportSelection = await getExportArtboards(selection)
-    }
-  }
-
   // Dialogの結果チェック 出力しないのなら終了
   if (result !== 'export') return
 
-  try {
-    await loadCssRules()
+  /**
+   * @type {SceneNodeClass[]|SceneNodeList}
+   */
+  let exportRoots = []
 
+  if (optionChangeContentOnly) {
+    exportRoots = [getArtboard(selection.items[0])]
+  } else {
+    const node = selection.items[0]
+    const parent = node.parent
+    if (selection.items.length !== 1 || !(parent instanceof Artboard)) {
+      await alert('出力アートボート直下のノードを1つ選択してください')
+      throw 'Selected node is not immediate child.'
+    }
+    // 全てのアートボードが出力対象になっているか確認
+    if (checkAllArtboard.checked) {
+      root.children.forEach(node => {
+        exportRoots.push(node)
+      })
+    } else {
+      exportRoots.push(parent)
+    }
+  }
+
+  if (exportRoots.length === 0) {
+    await alert('対象が見つかりません')
+    return
+  }
+
+  try {
     // 出力ノードリスト
     /**
      * @type {SceneNodeClass[]}
      */
-    let exportRoots = []
-
-    // レスポンシブパラメータを取得するため､操作を行うアートボード
-    /**
-     * @type {SceneNodeClass[]}
-     */
-    let responsiveCheckArtboards = []
-
-    // Artboard､SubPrefabを探し､　必要であればエキスポートマークチェックを行い､ 出力リストに登録する
-    let currentArtboard = null
-    let funcForEach = nodes => {
-      nodes.forEach(node => {
-        const isArtboard = node instanceof Artboard
-        if (isArtboard) {
-          if (isArtboard) currentArtboard = node
-          if (optionCheckMarkedForExport && !node.markedForExport) {
-            // エキスポートマークをみる且つ､マークがついてない場合は 出力しない
-          } else {
-            // 同じ名前のものは上書きされる
-            exportRoots.push(node)
-            if (isArtboard) {
-              responsiveCheckArtboards.push(node)
-            } else {
-              // サブプレハブを選択して出力する場合は､currentArtboard==NULLの場合がある
-              if (currentArtboard != null) {
-                responsiveCheckArtboards.push(currentArtboard)
-              }
-            }
-          }
-        }
-        const children = node.children
-        if (children) funcForEach(children)
-      })
-    }
-
-    funcForEach(exportSelection)
-
-    if (!optionChangeContentOnly && exportRoots.length === 0) {
-      // 出力するものが見つからなかった
-      await alert('対象が見つかりません')
-      return
-    }
-    await exportBaum2(exportRoots, outputFolder, responsiveCheckArtboards)
+    await exportBaum2(exportRoots, outputFolder)
   } catch (e) {
     console.log(e)
     console.log(e.stack)
-    await alert(e, 'error')
+    await alert(e.message, 'error')
   }
+  console.log('export baum2 done.')
   // データをもとに戻すため､意図的にエラーをスローする
   if (!optionChangeContentOnly) {
     throw 'throw error for UNDO'
@@ -3336,7 +3326,7 @@ async function pluginExportBaum2Command(selection, root) {
 async function pluginResponsiveParamName(selection, root) {
   let selectionItems = selection.items
   // レスポンシブパラメータの作成
-  responsiveBounds = {}
+  globalResponsiveBounds = {}
   selectionItems.forEach(item => {
     // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
     makeResponsiveParameter(item)
@@ -3373,10 +3363,7 @@ async function pluginResponsiveParamName(selection, root) {
   console.log('@fix:done')
 
   // データをもとに戻すため､意図的にエラーをスローすると､付加した情報も消えてしまう
-  if (!checkHashBounds(responsiveBounds, false)) {
-    await alert('bounds is changed. thrown error for UNDO', '@fix')
-  } else {
-  }
+  // Artboardをリサイズしてもとに戻しても、まったく同じ状態には戻らない
 }
 
 /**
@@ -3475,13 +3462,31 @@ async function testRendition(selection, root) {
 }
 
 class CssSelector {
-  constructor(parsed) {
-    this.json = parsed
-    //console.log('----------CssSelector')
-    //console.log(this.json)
-    if (!parsed) {
+  /**
+   * @param {string} selectorText
+   */
+  constructor(selectorText) {
+    if (!selectorText) {
       throw 'CssSelectorがNULLで作成されました'
     }
+    // console.log("SelectorTextをパースします",selectorText)
+    this.json = cssSelectorParser.parse(selectorText.trim())
+    /*
+    console.log(
+      'SelectorTextをパースしました',
+      JSON.stringify(this.json, null, '  '),
+    )
+     */
+  }
+
+  /**
+   * 擬似クラスの:rooｔであるか
+   * @return {boolean}
+   */
+  isRoot() {
+    const pseudos = this.json['rule']['pseudos']
+    // console.log('isRoot() pseudos確認:', pseudos)
+    return pseudos && pseudos[0].name === 'root'
   }
 
   /**
@@ -3553,7 +3558,7 @@ class CssSelector {
   }
 
   /**
-   * @param node
+   * @param {{name:string, parent:*}} node
    * @param {{type:string, classNames:string[], id:string, tagName:string, attrs:*[], pseudos:*[], nestingOperator:string, rule:*, selectors:*[] }|null} rule
    * @return {boolean}
    */
@@ -3561,14 +3566,12 @@ class CssSelector {
     if (!node) return false
     const nodeName = node.name.trim()
     const parsedNodeName = parseNodeName(nodeName)
-    /*
     console.log('ルール check ----------')
     console.log(node)
     console.log(parsedNodeName)
     console.log('以下のruleと照らし合わせる')
     console.log(rule)
     console.log('----')
-     */
     if (rule.tagName && rule.tagName !== '*') {
       if (
         rule.tagName !== parsedNodeName.tagName &&
@@ -3593,7 +3596,7 @@ class CssSelector {
       }
     }
     if (rule.attrs) {
-      console.log('attrチェック')
+      // console.log('attrチェック')
       for (let attr of rule.attrs) {
         switch (attr.name) {
           case 'class': {
@@ -3608,7 +3611,7 @@ class CssSelector {
             break
           }
           default:
-            console.log('***error 未対応の要素名です')
+            console.log('***error 未対応の要素名です:', attr.name)
             return false
         }
       }
@@ -3621,8 +3624,10 @@ class CssSelector {
             const nodeChildIndex = getChildIndex(node) + 1
             if (nthChild !== nodeChildIndex) return false
             break
+          case 'root':
+            if (node.parent) return false // 親があるのならマッチしない
           default:
-            console.log('***error 未対応の疑似要素です')
+            console.log('***error 未対応の疑似要素です', pseudo.name)
             return false
         }
       }
@@ -3689,15 +3694,16 @@ async function testParse(selection, root) {
   const file = await folder.getEntry('xd-unity.css')
   let text = await file.read()
 
-  //const parsed = cssSelectorParser.parse('.a:nth-child(2)')
-  const parsed = cssSelectorParser.parse('[class$="-aaa"]')
-  //parser.parse('a.b,#c > d.e'),
-  //parser.parse('a > #b1, #b2 {key:value}'),
-  //const parsed = cssSelectorParser.parse('#id.hello,hello')
-  console.log(JSON.stringify(parsed, null, '  '))
-  const cssSelector = new CssSelector(parsed)
+  const selector =
+    //'.a:nth-child(2)'
+    //'[class$="-aaa"]'
+    ':root'
+  //'a.b,#c > d.e'
+  //'a > #b1, #b2 {key:value}'
+  //'#id.hello,hello'
+  const cssSelector = new CssSelector(selector)
 
-  const result = cssSelector.matchRule(selection.items[0])
+  //const result = cssSelector.matchRule(selection.items[0])
   console.log(result)
 }
 
