@@ -111,6 +111,7 @@ repeatgrid > * {
 
 .viewport-x > .content {
   conent-size-fitter: x;
+  rect-transform-anchor-offset-y: 0 1 0 0;
 }
 
 .viewport-y > .content {

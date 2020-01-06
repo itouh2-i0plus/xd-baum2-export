@@ -6,9 +6,10 @@
  */
 
 // XD拡張APIのクラスをインポート
-const { Artboard, Color, Rectangle, ImageFill, root } = require('scenegraph')
+const { Artboard, Color, ImageFill, Rectangle, root, selection } = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
+const commands = require('commands')
 
 // 全体にかけるスケール
 let globalScale = 1.0
@@ -100,7 +101,9 @@ let globalCssRules = null
  * @return {Promise<{selector: CssSelector, declarations: CssDeclarations, at_rule: string}[]>}
  */
 async function loadCssRules(currentFolder, filename) {
+  if (!currentFolder) return null
   const file = await currentFolder.getEntry(filename)
+  if (!file) return null
   const contents = await file.read()
   let parsed = parseCss(contents)
   for (let parsedElement of parsed) {
@@ -111,6 +114,7 @@ async function loadCssRules(currentFolder, filename) {
       const importFileName = token.groups.file_name
       if (importFileName) {
         const p = await loadCssRules(currentFolder, importFileName)
+        //TODO: 接続する位置とループ対策
         parsed = parsed.concat(p)
       }
     }
@@ -186,10 +190,16 @@ function parseCss(text) {
       // エラー行の算出
       const parsedText = text.substr(0, token.index) // エラーの起きた文字列までを抜き出す
       const lines = parsedText.split(/\n/)
-      console.log(lines.length + '行目')
-      //console.log(text)
-      throw 'CSSのパースに失敗しました:' + lines.length + '行目\n' + e.message
+      //const errorIndex = text.indexOf()
+      //const errorLastIndex = text.lastIndexOf("\n",token.index)
+      const errorLine = text.substring(token.index - 30, token.index + 30)
+      const errorText =
+        `CSSのパースに失敗しました: ${lines.length}行目:${errorLine}\n` +
+        e.message
+      console.log(errorText)
       console.log(e.stack)
+      //console.log(text)
+      throw errorText
     }
   }
   return rules
@@ -225,12 +235,26 @@ class CssDeclarations {
     return this.declarations[property]
   }
 
+  /**
+   * @param {string} property
+   * @return {*|null}
+   */
+  first(property) {
+    const values = this.values(property)
+    if (values == null) return null
+    return values[0]
+  }
+
   setFirst(property, value) {
     let values = this.values(property)
     if (!values) {
       values = this.declarations[property] = []
     }
     values[0] = value
+  }
+
+  checkBool(property) {
+    return checkBool(this.first(property))
   }
 }
 
@@ -406,22 +430,31 @@ class ResponsiveParameter {
     this.restore = new GlobalBounds(this.node)
   }
 
-  update() {
+  update(hashResponsiveParameter) {
     // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    this.responsiveParameter = calcRectTransform(this.node, null)
+    this.responsiveParameter = calcRectTransform(
+      this.node,
+      null,
+      hashResponsiveParameter,
+    )
     // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
-    this.responsiveParameterGlobal = calcRectTransform(this.node, null, false)
+    this.responsiveParameterGlobal = calcRectTransform(
+      this.node,
+      null,
+      hashResponsiveParameter,
+      false,
+    )
   }
 }
 
 /**
  * ファイル名につかえる文字列に変換する
  * @param {string} name
- * @param {boolean} changeDot ドットも変換対象にするか
+ * @param {boolean} convertDot ドットも変換対象にするか
  * @return {string}
  */
-function convertToFileName(name, changeDot = false) {
-  if (changeDot) {
+function convertToFileName(name, convertDot = false) {
+  if (convertDot) {
     return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F\.]/g, '_')
   }
   return name.replace(/[\\/:*?"<>|#\x00-\x1F\x7F]/g, '_')
@@ -1161,8 +1194,7 @@ function getStyleFix(styleFix) {
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
-function calcRectTransform(node, style, calcDrawBounds = true) {
-  let hashBounds = globalResponsiveBounds
+function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
   if (!node || !node.parent) return null
   if (!style) {
     // fix を取得するため
@@ -1202,7 +1234,6 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
   const parentAfterBounds = parentBounds.after[boundsParameterName]
 
   // X座標
-  // console.log(node.name + '-------------------')
   // console.log(beforeBounds.width, afterBounds.width)
   if (styleFixWidth == null) {
     styleFixWidth = approxEqual(beforeBounds.width, afterBounds.width, 0.0005)
@@ -1408,16 +1439,14 @@ function calcRectTransform(node, style, calcDrawBounds = true) {
  * @param {SceneNodeClass} root
  * @return {ResponsiveParameter[]}
  */
-function makeResponsiveParameter(root) {
-  let hashBounds = globalResponsiveBounds
+function makeResponsiveBounds(root) {
+  let hashBounds = {}
   // 現在のboundsを取得する
   nodeWalker(root, node => {
     let param = new ResponsiveParameter(node)
     param.updateBefore()
     hashBounds[node.guid] = param
   })
-
-  if (optionChangeContentOnly) return hashBounds
 
   const rootWidth = root.globalBounds.width
   const rootHeight = root.globalBounds.height
@@ -1453,7 +1482,7 @@ function makeResponsiveParameter(root) {
 
   // レスポンシブパラメータの生成
   for (let key in hashBounds) {
-    hashBounds[key].update()
+    hashBounds[key].update(hashBounds) // ここまでに生成されたデータが必要
   }
 
   return hashBounds
@@ -1562,15 +1591,17 @@ class Style {
       const declValues = declarations.values(property)
       const values = []
       for (let declValue of declValues) {
-        let value = declValue
-        if (declValue.startsWith('var(')) {
+        // console.log('declValue:', declValue)
+        if (typeof declValue == 'string' && declValue.startsWith('var(')) {
           const tokenizer = /var\(\s*(?<id>\S*)\s*\)/
           let token = tokenizer.exec(declValue.trim())
           const id = token.groups.id
-          value = id ? globalCssVars[id] : null
-          console.log(`var(${id})をみつけました値は${value}`)
+          let value = id ? globalCssVars[id] : null
+          // console.log(`var(${id})をみつけました値は${value}`)
+          values.push(value)
+        } else {
+          values.push(declValue)
         }
-        values.push(value)
       }
       this.style[property] = values
     }
@@ -1685,8 +1716,15 @@ function getStyleFromNode(node) {
   for (const rule of globalCssRules) {
     /** @type {CssSelector} */
     const selector = rule.selector
-    if (selector && selector.matchRule(node)) {
-      console.log('マッチした宣言をスタイルに追加', rule)
+    if (
+      selector &&
+      selector.matchRule(
+        node,
+        null,
+        rule.declarations.checkBool('check-log'),
+      )
+    ) {
+      // console.log('マッチした宣言をスタイルに追加', rule)
       style.addDeclarations(rule.declarations)
     }
   }
@@ -1700,8 +1738,7 @@ function getStyleFromNode(node) {
     console.log(style.values(STYLE_MATCH_LOG))
   }
 
-  //console.log('------------ style ----------------')
-  //console.log(style)
+  //console.log('Style:',style)
   return style
 }
 
@@ -1853,6 +1890,18 @@ function makeLayoutJson(root) {
 }
 
 /**
+ * @param json
+ * @param {Style} style
+ */
+function addActive(json, style) {
+  if (style.first('active')) {
+    Object.assign(json, {
+      active: checkBool(style.first('active')),
+    })
+  }
+}
+
+/**
  * CanvasGroupオプション
  * @param {*} json
  * @param {SceneNode} node
@@ -1880,22 +1929,26 @@ function addDrawRectTransform(json, node) {
 }
 
 /**
- * 指定のAnchorパラメータを上書きする
- * anchor_min ahchor_max offset_min offset_maxがjson内に設定済みの必要がある
+ * 指定のAnchorパラメータを設定する
  * @param json
  * @param style
  */
-function overwriteRectTransformAnchorOffsetX(json, style) {
-  // 指定が会った場合、上書きする
+function addRectTransformAnchorOffsetX(json, style) {
+  //TODO: 初期値はいらないだろうか
+  if (!('anchor_min' in json)) json['anchor_min'] = {}
+  if (!('anchor_max' in json)) json['anchor_max'] = {}
+  if (!('offset_min' in json)) json['offset_min'] = {}
+  if (!('offset_max' in json)) json['offset_max'] = {}
   if (!style) return
+  // Styleで指定が会った場合、上書きする
   const anchorsX = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X)
+  const anchorsY = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
   if (anchorsX) {
     json['anchor_min']['x'] = parseFloat(anchorsX[0])
     json['anchor_max']['x'] = parseFloat(anchorsX[1])
     json['offset_min']['x'] = parseFloat(anchorsX[2])
     json['offset_max']['x'] = parseFloat(anchorsX[3])
   }
-  const anchorsY = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
   if (anchorsY) {
     json['anchor_min']['y'] = parseFloat(anchorsY[0])
     json['anchor_max']['y'] = parseFloat(anchorsY[1])
@@ -1996,7 +2049,8 @@ async function addImage(json, node, root, outputFolder, renditions) {
     */
     const paramLength = image9SliceValues.length
     const top = parseInt(image9SliceValues[0]) * globalScale
-    const right = paramLength > 1 ? parseInt(image9SliceValues[1]) * globalScale : top
+    const right =
+      paramLength > 1 ? parseInt(image9SliceValues[1]) * globalScale : top
     const bottom =
       paramLength > 2 ? parseInt(image9SliceValues[2]) * globalScale : top
     const left =
@@ -2355,19 +2409,60 @@ async function createViewport(json, node, root, funcForEachChild) {
     offset_min: offsetMin,
     offset_max: offsetMax,
   })
-  overwriteRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
+  addRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
+}
+
+/**
+ * Stretch変形できるものへ変換コピーする
+ * @param {SceneNodeClass} item
+ */
+function duplicateStretchable(item) {
+  let fill = item.fill
+  if (fill != null && item.constructor.name === 'Rectangle') {
+    // ImageFillをもったRectangleのコピー
+    let rect = new Rectangle()
+    rect.name = item.name + '-stretch'
+    SetGlobalBounds(rect, item.globalBounds) // 同じ場所に作成
+    // 新規に作成することで、元のイメージがCCライブラリのイメージでもSTRETCH変形ができる
+    let cloneFill = fill.clone()
+    cloneFill.scaleBehavior = ImageFill.SCALE_STRETCH
+    rect.fill = cloneFill
+    selection.insertionParent.addChild(rect)
+    return rect
+  }
+  // それ以外の場合は普通にコピー
+  const selectionItems = [].concat(selection.items)
+  selection.items = [item]
+  commands.duplicate()
+  const node = selection.items[0]
+  //node.removeFromParent()
+  selection.items = selectionItems
+  return node
+}
+
+function SetGlobalBounds(node, newGlobalBounds) {
+  const globalBounds = node.globalBounds
+  const deltaX = newGlobalBounds.x - globalBounds.x
+  const deltaY = newGlobalBounds.y - globalBounds.y
+  node.moveInParentCoordinates(deltaX, deltaY)
+  node.resize(newGlobalBounds.width, newGlobalBounds.height)
 }
 
 /**
  *
  * @param json
- * @param {SceneNode} node
- * @param root
+ * @param {SceneNodeClass} node
+ * @param {SceneNodeClass} root
  * @param funcForEachChild
  * @return {Promise<string>}
  */
 async function createGroup(json, node, root, funcForEachChild) {
   let { style } = getNodeNameAndStyle(node)
+
+  /**
+   * @type {Group}
+   */
+  const nodeGroup = node
 
   const type = 'Group'
   let boundsCM = getDrawBoundsCMInBase(node, root)
@@ -2382,11 +2477,18 @@ async function createGroup(json, node, root, funcForEachChild) {
   })
   await funcForEachChild()
 
-  if (style.first('active')) {
-    Object.assign(json, {
-      deactive: checkBool(style.first('active')),
-    })
+  const styleAddContent = style.first('add-content')
+  if (styleAddContent) {
+    const sourceNode = searchNode(styleAddContent)
+    const nodeBounds = getBeforeGlobalBounds(node)
+    const duplicated = duplicateStretchable(sourceNode)
+    duplicated.name = duplicated.name + ' copy'
+    duplicated.removeFromParent()
+    nodeGroup.addChildAfter(duplicated, nodeGroup.children.at(0))
+    SetGlobalBounds(duplicated, nodeBounds)
   }
+
+  addActive(json, style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
@@ -2488,16 +2590,16 @@ async function createButton(json, node, root, funcForEachChild) {
 }
 
 /**
- * テキストレイヤーの処理
+ * TextNodeの処理
+ * 画像になるか、Textコンポーネントをもつ
  * @param {*} json
  * @param {SceneNode} node
  * @param {Artboard} artboard
  * @param {*} outputFolder
  * @param {[]} renditions
  */
-async function createText(json, node, artboard, outputFolder, renditions) {
+async function nodeText(json, node, artboard, outputFolder, renditions) {
   let { style } = getNodeNameAndStyle(node)
-  console.log("createText",style)
 
   /** @type {Text} */
   let nodeText = node
@@ -2601,8 +2703,8 @@ async function createText(json, node, artboard, outputFolder, renditions) {
 /**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json
- * @param {SceneNode} node
- * @param {Artboard} root
+ * @param {SceneNodeClass} node
+ * @param {SceneNodeClass} root
  * @param {*} outputFolder
  * @param {*} renditions
  */
@@ -2660,7 +2762,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
     STYLE_REPEATGRID_ATTACH_IMAGE_DATA_SERIES,
   )
   if (imageDataValues && imageDataValues.length > 0) {
-    console.log('--------image data series -----------')
+    console.log('image data series')
     let repeatGrid = getRepeatGrid(node)
 
     const dataSeries = []
@@ -2669,7 +2771,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
         let imageFill = new ImageFill(value)
         dataSeries.push(imageFill)
       } else {
-        let imageNode = searchNode('icon_alignment_01')
+        let imageNode = searchNode(value)
         dataSeries.push(imageNode.fill)
       }
     }
@@ -2755,7 +2857,12 @@ function nodeWalker(node, func) {
 async function nodeRoot(renditions, outputFolder, root) {
   let layoutJson = makeLayoutJson(root)
 
-  let nodeWalker = async (nodeStack, layoutJson, depth, parentJson) => {
+  let nodeWalker = async (
+    nodeStack,
+    layoutJson,
+    depth,
+    enableWriteToLayoutJson,
+  ) => {
     let node = nodeStack[nodeStack.length - 1]
     // レイヤー名から名前とオプションの分割
     let { style } = getNodeNameAndStyle(node)
@@ -2772,7 +2879,7 @@ async function nodeRoot(renditions, outputFolder, root) {
      * @returns {Promise<void>}
      */
     let funcForEachChild = async (numChildren = null, funcFilter = null) => {
-      // node、nodeStackが依存しているため、グローバル関数化しない
+      // layoutJson,node,nodeStackが依存しているため、グローバル関数化しない
       const maxNumChildren = node.children.length
       if (numChildren == null) {
         numChildren = maxNumChildren
@@ -2791,10 +2898,15 @@ async function nodeRoot(renditions, outputFolder, root) {
           }
           let childJson = {}
           nodeStack.push(child)
-          await nodeWalker(nodeStack, childJson, depth + 1, layoutJson)
+          await nodeWalker(
+            nodeStack,
+            childJson,
+            depth + 1,
+            enableWriteToLayoutJson,
+          )
           nodeStack.pop()
           // なにも入っていない場合はelementsに追加しない
-          if (Object.keys(childJson).length > 0) {
+          if (enableWriteToLayoutJson && Object.keys(childJson).length > 0) {
             layoutJson.elements.push(childJson)
           }
         }
@@ -2807,8 +2919,8 @@ async function nodeRoot(renditions, outputFolder, root) {
       case 'Artboard':
         await createRoot(layoutJson, node, funcForEachChild)
         break
-      case 'BooleanGroup':
       case 'Group':
+      case 'BooleanGroup':
       case 'RepeatGrid':
       case 'SymbolInstance':
         {
@@ -2816,6 +2928,11 @@ async function nodeRoot(renditions, outputFolder, root) {
             style.checkBool(STYLE_IMAGE) ||
             style.checkBool(STYLE_IMAGE_SLICE)
           ) {
+            enableWriteToLayoutJson = false //TODO: 関数にわたす引数にならないか
+            let tempOutputFolder = outputFolder
+            outputFolder = null
+            await funcForEachChild()
+            outputFolder = tempOutputFolder
             await createImage(layoutJson, node, root, outputFolder, renditions)
             return
           }
@@ -2858,7 +2975,7 @@ async function nodeRoot(renditions, outputFolder, root) {
         await funcForEachChild()
         break
       case 'Text':
-        await createText(layoutJson, node, root, outputFolder, renditions)
+        await nodeText(layoutJson, node, root, outputFolder, renditions)
         await funcForEachChild()
         break
       default:
@@ -2868,7 +2985,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     }
   }
 
-  await nodeWalker([root], layoutJson.root, 0)
+  await nodeWalker([root], layoutJson.root, 0, true)
 
   return layoutJson
 }
@@ -2888,15 +3005,25 @@ async function exportBaum2(roots, outputFolder) {
   globalResponsiveBounds = {}
 
   for (let root of roots) {
-    globalCssRules = await loadCssRules(await fs.getPluginFolder(), 'xd-unity.css')
-    const artboardCssRoles = await loadCssRules(
-      outputFolder,
-      convertToFileName(root.name) + '.css',
+    globalCssRules = await loadCssRules(
+      await fs.getPluginFolder(),
+      'xd-unity.css',
     )
-    globalCssRules = globalCssRules.concat(artboardCssRoles)
+    const artboardCssFilename = convertToFileName(root.name) + '.css'
+    try {
+      const artboardCssRoles = await loadCssRules(
+        outputFolder,
+        artboardCssFilename,
+      )
+      if (artboardCssRoles) {
+        globalCssRules = globalCssRules.concat(artboardCssRoles)
+      }
+    } catch (e) {
+      console.log(`***error ${artboardCssFilename}の読み込みに失敗しました`)
+    }
     globalCssVars = createCssVars(globalCssRules)
 
-    makeResponsiveParameter(root)
+    globalResponsiveBounds = makeResponsiveBounds(root)
 
     let nodeNameAndStyle = getNodeNameAndStyle(root)
     let subFolderName = nodeNameAndStyle.node_name
@@ -3054,7 +3181,6 @@ async function alert(message, title) {
  * Selectionから出力対象アートボードを得る
  * アートボード直下のノードが選択されているかも確認（EditContext対応）
  * @param {Selection} selection
- * @param {RootNode} root
  * @returns {SceneNode[]}
  */
 async function getExportArtboards(selection) {
@@ -3329,7 +3455,7 @@ async function pluginResponsiveParamName(selection, root) {
   globalResponsiveBounds = {}
   selectionItems.forEach(item => {
     // あとで一括変化があったかどうか調べるため､responsiveBoundsにパラメータを追加していく
-    makeResponsiveParameter(item)
+    makeResponsiveBounds(item)
     let func = node => {
       if (node.symbolId) return
       const param = calcRectTransform(node, {})
@@ -3495,7 +3621,7 @@ class CssSelector {
    * @param {{type:string, classNames:string[], id:string, tagName:string, pseudos:*[], nestingOperator:string, rule:*, selectors:*[] }|null} rule
    * @return {null|*}
    */
-  matchRule(node, rule = null) {
+  matchRule(node, rule = null, verboseLog = false) {
     if (!rule) {
       rule = this.json
     }
@@ -3508,7 +3634,7 @@ class CssSelector {
       case 'rule': {
         // まず奥へ入っていく
         if (ruleRule) {
-          checkNode = this.matchRule(node, ruleRule)
+          checkNode = this.matchRule(node, ruleRule, verboseLog)
           if (!checkNode) {
             return null
           }
@@ -3518,7 +3644,7 @@ class CssSelector {
       case 'selectors': {
         for (let selector of rule.selectors) {
           ruleRule = selector.rule
-          checkNode = this.matchRule(node, ruleRule)
+          checkNode = this.matchRule(node, ruleRule, verboseLog)
           if (checkNode) break
         }
         if (!checkNode) {
@@ -3526,7 +3652,7 @@ class CssSelector {
         }
       }
       case 'ruleSet': {
-        return this.matchRule(node, ruleRule)
+        return this.matchRule(node, ruleRule, verboseLog)
       }
       default:
         return null
@@ -3534,7 +3660,7 @@ class CssSelector {
     if (ruleRule && ruleRule.nestingOperator === null) {
       // console.log('nullオペレータ確認をする')
       while (checkNode) {
-        let result = CssSelector.check(checkNode, rule)
+        let result = CssSelector.check(checkNode, rule, verboseLog)
         if (result) {
           // console.log('nullオペレータで整合したものをみつけた')
           return checkNode
@@ -3544,7 +3670,7 @@ class CssSelector {
       // console.log('nullオペレータで整合するものはみつからなかった')
       return null
     }
-    let result = CssSelector.check(checkNode, rule)
+    let result = CssSelector.check(checkNode, rule, verboseLog)
     if (!result) {
       // console.log('このruleは適合しなかった')
       return null
@@ -3562,27 +3688,29 @@ class CssSelector {
    * @param {{type:string, classNames:string[], id:string, tagName:string, attrs:*[], pseudos:*[], nestingOperator:string, rule:*, selectors:*[] }|null} rule
    * @return {boolean}
    */
-  static check(node, rule) {
+  static check(node, rule, verboseLog = false) {
     if (!node) return false
     const nodeName = node.name.trim()
     const parsedNodeName = parseNodeName(nodeName)
-    console.log('ルール check ----------')
-    console.log(node)
-    console.log(parsedNodeName)
-    console.log('以下のruleと照らし合わせる')
-    console.log(rule)
-    console.log('----')
+    if (verboseLog) {
+      console.log('ルール check ----------')
+      console.log(node)
+      console.log(parsedNodeName)
+      console.log('以下のruleと照らし合わせる')
+      console.log(rule)
+      console.log('----')
+    }
     if (rule.tagName && rule.tagName !== '*') {
       if (
         rule.tagName !== parsedNodeName.tagName &&
         rule.tagName !== nodeName
       ) {
-        // console.log('tagName not found')
+        if (verboseLog) console.log('tagName not found')
         return false
       }
     }
     if (rule.id && rule.id !== parsedNodeName.id) {
-      // console.log('id not found')
+      if (verboseLog) console.log('id not found')
       return false
     }
     if (rule.classNames) {
@@ -3590,7 +3718,7 @@ class CssSelector {
       for (let className of rule.classNames) {
         const found = parsedNodeName.classNames.find(c => c === className)
         if (!found) {
-          // console.log('classNames not found')
+          if (verboseLog) console.log('classNames not found')
           return false
         }
       }
@@ -3604,6 +3732,17 @@ class CssSelector {
               !CssSelector.namesCheck(
                 attr.operator,
                 parsedNodeName.classNames,
+                attr.value,
+              )
+            )
+              return false
+            break
+          }
+          case 'id': {
+            if (
+              !CssSelector.nameCheck(
+                attr.operator,
+                parsedNodeName.id,
                 attr.value,
               )
             )
@@ -3634,6 +3773,7 @@ class CssSelector {
     }
     //console.log(nodeName)
     //console.log(JSON.stringify(parsedNodeName, null, '  '))
+    if (verboseLog) console.log('マッチしました')
     return true
   }
 
