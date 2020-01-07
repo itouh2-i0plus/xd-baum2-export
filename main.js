@@ -6,7 +6,15 @@
  */
 
 // XD拡張APIのクラスをインポート
-const { Artboard, Color, ImageFill, Rectangle, root, selection } = require('scenegraph')
+const {
+  Artboard,
+  Color,
+  ImageFill,
+  Rectangle,
+  GraphicNode,
+  root,
+  selection,
+} = require('scenegraph')
 const application = require('application')
 const fs = require('uxp').storage.localFileSystem
 const commands = require('commands')
@@ -52,7 +60,7 @@ const STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT =
 const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
   'content-size-fitter-vertical-fit'
 const STYLE_DIRECTION = 'direction'
-const STYLE_FIX = 'margin-fix'
+const STYLE_MARGIN_FIX = 'margin-fix'
 const STYLE_IMAGE = 'image'
 const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const STYLE_IMAGE_SCALE = 'image-scale'
@@ -400,15 +408,37 @@ class CalcBounds {
       y: this.sy,
       width: this.ex - this.sx,
       height: this.ey - this.sy,
+      ex: this.ex,
+      ey: this.ey,
     }
   }
 }
 
 class GlobalBounds {
+  /**
+   * @param {SceneNodeClass} node
+   */
   constructor(node) {
     this.visible = node.visible
     this.bounds = getGlobalDrawBounds(node)
-    this.global_bounds = getGlobalBounds(node)
+    this.virtual_global_bounds = this.global_bounds = getGlobalBounds(node)
+    if (node.mask) {
+      /**
+       * @type {Group}
+       */
+      let group = node
+      console.log('マスク持ちをみつけた', node)
+      // マスクを持っている場合、マスクされているノード全体のGlobalBoundsを取得する
+      let childrenCalcBounds = new CalcBounds()
+      // セルサイズを決めるため最大サイズを取得する
+      group.children.forEach(node => {
+        const { style } = getNodeNameAndStyle(node)
+        // コンポーネントにする場合は除く
+        if (style.first(STYLE_COMPONENT)) return
+        childrenCalcBounds.addBounds(node.globalBounds)
+      })
+      this.virtual_global_bounds = childrenCalcBounds.bounds
+    }
   }
 }
 
@@ -434,13 +464,11 @@ class ResponsiveParameter {
     // DrawBoundsでのレスポンシブパラメータ(場合によっては不正確)
     this.responsiveParameter = calcRectTransform(
       this.node,
-      null,
       hashResponsiveParameter,
     )
     // GlobalBoundsでのレスポンシブパラメータ(場合によっては不正確)
     this.responsiveParameterGlobal = calcRectTransform(
       this.node,
-      null,
       hashResponsiveParameter,
       false,
     )
@@ -778,7 +806,7 @@ function sortElementsByPositionDesc(jsonElements) {
 function getLayoutFromRepeatGrid(repeatGrid, style) {
   let layoutJson = {}
   const repeatGridBounds = getBeforeGlobalBounds(repeatGrid)
-  const nodesBounds = getNodeListBounds(repeatGrid.children, null)
+  const nodesBounds = getNodeListBeforeGlobalBounds(repeatGrid.children, null)
   Object.assign(layoutJson, {
     method: 'grid',
     padding: {
@@ -814,7 +842,7 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
  * @param {SceneNodeClass} withoutNode
  * @returns {{node_max_height: number, node_max_width: number, bounds: Bounds}}
  */
-function getNodeListBounds(nodeList, withoutNode) {
+function getNodeListBeforeGlobalBounds(nodeList, withoutNode) {
   //ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   let childrenCalcBounds = new CalcBounds()
   // セルサイズを決めるため最大サイズを取得する
@@ -823,8 +851,7 @@ function getNodeListBounds(nodeList, withoutNode) {
     const { style } = getNodeNameAndStyle(node)
     // コンポーネントにする場合は除く
     if (style.first(STYLE_COMPONENT)) return
-    // Mask Viewportグループのように､子供のなかに描画エリア指定されているものがある場合も除く
-    if (node === withoutNode) return
+    if (node === withoutNode) return // 除くものかチェック　MaskはたいていBoundsの中に入れる
     const childBounds = getBeforeGlobalBounds(node)
     childrenCalcBounds.addBounds(childBounds)
     childrenMinMaxSize.addSize(childBounds.width, childBounds.height)
@@ -846,7 +873,7 @@ function getNodeListBounds(nodeList, withoutNode) {
 function getPaddingAndCellMaxSize(parentNode, maskNode, nodeChildren) {
   // Paddingを取得するため､子供(コンポーネント化するもの･maskを除く)のサイズを取得する
   // ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
-  let childrenCalcBounds = getNodeListBounds(nodeChildren, maskNode)
+  let childrenCalcBounds = getNodeListBeforeGlobalBounds(nodeChildren, maskNode)
   //
   // Paddingの計算
   let viewportBounds = getBeforeGlobalDrawBounds(parentNode) // 描画でのサイズを取得する　影など増えた分も考慮したPaddingを取得する
@@ -1127,6 +1154,8 @@ function getStyleFix(styleFix) {
   if (styleFix == null) {
     return null
   }
+
+  // null：わからない　true:フィックス　false:フィックスされていないで確定 いずれ数字に変わる
   let styleFixWidth = false
   let styleFixHeight = false
   let styleFixTop = false
@@ -1194,13 +1223,26 @@ function getStyleFix(styleFix) {
  * @param calcDrawBounds
  * @return {{offset_max: {x: null, y: null}, fix: {top: (boolean|number), left: (boolean|number), bottom: (boolean|number), width: boolean, right: (boolean|number), height: boolean}, anchor_min: {x: null, y: null}, anchor_max: {x: null, y: null}, offset_min: {x: null, y: null}}|null}
  */
-function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
+function calcRectTransform(node, hashBounds, calcDrawBounds = true) {
   if (!node || !node.parent) return null
-  if (!style) {
-    // fix を取得するため
-    // TODO: anchor スタイルのパラメータはとるべきでは
-    style = getNodeNameAndStyle(node).style
-  }
+
+  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
+
+  const bounds = hashBounds[node.guid]
+  if (!bounds || !bounds.before || !bounds.after) return null
+  const beforeBounds = bounds.before[boundsParameterName]
+  const afterBounds = bounds.after[boundsParameterName]
+
+  const parentBounds = hashBounds[node.parent.guid]
+  if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
+  //virtual_global_boundsは、親がマスク持ちグループで会った場合、グループ全体のBoundsになる
+  const parentBeforeBounds = parentBounds.before.virtual_global_bounds
+  const parentAfterBounds = parentBounds.after.virtual_global_bounds
+
+  // fix を取得するため
+  // TODO: anchor スタイルのパラメータはとるべきでは
+  const style = getNodeNameAndStyle(node).style
+
   // console.log(`----------------------${node.name}----------------------`)
   let styleFixWidth = null
   let styleFixHeight = null
@@ -1209,10 +1251,11 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
   let styleFixLeft = null
   let styleFixRight = null
 
-  const styleFix = style.values(STYLE_FIX)
+  const styleFix = style.values(STYLE_MARGIN_FIX)
   if (styleFix != null) {
     // オプションが設定されたら、全ての設定が決まる(NULLではなくなる)
     const fix = getStyleFix(styleFix)
+    console.log(node.name, 'のmargin-fixが設定されました', fix)
     styleFixWidth = fix.width
     styleFixHeight = fix.height
     styleFixTop = fix.top
@@ -1220,18 +1263,6 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
     styleFixLeft = fix.left
     styleFixRight = fix.right
   }
-
-  const boundsParameterName = calcDrawBounds ? 'bounds' : 'global_bounds'
-
-  const bounds = hashBounds[node.guid]
-  if (!bounds || !bounds.before || !bounds.after) return null
-  const beforeBounds = bounds.before[boundsParameterName]
-  const afterBounds = bounds.after[boundsParameterName]
-  const parentBounds = hashBounds[node.parent.guid]
-  if (!parentBounds || !parentBounds.before || !parentBounds.after) return null
-
-  const parentBeforeBounds = parentBounds.before[boundsParameterName]
-  const parentAfterBounds = parentBounds.after[boundsParameterName]
 
   // X座標
   // console.log(beforeBounds.width, afterBounds.width)
@@ -1248,11 +1279,13 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
     ) {
       // ロックされている
       styleFixLeft = true
-    } else {
-      // 親のX座標･Widthをもとに､Left座標がきまる
-      styleFixLeft =
-        (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
     }
+  }
+  if (!styleFixLeft) {
+    // TODO:0もここに含まれるのではないか
+    // 親のX座標･Widthをもとに､Left座標がきまる
+    styleFixLeft =
+      (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
   }
 
   const beforeRight =
@@ -1268,11 +1301,13 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
     if (approxEqual(beforeRight, afterRight, 0.001)) {
       // ロックされている 0.001以下の誤差が起きることを確認した
       styleFixRight = true
-    } else {
-      // 親のX座標･Widthをもとに､割合でRight座標がきまる
-      styleFixRight =
-        (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
     }
+  }
+  if (!styleFixRight) {
+    // TODO:0もここに含まれるのではないか
+    // 親のX座標･Widthをもとに､割合でRight座標がきまる
+    styleFixRight =
+      (parentBeforeBounds.ex - beforeBounds.ex) / parentBeforeBounds.width
   }
 
   // Y座標
@@ -1289,11 +1324,12 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
       )
     ) {
       styleFixTop = true
-    } else {
-      // 親のY座標･heightをもとに､Top座標がきまる
-      styleFixTop =
-        (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
     }
+  }
+  if (!styleFixTop) {
+    // 親のY座標･heightをもとに､Top座標がきまる
+    styleFixTop =
+      (beforeBounds.y - parentBeforeBounds.y) / parentBeforeBounds.height
   }
 
   const beforeBottom = parentBeforeBounds.ey - beforeBounds.ey
@@ -1301,11 +1337,12 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
   if (styleFixBottom == null) {
     if (approxEqual(beforeBottom, afterBottom, 0.001)) {
       styleFixBottom = true
-    } else {
-      // 親のY座標･Heightをもとに､Bottom座標がきまる
-      styleFixBottom =
-        (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
     }
+  }
+  if (!styleFixBottom) {
+    // 親のY座標･Heightをもとに､Bottom座標がきまる
+    styleFixBottom =
+      (parentBeforeBounds.ey - beforeBounds.ey) / parentBeforeBounds.height
   }
 
   // anchorの値を決める
@@ -1400,7 +1437,7 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
     }
   }
 
-  if (style.hasValue(STYLE_FIX, 'c', 'center')) {
+  if (style.hasValue(STYLE_MARGIN_FIX, 'c', 'center')) {
     anchorMin.x = 0.5
     anchorMax.x = 0.5
     const center = beforeBounds.x + beforeBounds.width / 2
@@ -1409,7 +1446,7 @@ function calcRectTransform(node, style, hashBounds, calcDrawBounds = true) {
     offsetMax.x = center - parentCenter + beforeBounds.width / 2
   }
 
-  if (style.hasValue(STYLE_FIX, 'm', 'middle')) {
+  if (style.hasValue(STYLE_MARGIN_FIX, 'm', 'middle')) {
     anchorMin.y = 0.5
     anchorMax.y = 0.5
     const middle = beforeBounds.y + beforeBounds.height / 2
@@ -1718,11 +1755,7 @@ function getStyleFromNode(node) {
     const selector = rule.selector
     if (
       selector &&
-      selector.matchRule(
-        node,
-        null,
-        rule.declarations.checkBool('check-log'),
-      )
+      selector.matchRule(node, null, rule.declarations.checkBool('check-log'))
     ) {
       // console.log('マッチした宣言をスタイルに追加', rule)
       style.addDeclarations(rule.declarations)
@@ -2039,24 +2072,30 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
   const image9SliceValues = style.values(STYLE_IMAGE_SLICE)
   if (image9SliceValues && image9SliceValues.length > 1) {
-    /*
-    省略については、CSSに準拠
-    http://www.htmq.com/css3/border-image-slice.shtml
-    上・右・下・左の端から内側へのオフセット量
-    4番目の値が省略された場合には、2番目の値と同じ。
-    3番目の値が省略された場合には、1番目の値と同じ。
-    2番目の値が省略された場合には、1番目の値と同じ。
-    */
-    const paramLength = image9SliceValues.length
-    const top = parseInt(image9SliceValues[0]) * globalScale
-    const right =
-      paramLength > 1 ? parseInt(image9SliceValues[1]) * globalScale : top
-    const bottom =
-      paramLength > 2 ? parseInt(image9SliceValues[2]) * globalScale : top
-    const left =
-      paramLength > 3 ? parseInt(image9SliceValues[3]) * globalScale : right
-    let offset = top + 'px,' + right + 'px,' + bottom + 'px,' + left + 'px'
-    fileExtension = '-9slice,' + offset + '.png'
+    if (node.rotation !== 0) {
+      console.log(
+        'warning*** 回転しているノードの9スライス指定は無効になります',
+      )
+    } else {
+      /*
+       省略については、CSSに準拠
+       http://www.htmq.com/css3/border-image-slice.shtml
+       上・右・下・左の端から内側へのオフセット量
+       4番目の値が省略された場合には、2番目の値と同じ。
+       3番目の値が省略された場合には、1番目の値と同じ。
+       2番目の値が省略された場合には、1番目の値と同じ。
+       */
+      const paramLength = image9SliceValues.length
+      const top = parseInt(image9SliceValues[0]) * globalScale
+      const right =
+        paramLength > 1 ? parseInt(image9SliceValues[1]) * globalScale : top
+      const bottom =
+        paramLength > 2 ? parseInt(image9SliceValues[2]) * globalScale : top
+      const left =
+        paramLength > 3 ? parseInt(image9SliceValues[3]) * globalScale : right
+      let offset = top + 'px,' + right + 'px,' + bottom + 'px,' + left + 'px'
+      fileExtension = '-9slice,' + offset + '.png'
+    }
   }
 
   const drawBounds = getDrawBoundsCMInBase(node, root)
@@ -2084,11 +2123,41 @@ async function addImage(json, node, root, outputFolder, renditions) {
     })
   }
 
-  let localScale = 1.0
+  let renditionNode = node
+  let renditionScale = globalScale
+
+  if (
+    !optionImageNoExport &&
+    image9SliceValues &&
+    node.isContainer &&
+    node.rotation === 0
+  ) {
+    // 回転している場合はできない
+    console.log(
+      '9スライス以下の画像を出力するのに、ソース画像と同サイズが渡すことができるか調べる',
+    )
+    /**
+     * @type {Group}
+     */
+    node.children.some(child => {
+      // source という名前で且つ、ImageFillを持ったノードを探す
+      if (
+        child.name === 'source' &&
+        child.fill &&
+        child.fill.constructor.name === 'ImageFill'
+      ) {
+        child.visible = true
+        // 元のサイズにして出力対象にする
+        child.resize(child.fill.naturalWidth, child.fill.naturalHeight)
+        renditionNode = child
+        return true
+      }
+    })
+  }
   if (style.first(STYLE_IMAGE_SCALE) != null) {
     const scaleImage = parseFloat(style.first(STYLE_IMAGE_SCALE))
     if (Number.isFinite(scaleImage)) {
-      localScale = scaleImage
+      renditionScale = globalScale * scaleImage
     }
   }
 
@@ -2106,10 +2175,10 @@ async function addImage(json, node, root, outputFolder, renditions) {
       })
       renditions.push({
         fileName: fileName,
-        node: node,
+        node: renditionNode,
         outputFile: file,
         type: application.RenditionType.PNG,
-        scale: globalScale * localScale,
+        scale: renditionScale,
       })
     }
   }
@@ -2321,6 +2390,9 @@ async function createViewport(json, node, root, funcForEachChild) {
     // 縦の並び順を正常にするため､Yでソートする
     sortElementsByPositionAsc(json.elements)
 
+    for (let childJson of json.elements) {
+    }
+
     const maskBounds = getBeforeGlobalBounds(maskNode)
     const maskBoundsCM = getDrawBoundsCMInBase(maskNode, root)
 
@@ -2382,6 +2454,7 @@ async function createViewport(json, node, root, funcForEachChild) {
     }
   }
 
+  addLayer(json, style)
   addDrawRectTransform(json, node)
   addContentSizeFitter(json, style)
   addScrollRect(json, style)
@@ -2393,14 +2466,16 @@ async function createViewport(json, node, root, funcForEachChild) {
   addLayer(contentJson, contentStyle)
 
   // ContentのRectTransformを決める
+  const contentX = contentJson['x']
+  const contentY = contentJson['y']
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
-  const contentStyleFix = getStyleFix(contentStyle.values(STYLE_FIX))
+  const contentStyleFix = getStyleFix(contentStyle.values(STYLE_MARGIN_FIX))
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
-  let offsetMin = { x: 0, y: -contentHeight }
-  let offsetMax = { x: contentWidth, y: 0 }
+  let offsetMin = { x: contentX, y: -contentHeight - contentY }
+  let offsetMax = { x: contentWidth + contentX, y: -contentY }
   Object.assign(contentJson, {
     fix: contentStyleFix,
     pivot: pivot, // ここのPivotはX,Yで渡す　他のところは文字列になっている
@@ -3743,6 +3818,17 @@ class CssSelector {
               !CssSelector.nameCheck(
                 attr.operator,
                 parsedNodeName.id,
+                attr.value,
+              )
+            )
+              return false
+            break
+          }
+          case 'typeof': {
+            if (
+              !CssSelector.nameCheck(
+                attr.operator,
+                node.constructor.name,
                 attr.value,
               )
             )

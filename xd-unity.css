@@ -11,17 +11,23 @@
   layer: UI;
 }
 
-
 /*
  BooleanGroupはImage化する
  */
-booleangroup {
+[typeof='BooleanGroup'] {
   image: true;
 }
 
-repeatgrid > * {
-  unity-name: "rg-child(${childIndex})";
+[typeof='RepeatGrid'] > * {
+  unity-name: 'rg-child(${childIndex})';
   layout-element: preferred;
+}
+
+/*
+ リピードグリッドの孫は、自動的に作成される子のサイズに追従する
+ */
+[typeof='RepeatGrid'] > * > * {
+  margin-fix: l r t b;
 }
 
 /*
@@ -78,35 +84,35 @@ repeatgrid > * {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x y;
-  scroll-rect-content: ".content";
+  scroll-rect-content: '.content';
 }
 
 .viewport-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: ".content.layout-x";
+  scroll-rect-content: '.content.layout-x';
 }
 
-.viewport-y {
+.viewport-layout-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: ".content.layout-y";
+  scroll-rect-content: '.content.layout-y';
 }
 
 .viewport-grid-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: ".content.layout-grid-x";
+  scroll-rect-content: '.content.layout-grid-x';
 }
 
 .viewport-grid-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: ".content.layout-grid-y";
+  scroll-rect-content: '.content.layout-grid-y';
 }
 
 .viewport-x > .content {
@@ -114,7 +120,7 @@ repeatgrid > * {
   rect-transform-anchor-offset-y: 0 1 0 0;
 }
 
-.viewport-y > .content {
+.viewport-layout-y > .content {
   /*
    親と横幅がぴったり重なる
    anchor.min.x: 0
@@ -196,10 +202,9 @@ repeatgrid > * {
 
 .text {
   text: true;
-  match-log: "text found"
+  match-log: 'text found';
 }
 
 .button {
   button: true;
 }
-
