@@ -11,23 +11,24 @@
   layer: UI;
 }
 
+
 /*
  BooleanGroupはImage化する
  */
-[typeof='BooleanGroup'] {
+[typeof="BooleanGroup"] {
   image: true;
 }
 
-[typeof='RepeatGrid'] > * {
-  unity-name: 'rg-child(${childIndex})';
+[typeof="RepeatGrid"] > * {
+  unity-name: "rg-child(${childIndex})";
   layout-element: preferred;
 }
 
 /*
  リピードグリッドの孫は、自動的に作成される子のサイズに追従する
  */
-[typeof='RepeatGrid'] > * > * {
-  margin-fix: l r t b;
+[typeof="RepeatGrid"] > * > * {
+  margin-fix: l r t b
 }
 
 /*
@@ -84,38 +85,38 @@
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x y;
-  scroll-rect-content: '.content';
+  scroll-rect-content: ".content";
 }
 
-.viewport-x {
+.viewport-layout-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: '.content.layout-x';
+  scroll-rect-content: ".content.layout-x";
 }
 
 .viewport-layout-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: '.content.layout-y';
+  scroll-rect-content: ".content.layout-y";
 }
 
 .viewport-grid-x {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: x;
-  scroll-rect-content: '.content.layout-grid-x';
+  scroll-rect-content: ".content.layout-grid-x";
 }
 
 .viewport-grid-y {
   viewport: true;
   rect-mask-two-d: true;
   scroll-rect: y;
-  scroll-rect-content: '.content.layout-grid-y';
+  scroll-rect-content: ".content.layout-grid-y";
 }
 
-.viewport-x > .content {
+.viewport-layout-x > .content {
   conent-size-fitter: x;
   rect-transform-anchor-offset-y: 0 1 0 0;
 }
@@ -139,14 +140,24 @@
   rect-transform-anchor-offset-y: 0 1 0 0;
 }
 
+.scrollbar-x {
+  scrollbar: true;
+  direction: ltr;
+}
+
+.scrollbar-x > .handle {
+  state: scrollbar-handle-rect;
+  margin-fix: l r t b;
+}
+
 .scrollbar-y {
   scrollbar: true;
   direction: btt;
 }
 
-.scrollbar-x {
-  scrollbar: true;
-  direction: ltr;
+.scrollbar-y > .handle {
+  state: scrollbar-handle-rect;
+  margin-fix: l r t b;
 }
 
 .dots-scrollbar {
@@ -156,16 +167,6 @@
   layout-group-spacing-x: 9px;
   conent-size-fitter-vertical-fit: preferred-size;
   conent-size-fitter-horizontal-fit: preferred-size;
-}
-
-.scrollbar-x > .handle {
-  state: scrollbar-handle-rect;
-  margin-fix: l r t b;
-}
-
-.scrollbar-y > .handle {
-  state: scrollbar-handle-rect;
-  margin-fix: l r t b;
 }
 
 .dots-scrollbar > .toggle {
@@ -202,9 +203,10 @@
 
 .text {
   text: true;
-  match-log: 'text found';
+  match-log: "text found"
 }
 
 .button {
   button: true;
 }
+

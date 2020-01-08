@@ -423,12 +423,11 @@ class GlobalBounds {
     this.bounds = getGlobalDrawBounds(node)
     this.virtual_global_bounds = this.global_bounds = getGlobalBounds(node)
     if (node.mask) {
-      /**
-       * @type {Group}
-       */
+      //** @type {Group}
       let group = node
       console.log('マスク持ちをみつけた', node)
       // マスクを持っている場合、マスクされているノード全体のGlobalBoundsを取得する
+      //TODO: 以下が必要なのは、.contentを作成するものだけ
       let childrenCalcBounds = new CalcBounds()
       // セルサイズを決めるため最大サイズを取得する
       group.children.forEach(node => {
@@ -1283,7 +1282,7 @@ function calcRectTransform(node, hashBounds, calcDrawBounds = true) {
   }
   if (!styleFixLeft) {
     // TODO:0もここに含まれるのではないか
-    // 親のX座標･Widthをもとに､Left座標がきまる
+    // 親のX座標･Widthをもとに､Left値がきまる
     styleFixLeft =
       (beforeBounds.x - parentBeforeBounds.x) / parentBeforeBounds.width
   }
@@ -1487,8 +1486,8 @@ function makeResponsiveBounds(root) {
 
   const rootWidth = root.globalBounds.width
   const rootHeight = root.globalBounds.height
-  const resizePlusWidth = 100
-  const resizePlusHeight = 100
+  const resizePlusWidth = -100
+  const resizePlusHeight = -100
 
   // rootのリサイズ
   const viewportHeight = root.viewportHeight // viewportの高さの保存
@@ -2703,7 +2702,11 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
   }
 
   // ラスタライズオプションチェック
-  if (style.checkBool(STYLE_IMAGE) || style.checkBool(STYLE_IMAGE_SLICE)) {
+  if (
+    style.checkBool(STYLE_IMAGE) ||
+    style.checkBool(STYLE_IMAGE_SLICE) ||
+    style.checkBool(STYLE_IMAGE_NO_SLICE)
+  ) {
     await createImage(json, node, artboard, outputFolder, renditions)
     return
   }
@@ -3001,8 +3004,12 @@ async function nodeRoot(renditions, outputFolder, root) {
         {
           if (
             style.checkBool(STYLE_IMAGE) ||
-            style.checkBool(STYLE_IMAGE_SLICE)
+            style.checkBool(STYLE_IMAGE_SLICE) ||
+            style.checkBool(STYLE_IMAGE_NO_SLICE)
           ) {
+            console.log(
+              'groupでのSTYLE_IMAGE処理 子供のコンテンツ変更は行うが、イメージ出力はしない',
+            )
             enableWriteToLayoutJson = false //TODO: 関数にわたす引数にならないか
             let tempOutputFolder = outputFolder
             outputFolder = null
@@ -3150,8 +3157,9 @@ async function exportBaum2(roots, outputFolder) {
         // 自身は可視にし、子供の不可視情報は生かす
         // 本来は sourceImageをNaturalWidth,Heightで出力する
         if (
-          style.first(STYLE_IMAGE) != null ||
-          style.first(STYLE_IMAGE_SLICE) != null ||
+          style.checkBool(STYLE_IMAGE) ||
+          style.checkBool(STYLE_IMAGE_SLICE) != null ||
+          style.checkBool(STYLE_IMAGE_NO_SLICE) != null ||
           node.constructor.name == 'RepeatGrid'
         ) {
           return false
