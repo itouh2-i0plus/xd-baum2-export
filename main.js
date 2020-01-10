@@ -73,7 +73,8 @@ const STYLE_LAYOUT_GROUP = 'layout-group' //子供を自動的にどうならべ
 const STYLE_LAYOUT_GROUP_CHILD_ALIGNMENT = 'layout-group-child-alignment'
 const STYLE_LAYOUT_GROUP_CHILD_FORCE_EXPAND = 'layout-group-child-force-expand'
 const STYLE_LAYOUT_GROUP_CONTROL_CHILD_SIZE = 'layout-group-control-child-size'
-const STYLE_LAYOUT_GROUP_SPACING_X = 'layout-spacing-x'
+const STYLE_LAYOUT_GROUP_SPACING_X = 'layout-group-spacing-x'
+const STYLE_LAYOUT_GROUP_SPACING_Y = 'layout-group-spacing-y'
 const STYLE_LAYOUT_GROUP_START_AXIS = 'layout-group-start-axis'
 const STYLE_LAYOUT_GROUP_USE_CHILD_SCALE = 'layout-group-use-child-scale'
 const STYLE_MATCH_LOG = 'match-log'
@@ -97,6 +98,7 @@ const STYLE_TOGGLE = 'toggle'
 const STYLE_TOGGLE_GROUP = 'toggle-group'
 const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
+const STYLE_ADD_COMPONENT = 'add-component'
 
 /**
  * @type {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
@@ -841,7 +843,7 @@ function getLayoutFromRepeatGrid(repeatGrid, style) {
  * @param {SceneNodeClass} withoutNode
  * @returns {{node_max_height: number, node_max_width: number, bounds: Bounds}}
  */
-function getNodeListBeforeGlobalBounds(nodeList, withoutNode) {
+function getNodeListBeforeGlobalBounds(nodeList, withoutNode = null) {
   //ToDo: jsonの子供情報Elementsも､node.childrenも両方つかっているが現状しかたなし
   let childrenCalcBounds = new CalcBounds()
   // セルサイズを決めるため最大サイズを取得する
@@ -1735,6 +1737,8 @@ function hasAnyValue(values, ...checkValues) {
   return false
 }
 
+const STYLE_CHECK_LOG = 'check-log'
+
 /**
  *
  * @param {{name:string, parent:*}} node
@@ -1754,7 +1758,11 @@ function getStyleFromNode(node) {
     const selector = rule.selector
     if (
       selector &&
-      selector.matchRule(node, null, rule.declarations.checkBool('check-log'))
+      selector.matchRule(
+        node,
+        null,
+        rule.declarations.checkBool(STYLE_CHECK_LOG),
+      )
     ) {
       // console.log('マッチした宣言をスタイルに追加', rule)
       style.addDeclarations(rule.declarations)
@@ -2235,11 +2243,19 @@ function addLayout(json, viewportNode, maskNode, children, style) {
   if (!layoutJson) return
 
   const layoutSpacingX = style.first(STYLE_LAYOUT_GROUP_SPACING_X)
-  if (layoutSpacingX != null) {
+  if (layoutSpacingX) {
     Object.assign(layoutJson, {
       spacing_x: parseInt(layoutSpacingX), //TODO: pxやenを無視している
     })
   }
+  const layoutSpacingY = style.first(STYLE_LAYOUT_GROUP_SPACING_Y)
+  if (layoutSpacingY) {
+    Object.assign(layoutJson, {
+      spacing_y: parseInt(layoutSpacingY), //TODO: pxやenを無視している
+    })
+  }
+
+  console.log('addLayout:', layoutJson)
 
   Object.assign(json, {
     layout: layoutJson,
@@ -2453,8 +2469,12 @@ async function createViewport(json, node, root, funcForEachChild) {
     }
   }
 
-  addLayer(json, style)
+  // 基本
+  addActive(json, style)
   addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
+
   addContentSizeFitter(json, style)
   addScrollRect(json, style)
   addRectMask2d(json, style)
@@ -2562,10 +2582,20 @@ async function createGroup(json, node, root, funcForEachChild) {
     SetGlobalBounds(duplicated, nodeBounds)
   }
 
+  // 基本
   addActive(json, style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  //
+  const styleAddComponent = style.first(STYLE_ADD_COMPONENT)
+  if (styleAddComponent) {
+    Object.assign(json, {
+      add_component: {
+        type_name: styleAddComponent,
+      },
+    })
+  }
   addCanvasGroup(json, node, style)
   addLayoutElement(json, node, style)
   addLayout(json, node, node, node.children, style)
@@ -2593,11 +2623,23 @@ async function createScrollbar(json, node, funcForEachChild) {
     })
   }
 
+  const bounds = getBeforeGlobalBounds(node)
+  const childlenBounds = getNodeListBeforeGlobalBounds(node.children)
+  const spacingX = bounds.width - childlenBounds.bounds.width
+  const spacingY = bounds.height - childlenBounds.bounds.height
+  Object.assign(json, {
+    child_spacing_x: spacingX,
+    child_spacing_y: spacingY,
+  })
+
   await funcForEachChild()
 
+  // 基本
+  addActive(json, style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  //
   addCanvasGroup(json, node, style)
   addLayoutElement(json, node, style)
   addLayout(json, node, node, node.children, style)
@@ -2630,9 +2672,12 @@ async function createToggle(json, node, root, funcForEachChild) {
 
   addBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
+  // 基本パラメータ・コンポーネント
+  addActive(json, style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  //
   addLayoutElement(json, node, style)
   addContentSizeFitter(json, style)
 }
@@ -2656,6 +2701,8 @@ async function createButton(json, node, root, funcForEachChild) {
 
   addBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
+  // 基本パラメータ
+  addActive(json,style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
@@ -2772,6 +2819,8 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
     opacity: 100,
   })
 
+  // 基本パラメータ
+  addActive(json,style)
   // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
   addRectTransform(json, node)
   addLayer(json, style)
@@ -2802,7 +2851,14 @@ async function createImage(json, node, root, outputFolder, renditions) {
         },
       ],
     })
+    //TODO: レイヤーもActiveもStateも設定していない
+    //TODO: コンポーネントにするべき?
+    //TODO: イメージをボタンに設定しているのはどこ?
+    // → おそらくBaum2側で自動的にしている 描画オブジェクトが2個以上会った場合にどちらがボタン用Imageになるかわからない
+    // 仕様をちゃんと決めるべき
     addDrawRectTransform(json, node)
+
+    // imageの作成
     await addImage(json.elements[0], node, root, outputFolder, renditions)
     //ボタン画像はボタンとぴったりサイズをあわせる
     let imageJson = json['elements'][0]
@@ -2817,8 +2873,10 @@ async function createImage(json, node, root, outputFolder, renditions) {
       type: 'Image',
       name: unityName,
     })
-    addLayer(json, style)
+    // 基本パラメータ
+    addActive(json,style)
     addDrawRectTransform(json, node)
+    addLayer(json, style)
     addState(json, style)
     await addImage(json, node, root, outputFolder, renditions)
     // assignComponent

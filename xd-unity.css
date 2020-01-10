@@ -165,8 +165,8 @@
   direction: ltr;
   layout-group: x;
   layout-group-spacing-x: 9px;
-  conent-size-fitter-vertical-fit: preferred-size;
-  conent-size-fitter-horizontal-fit: preferred-size;
+  content-size-fitter-vertical-fit: preferred-size;
+  content-size-fitter-horizontal-fit: preferred-size;
 }
 
 .dots-scrollbar > .toggle {
@@ -209,4 +209,3 @@
 .button {
   button: true;
 }
-
