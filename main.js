@@ -2130,6 +2130,14 @@ async function addImage(json, node, root, outputFolder, renditions) {
     })
   }
 
+  // image type
+  const styleImageType = style.first(STYLE_IMAGE_TYPE)
+  if (styleImageType != null) {
+    Object.assign(json, {
+      image_type: styleImageType,
+    })
+  }
+
   let renditionNode = node
   let renditionScale = globalScale
 
@@ -2161,6 +2169,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
       }
     })
   }
+
   if (style.first(STYLE_IMAGE_SCALE) != null) {
     const scaleImage = parseFloat(style.first(STYLE_IMAGE_SCALE))
     if (Number.isFinite(scaleImage)) {
@@ -2189,6 +2198,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
       })
     }
   }
+
 }
 
 /**
@@ -2340,10 +2350,30 @@ function addLayoutElement(json, node, style) {
   }
 }
 
+/**
+ *
+ * @param json
+ * @param {Style} style
+ */
 function addLayer(json, style) {
   const styleLayer = style.first(STYLE_LAYER)
   if (styleLayer != null) {
     Object.assign(json, { layer: styleLayer })
+  }
+}
+
+/**
+ * @param json
+ * @param {Style} style
+ */
+function addAddComponent(json, style) {
+  const styleAddComponent = style.first(STYLE_ADD_COMPONENT)
+  if (styleAddComponent) {
+    Object.assign(json, {
+      add_component: {
+        type_name: styleAddComponent,
+      },
+    })
   }
 }
 
@@ -2588,14 +2618,7 @@ async function createGroup(json, node, root, funcForEachChild) {
   addLayer(json, style)
   addState(json, style)
   //
-  const styleAddComponent = style.first(STYLE_ADD_COMPONENT)
-  if (styleAddComponent) {
-    Object.assign(json, {
-      add_component: {
-        type_name: styleAddComponent,
-      },
-    })
-  }
+  addAddComponent(json, style)
   addCanvasGroup(json, node, style)
   addLayoutElement(json, node, style)
   addLayout(json, node, node, node.children, style)
@@ -2687,7 +2710,7 @@ async function createToggle(json, node, root, funcForEachChild) {
  * @param json
  * @param node
  * @param root
- * @param funcForEachChild
+ * @param {*|null} funcForEachChild
  * @returns {Promise<string>}
  */
 async function createButton(json, node, root, funcForEachChild) {
@@ -2700,14 +2723,14 @@ async function createButton(json, node, root, funcForEachChild) {
   })
 
   addBoundsCM(json, getDrawBoundsCMInBase(node, root))
-  await funcForEachChild()
+  if( funcForEachChild ) await funcForEachChild() // 子供を作成するかどうか選択できる createImageから呼び出された場合等
+
   // 基本パラメータ
-  addActive(json,style)
+  addActive(json, style)
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
-
-  return type
+  addAddComponent(json, style)
 }
 
 /**
@@ -2820,9 +2843,8 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
   })
 
   // 基本パラメータ
-  addActive(json,style)
-  // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
-  addRectTransform(json, node)
+  addActive(json, style)
+  addRectTransform(json, node) // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
   addLayer(json, style)
   addState(json, style)
 }
@@ -2841,9 +2863,14 @@ async function createImage(json, node, root, outputFolder, renditions) {
   const unityName = getUnityName(node)
   // もしボタンオプションがついているのなら　ボタンを生成してその子供にイメージをつける
   if (style.checkBool(STYLE_BUTTON)) {
-    Object.assign(json, {
-      type: 'Button',
-      name: unityName,
+    // イメージはコンポーネントにするべき? -> グループの場合もあるのでコンポーネントにできない
+    //TODO: ただし指定はできても良いはず
+    //イメージをボタンに設定しているのはどこ?
+    // → Baum2側で自動的にしている イメージ検索をしている
+    // 描画オブジェクトが2個以上会った場合にどちらがボタン用Imageになるかわからない
+    //TODO: 仕様をちゃんと決めるべき
+    await createButton(json, node, root, null)
+    Object.assign(json,{
       elements: [
         {
           type: 'Image',
@@ -2851,12 +2878,6 @@ async function createImage(json, node, root, outputFolder, renditions) {
         },
       ],
     })
-    //TODO: レイヤーもActiveもStateも設定していない
-    //TODO: コンポーネントにするべき?
-    //TODO: イメージをボタンに設定しているのはどこ?
-    // → おそらくBaum2側で自動的にしている 描画オブジェクトが2個以上会った場合にどちらがボタン用Imageになるかわからない
-    // 仕様をちゃんと決めるべき
-    addDrawRectTransform(json, node)
 
     // imageの作成
     await addImage(json.elements[0], node, root, outputFolder, renditions)
@@ -2868,30 +2889,25 @@ async function createImage(json, node, root, outputFolder, renditions) {
       offset_min: { x: 0, y: 0 },
       offset_max: { x: 0, y: 0 },
     })
+    // レイヤーは親と同じ物を使用 activeかどうかは設定せず、親に依存するようにする
+    addLayer(imageJson,style)
   } else {
     Object.assign(json, {
       type: 'Image',
       name: unityName,
     })
     // 基本パラメータ
-    addActive(json,style)
+    addActive(json, style)
     addDrawRectTransform(json, node)
     addLayer(json, style)
     addState(json, style)
-    await addImage(json, node, root, outputFolder, renditions)
     // assignComponent
     if (style.first(STYLE_COMPONENT) != null) {
       Object.assign(json, {
         component: {},
       })
     }
-    // image type
-    const styleImageType = style.first(STYLE_IMAGE_TYPE)
-    if (styleImageType != null) {
-      Object.assign(json, {
-        image_type: styleImageType,
-      })
-    }
+    await addImage(json, node, root, outputFolder, renditions)
   }
   //
   const imageDataValues = style.values(
