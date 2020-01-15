@@ -51,6 +51,17 @@ const STR_PREFERRED = 'preferred'
 const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設定が可能　XDの設定に上書き
 const STYLE_BLANK = 'blank'
 const STYLE_BUTTON = 'button'
+const STYLE_BUTTON_TRANSITION = 'button-transition'
+const STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC =
+  'button-transition-target-graphic'
+const STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE =
+  'button-transition-highlighted-sprite'
+const STYLE_BUTTON_TRANSITION_PRESSED_SPRITE =
+  'button-transition-pressed-sprite'
+const STYLE_BUTTON_TRANSITION_SELECTED_SPRITE =
+  'button-transition-selected-sprite'
+const STYLE_BUTTON_TRANSITION_DISABLED_SPRITE =
+  'button-transition-disabled-sprite'
 const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
 const STYLE_COMMENT_OUT = 'comment-out'
 const STYLE_COMPONENT = 'component'
@@ -95,6 +106,18 @@ const STYLE_TEXT = 'text'
 const STYLE_TEXTMP = 'textmp' // textmeshpro
 const STYLE_TEXT_CONTENT = 'text-content'
 const STYLE_TOGGLE = 'toggle'
+const STYLE_TOGGLE_TRANSITION = 'toggle-transition'
+const STYLE_TOGGLE_GRAPHIC = 'toggle-graphic'
+const STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC =
+  'toggle-transition-target-graphic'
+const STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE =
+  'toggle-transition-highlighted-sprite'
+const STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE =
+  'toggle-transition-pressed-sprite'
+const STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE =
+  'toggle-transition-selected-sprite'
+const STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE =
+  'toggle-transition-disabled-sprite'
 const STYLE_TOGGLE_GROUP = 'toggle-group'
 const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
@@ -2198,7 +2221,6 @@ async function addImage(json, node, root, outputFolder, renditions) {
       })
     }
   }
-
 }
 
 /**
@@ -2684,17 +2706,50 @@ async function createToggle(json, node, root, funcForEachChild) {
   Object.assign(json, {
     type: 'Toggle',
     name: getUnityName(node),
+    toggle: {},
   })
 
+  const toggleJson = json['toggle']
+
   // Toggle group
-  if (style.first(STYLE_TOGGLE_GROUP)) {
-    Object.assign(json, {
-      group: style.first(STYLE_TOGGLE_GROUP),
+  const group = style.first(STYLE_TOGGLE_GROUP)
+  if (group) {
+    Object.assign(toggleJson, {
+      group,
+    })
+  }
+
+  const graphic = style.first(STYLE_TOGGLE_GRAPHIC)
+  if (graphic) {
+    Object.assign(toggleJson, {
+      graphic,
     })
   }
 
   addBoundsCM(json, getDrawBoundsCMInBase(node, root))
   await funcForEachChild()
+
+  let styleToggleTransition = style.first(STYLE_TOGGLE_TRANSITION)
+  if (styleToggleTransition) {
+    const target_graphic = style.first(STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC)
+    const highlighted_sprite = style.first(
+      STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE,
+    )
+    const pressed_sprite = style.first(STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE)
+    const selected_sprite = style.first(STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE)
+    const disabled_sprite = style.first(STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE)
+    Object.assign(toggleJson, {
+      target_graphic,
+      transition: styleToggleTransition,
+      sprite_state: {
+        highlighted_sprite,
+        pressed_sprite,
+        selected_sprite,
+        disabled_sprite,
+      },
+    })
+  }
+
   // 基本パラメータ・コンポーネント
   addActive(json, style)
   addDrawRectTransform(json, node)
@@ -2723,7 +2778,29 @@ async function createButton(json, node, root, funcForEachChild) {
   })
 
   addBoundsCM(json, getDrawBoundsCMInBase(node, root))
-  if( funcForEachChild ) await funcForEachChild() // 子供を作成するかどうか選択できる createImageから呼び出された場合等
+  if (funcForEachChild) await funcForEachChild() // 子供を作成するかどうか選択できる createImageから呼び出された場合は子供の処理をしない
+  let styleButtonTransition = style.first(STYLE_BUTTON_TRANSITION)
+  if (styleButtonTransition) {
+    const target_graphic = style.first(STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC)
+    const highlighted_sprite = style.first(
+      STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE,
+    )
+    const pressed_sprite = style.first(STYLE_BUTTON_TRANSITION_PRESSED_SPRITE)
+    const selected_sprite = style.first(STYLE_BUTTON_TRANSITION_SELECTED_SPRITE)
+    const disabled_sprite = style.first(STYLE_BUTTON_TRANSITION_DISABLED_SPRITE)
+    Object.assign(json, {
+      button: {
+        target_graphic,
+        transition: styleButtonTransition,
+        sprite_state: {
+          highlighted_sprite,
+          pressed_sprite,
+          selected_sprite,
+          disabled_sprite,
+        },
+      },
+    })
+  }
 
   // 基本パラメータ
   addActive(json, style)
@@ -2865,12 +2942,8 @@ async function createImage(json, node, root, outputFolder, renditions) {
   if (style.checkBool(STYLE_BUTTON)) {
     // イメージはコンポーネントにするべき? -> グループの場合もあるのでコンポーネントにできない
     //TODO: ただし指定はできても良いはず
-    //イメージをボタンに設定しているのはどこ?
-    // → Baum2側で自動的にしている イメージ検索をしている
-    // 描画オブジェクトが2個以上会った場合にどちらがボタン用Imageになるかわからない
-    //TODO: 仕様をちゃんと決めるべき
     await createButton(json, node, root, null)
-    Object.assign(json,{
+    Object.assign(json, {
       elements: [
         {
           type: 'Image',
@@ -2890,7 +2963,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
       offset_max: { x: 0, y: 0 },
     })
     // レイヤーは親と同じ物を使用 activeかどうかは設定せず、親に依存するようにする
-    addLayer(imageJson,style)
+    addLayer(imageJson, style)
   } else {
     Object.assign(json, {
       type: 'Image',
