@@ -135,6 +135,7 @@ let globalCssRules = null
  */
 async function loadCssRules(currentFolder, filename) {
   if (!currentFolder) return null
+  console.log(`${filename}の読み込みを開始します`)
   const file = await currentFolder.getEntry(filename)
   if (!file) return null
   const contents = await file.read()
@@ -165,7 +166,7 @@ let globalCssVars = {}
 function createCssVars(cssRules) {
   const vars = {}
   for (let cssRule of cssRules) {
-    if (cssRule.selector.isRoot()) {
+    if (cssRule.selector && cssRule.selector.isRoot()) {
       // console.log("root:をみつけました")
       const properties = cssRule.declarations.properties()
       for (let property of properties) {
@@ -3249,6 +3250,8 @@ async function exportBaum2(roots, outputFolder) {
       }
     } catch (e) {
       console.log(`***error ${artboardCssFilename}の読み込みに失敗しました`)
+      console.log(e.message)
+      console.log(e.stack)
     }
     globalCssVars = createCssVars(globalCssRules)
 
