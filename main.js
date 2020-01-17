@@ -22,12 +22,6 @@ const commands = require('commands')
 // 全体にかけるスケール
 let globalScale = 1.0
 
-/**
- * レスポンシブパラメータを保存する
- * @type {ResponsiveParameter[]}
- */
-let globalResponsiveBounds = null
-
 //
 /**
  * 出力するフォルダ
@@ -40,6 +34,40 @@ let optionCheckMarkedForExport = true
 
 // 画像を出力するかどうか
 let optionImageNoExport = false
+
+// コンテンツの変更のみかどうか
+let optionChangeContentOnly = false
+
+/**
+ * レスポンシブパラメータを保存する
+ * @type {ResponsiveParameter[]}
+ */
+
+let globalResponsiveBounds = null
+
+/**
+ * @type {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
+ */
+let globalCssRules = null
+
+let globalCssVars = {}
+
+let cacheParseNodeName = {}
+
+let cacheNodeNameAndStyle = {}
+
+/**
+ * グローバル変数をリセットする 再コンバートに必要なものだけのリセット
+ */
+function resetGlobalVariables()
+{
+  globalResponsiveBounds = null
+  globalCssRules = null
+  globalCssVars = {}
+  cacheParseNodeName = {}
+  cacheNodeNameAndStyle = {}
+}
+
 
 const STR_CONTENT = 'content'
 const STR_VERTICAL = 'vertical'
@@ -123,10 +151,6 @@ const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 const STYLE_ADD_COMPONENT = 'add-component'
 
-/**
- * @type {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
- */
-let globalCssRules = null
 
 /**
  * @param {storage.Folder} currentFolder
@@ -157,7 +181,6 @@ async function loadCssRules(currentFolder, filename) {
   return parsed
 }
 
-let globalCssVars = {}
 
 /**
  * cssRules内、　:root にある --ではじまる変数定期を抽出する
@@ -325,7 +348,6 @@ function parseCssDeclarationBlock(declarationBlock) {
   return values
 }
 
-const cacheParseNodeName = {}
 
 /**
  * NodeNameをCSSパースする　これによりローカルCSSも取得する
@@ -1826,8 +1848,6 @@ function getChildIndex(node) {
   return -1
 }
 
-const cacheNodeNameAndStyle = {}
-
 /**
  * node.nameをパースしオプションに分解する
  * この関数が基底にあり、正しくNodeName Styleが取得できるようにする
@@ -2140,16 +2160,21 @@ async function addImage(json, node, root, outputFolder, renditions) {
 
   addDrawRectTransform(json, node)
 
+  Object.assign(json, {
+    image: {},
+  })
+  let imageJson = json['image']
+
   const stylePreserveAspect = style.first(STYLE_PRESERVE_ASPECT)
   if (stylePreserveAspect != null) {
-    Object.assign(json, {
+    Object.assign(imageJson, {
       preserve_aspect: checkBool(stylePreserveAspect),
     })
   }
 
   const styleRayCastTarget = style.first(STYLE_RAYCAST_TARGET)
   if (styleRayCastTarget != null) {
-    Object.assign(json, {
+    Object.assign(imageJson, {
       raycast_target: checkBool(styleRayCastTarget),
     })
   }
@@ -2157,7 +2182,7 @@ async function addImage(json, node, root, outputFolder, renditions) {
   // image type
   const styleImageType = style.first(STYLE_IMAGE_TYPE)
   if (styleImageType != null) {
-    Object.assign(json, {
+    Object.assign(imageJson, {
       image_type: styleImageType,
     })
   }
@@ -3220,8 +3245,6 @@ async function nodeRoot(renditions, outputFolder, root) {
   return layoutJson
 }
 
-let optionChangeContentOnly = false
-
 /**
  * Baum2 export
  * @param {SceneNodeClass[]} roots
@@ -3229,6 +3252,8 @@ let optionChangeContentOnly = false
  * @returns {Promise<void>}
  */
 async function exportBaum2(roots, outputFolder) {
+  resetGlobalVariables()
+
   // ラスタライズする要素を入れる
   let renditions = []
 

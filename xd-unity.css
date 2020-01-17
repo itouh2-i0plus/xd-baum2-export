@@ -169,27 +169,12 @@
   content-size-fitter-horizontal-fit: preferred-size;
 }
 
-.dots-scrollbar > .toggle {
+.toggle {
   toggle: true;
+}
+
+.dots-scrollbar > .toggle {
   layout-element: min;
-}
-
-.toggle > .image.off {
-  state: off;
-}
-
-/*
- こちらが定義されていれば、offとonでイメージ入れ替え
- */
-.toggle > .image.on {
-  state: on;
-}
-
-/*
- こちらが定義されていれば、offイメージにcheckedイメージが重なる
- */
-.toggle > .image.checked {
-  state: checked;
 }
 
 .image {
