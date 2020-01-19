@@ -1,8 +1,10 @@
 /**
  * 良いCSSとは - Qiita
  * https://qiita.com/horikowa/items/7e6eb7c4bbb422241d9d
+ *
  * CSSテストサイト
  * https://www.w3schools.com/css/tryit.asp?filename=trycss_sel_attribute_end
+ * https://codepen.io/pen/
  */
 
 // XD拡張APIのクラスをインポート
@@ -59,15 +61,13 @@ let cacheNodeNameAndStyle = {}
 /**
  * グローバル変数をリセットする 再コンバートに必要なものだけのリセット
  */
-function resetGlobalVariables()
-{
+function resetGlobalVariables() {
   globalResponsiveBounds = null
   globalCssRules = null
   globalCssVars = {}
   cacheParseNodeName = {}
   cacheNodeNameAndStyle = {}
 }
-
 
 const STR_CONTENT = 'content'
 const STR_VERTICAL = 'vertical'
@@ -101,7 +101,6 @@ const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
 const STYLE_DIRECTION = 'direction'
 const STYLE_MARGIN_FIX = 'margin-fix'
 const STYLE_IMAGE = 'image'
-const STYLE_IMAGE_NO_SLICE = 'image-no-slice' // 9スライスしない (アトラスを作成すると現在Unity側でうまく動作せず)
 const STYLE_IMAGE_SCALE = 'image-scale'
 const STYLE_IMAGE_SLICE = 'image-slice' // 9スライス ドット数を指定する
 const STYLE_IMAGE_TYPE = 'image-type' // sliced tiled simple filled
@@ -151,7 +150,6 @@ const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 const STYLE_ADD_COMPONENT = 'add-component'
 
-
 /**
  * @param {storage.Folder} currentFolder
  * @param {string} filename
@@ -160,8 +158,15 @@ const STYLE_ADD_COMPONENT = 'add-component'
 async function loadCssRules(currentFolder, filename) {
   if (!currentFolder) return null
   console.log(`${filename}の読み込みを開始します`)
-  const file = await currentFolder.getEntry(filename)
-  if (!file) return null
+  let file
+  try {
+    file = await currentFolder.getEntry(filename)
+  } catch (e) {
+    // cssフォルダ以下にもあるか
+    console.log('cssフォルダ以下にもあるかチェック')
+    file = await currentFolder.getEntry('css/' + filename)
+    if (!file) return null
+  }
   const contents = await file.read()
   let parsed = parseCss(contents)
   for (let parsedElement of parsed) {
@@ -180,7 +185,6 @@ async function loadCssRules(currentFolder, filename) {
   console.log(file.name, 'loaded.')
   return parsed
 }
-
 
 /**
  * cssRules内、　:root にある --ではじまる変数定期を抽出する
@@ -211,7 +215,7 @@ function createCssVars(cssRules) {
  * @param {string} text
  * @return {{selector:CssSelector, declarations:CssDeclarations, at_rule:string }[]}
  */
-function parseCss(text) {
+function parseCss(text, errorThrow = true) {
   // コメントアウト処理 エラー時に行数を表示するため、コメント内の改行を残す
   //TODO: 文字列内の /* */について正しく処理できない
   text = text.replace(/\/\*[\s\S]*?\*\//g, str => {
@@ -244,19 +248,21 @@ function parseCss(text) {
         })
       }
     } catch (e) {
-      // エラー行の算出
-      const parsedText = text.substr(0, token.index) // エラーの起きた文字列までを抜き出す
-      const lines = parsedText.split(/\n/)
-      //const errorIndex = text.indexOf()
-      //const errorLastIndex = text.lastIndexOf("\n",token.index)
-      const errorLine = text.substring(token.index - 30, token.index + 30)
-      const errorText =
-        `CSSのパースに失敗しました: ${lines.length}行目:${errorLine}\n` +
-        e.message
-      console.log(errorText)
-      console.log(e.stack)
-      //console.log(text)
-      throw errorText
+      if (errorThrow) {
+        // エラー行の算出
+        const parsedText = text.substr(0, token.index) // エラーの起きた文字列までを抜き出す
+        const lines = parsedText.split(/\n/)
+        //const errorIndex = text.indexOf()
+        //const errorLastIndex = text.lastIndexOf("\n",token.index)
+        const errorLine = text.substring(token.index - 30, token.index + 30)
+        const errorText =
+          `CSSのパースに失敗しました: ${lines.length}行目:${errorLine}\n` +
+          e.message
+        console.log(errorText)
+        // console.log(e.stack)
+        // console.log(text)
+        throw errorText
+      }
     }
   }
   return rules
@@ -348,7 +354,6 @@ function parseCssDeclarationBlock(declarationBlock) {
   return values
 }
 
-
 /**
  * NodeNameをCSSパースする　これによりローカルCSSも取得する
  * WARN: ※ここの戻り値を変更するとキャッシュも変更されてしまう
@@ -373,7 +378,7 @@ function parseNodeName(nodeName) {
     result = { declarations }
   } else {
     try {
-      let rules = parseCss(nodeName)
+      let rules = parseCss(nodeName, false) // 名前はエラーチェックしない
       if (!rules || rules.length === 0 || !rules[0].selector) {
         // パースできなかった場合はそのまま返す
         result = { tagName: nodeName }
@@ -473,7 +478,7 @@ class GlobalBounds {
     if (node.mask) {
       //** @type {Group}
       let group = node
-      console.log('マスク持ちをみつけた', node)
+      // console.log('マスク持ちをみつけた', node)
       // マスクを持っている場合、マスクされているノード全体のGlobalBoundsを取得する
       //TODO: 以下が必要なのは、.contentを作成するものだけ
       let childrenCalcBounds = new CalcBounds()
@@ -2118,7 +2123,8 @@ async function addImage(json, node, root, outputFolder, renditions) {
   }
 
   let fileExtension = '.png'
-  if (checkBool(style.first(STYLE_IMAGE_NO_SLICE))) {
+  // 明確にfalseと指定してある場合にNO SLICEとする
+  if (style.first(STYLE_IMAGE_SLICE) === 'false') {
     fileExtension = '-noslice.png'
   }
   const image9SliceValues = style.values(STYLE_IMAGE_SLICE)
@@ -2875,11 +2881,7 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
   }
 
   // ラスタライズオプションチェック
-  if (
-    style.checkBool(STYLE_IMAGE) ||
-    style.checkBool(STYLE_IMAGE_SLICE) ||
-    style.checkBool(STYLE_IMAGE_NO_SLICE)
-  ) {
+  if (style.checkBool(STYLE_IMAGE) || style.checkBool(STYLE_IMAGE_SLICE)) {
     await createImage(json, node, artboard, outputFolder, renditions)
     return
   }
@@ -2961,6 +2963,7 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
  * @param {*} renditions
  */
 async function createImage(json, node, root, outputFolder, renditions) {
+  //TODO: 塗りチェック、シャドウチェック、輪郭チェック、全てない場合はイメージコンポーネントも無しにする
   let { style } = getNodeNameAndStyle(node)
 
   const unityName = getUnityName(node)
@@ -3177,12 +3180,9 @@ async function nodeRoot(renditions, outputFolder, root) {
         {
           if (
             style.checkBool(STYLE_IMAGE) ||
-            style.checkBool(STYLE_IMAGE_SLICE) ||
-            style.checkBool(STYLE_IMAGE_NO_SLICE)
+            style.checkBool(STYLE_IMAGE_SLICE)
           ) {
-            console.log(
-              'groupでのSTYLE_IMAGE処理 子供のコンテンツ変更は行うが、イメージ出力はしない',
-            )
+            // console.log('groupでのSTYLE_IMAGE処理 子供のコンテンツ変更は行うが、イメージ出力はしない')
             enableWriteToLayoutJson = false //TODO: 関数にわたす引数にならないか
             let tempOutputFolder = outputFolder
             outputFolder = null
@@ -3334,7 +3334,6 @@ async function exportBaum2(roots, outputFolder) {
         if (
           style.checkBool(STYLE_IMAGE) ||
           style.checkBool(STYLE_IMAGE_SLICE) != null ||
-          style.checkBool(STYLE_IMAGE_NO_SLICE) != null ||
           node.constructor.name == 'RepeatGrid'
         ) {
           return false
@@ -3361,6 +3360,28 @@ async function exportBaum2(roots, outputFolder) {
     // 画像出力の必要がなければ終了
     // alert('no outputs')
   }
+}
+
+/**
+ * 選択されたものがExportに適しているかチェックし
+ * 適しているノードならば返す
+ * ・ルート直下のノードを１つ選択している
+ * ・ロックされていない
+ * @param selection
+ * @return {Promise<null|*>}
+ */
+async function getExportNodeFromSelection(selection) {
+  if (selection.items.length !== 1) {
+    return null
+  }
+  let node = selection.items[0]
+  try {
+    let parent = node.parent
+    if (!(parent instanceof Artboard)) return null
+  } catch (e) {
+    return null
+  }
+  return node
 }
 
 /**
@@ -3449,6 +3470,10 @@ async function getExportArtboards(selection) {
     throw 'not selected immediate child.'
   }
   const node = selection.items[0]
+  if (node.locked) {
+    await alert('ロックされていないルート直下のノードを1つ選択してください')
+    throw 'selected locked child.'
+  }
   const parent = node.parent
   const parentIsArtboard = parent instanceof Artboard
   if (!parentIsArtboard) {
@@ -3663,12 +3688,14 @@ async function pluginExportBaum2Command(selection, root) {
   if (optionChangeContentOnly) {
     exportRoots = [getArtboard(selection.items[0])]
   } else {
-    const node = selection.items[0]
-    const parent = node.parent
-    if (selection.items.length !== 1 || !(parent instanceof Artboard)) {
-      await alert('出力アートボート直下のノードを1つ選択してください')
+    const node = await getExportNodeFromSelection(selection)
+    if (!node) {
+      await alert(
+        '選択条件\n・選択は１つ\n・出力アートボード直下\n・ロックされていない\n',
+      )
       throw 'Selected node is not immediate child.'
     }
+    let parent = node.parent
     // 全てのアートボードが出力対象になっているか確認
     if (checkAllArtboard.checked) {
       root.children.forEach(node => {
@@ -4034,6 +4061,7 @@ class CssSelector {
             break
           case 'root':
             if (node.parent) return false // 親があるのならマッチしない
+            break
           default:
             console.log('***error 未対応の疑似要素です', pseudo.name)
             return false
