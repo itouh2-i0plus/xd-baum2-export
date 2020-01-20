@@ -1769,6 +1769,12 @@ class Style {
     }
     return str
   }
+
+  forEach(callback) {
+    for (let styleKey in this.style) {
+      callback(styleKey, this.style[styleKey])
+    }
+  }
 }
 
 /**
@@ -2420,15 +2426,33 @@ function addLayer(json, style) {
  * @param json
  * @param {Style} style
  */
-function addAddComponent(json, style) {
-  const styleAddComponent = style.first(STYLE_ADD_COMPONENT)
-  if (styleAddComponent) {
+function addComponents(json, style) {
+  const components = []
+  style.forEach((propertyName, value) => {
+    if (propertyName.startsWith(STYLE_ADD_COMPONENT + '-')) {
+      const properties = []
+      const componentName = propertyName.substring(14) + '-'
+      style.forEach((key, value) => {
+        if (key.startsWith(componentName)) {
+          properties.push({ path: value[0], value: value[1] })
+        }
+      })
+      const component = {
+        type: style.first(propertyName),
+        name: componentName,
+        method: 'add',
+        properties,
+      }
+      components.push(component)
+    }
+  })
+
+  if (components.length > 0) {
     Object.assign(json, {
-      add_component: {
-        type_name: styleAddComponent,
-      },
+      components,
     })
   }
+
 }
 
 /**
@@ -2672,7 +2696,7 @@ async function createGroup(json, node, root, funcForEachChild) {
   addLayer(json, style)
   addState(json, style)
   //
-  addAddComponent(json, style)
+  addComponents(json, style)
   addCanvasGroup(json, node, style)
   addLayoutElement(json, node, style)
   addLayout(json, node, node, node.children, style)
@@ -2839,7 +2863,7 @@ async function createButton(json, node, root, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
-  addAddComponent(json, style)
+  addComponents(json, style)
 }
 
 /**
