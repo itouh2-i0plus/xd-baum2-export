@@ -1531,7 +1531,7 @@ function calcRectTransform(node, hashBounds, calcDrawBounds = true) {
 function makeResponsiveBounds(root) {
   let hashBounds = {}
   // 現在のboundsを取得する
-  nodeWalker(root, node => {
+  traverseNode(root, node => {
     let param = new ResponsiveParameter(node)
     param.updateBefore()
     hashBounds[node.guid] = param
@@ -1551,7 +1551,7 @@ function makeResponsiveBounds(root) {
   }
 
   // 変更されたboundsを取得する
-  nodeWalker(root, node => {
+  traverseNode(root, node => {
     let bounds =
       hashBounds[node.guid] ||
       (hashBounds[node.guid] = new ResponsiveParameter(node))
@@ -1565,7 +1565,7 @@ function makeResponsiveBounds(root) {
   }
 
   // 元に戻ったときのbounds
-  nodeWalker(root, node => {
+  traverseNode(root, node => {
     hashBounds[node.guid].updateRestore()
   })
 
@@ -2429,12 +2429,14 @@ function addLayer(json, style) {
 function addComponents(json, style) {
   const components = []
   style.forEach((propertyName, value) => {
+    // "add-component-XXXX"を探す
     if (propertyName.startsWith(STYLE_ADD_COMPONENT + '-')) {
       const properties = []
+      // "XXX-YYYY" を探す
       const componentName = propertyName.substring(14) + '-'
       style.forEach((key, value) => {
         if (key.startsWith(componentName)) {
-          properties.push({ path: value[0], value: value[1] })
+          properties.push({ path: value[0], values: value.slice(1) })
         }
       })
       const component = {
@@ -2867,118 +2869,6 @@ async function createButton(json, node, root, funcForEachChild) {
 }
 
 /**
- * TextNodeの処理
- * 画像になるか、Textコンポーネントをもつ
- * @param {*} json
- * @param {SceneNode} node
- * @param {Artboard} artboard
- * @param {*} outputFolder
- * @param {[]} renditions
- */
-async function nodeText(json, node, artboard, outputFolder, renditions) {
-  let { style } = getNodeNameAndStyle(node)
-
-  /** @type {Text} */
-  let nodeText = node
-
-  // コンテンツ書き換え対応
-  const styleTextContent = style.first(STYLE_TEXT_CONTENT)
-  if (styleTextContent) {
-    /** @type {SymbolInstance} */
-    const si = nodeText.parent
-    // RepeatGrid内は操作できない
-    // コンポーネント内は操作できない　例外としてインスタンスが生成されていないマスターは操作できる
-    if (!si.isMaster) {
-      // マスターかどうかをチェックして、例外情報（EditContext外例外）が表示されるのをできるだけ抑止している
-      nodeText.text = styleTextContent
-    }
-  }
-
-  const styleValuesAttachText = style.values(
-    STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES,
-  )
-  if (styleValuesAttachText) {
-    let repeatGrid = getRepeatGrid(nodeText)
-    if (repeatGrid) {
-      repeatGrid.attachTextDataSeries(nodeText, styleValuesAttachText)
-    }
-  }
-
-  // ラスタライズオプションチェック
-  if (style.checkBool(STYLE_IMAGE) || style.checkBool(STYLE_IMAGE_SLICE)) {
-    await createImage(json, node, artboard, outputFolder, renditions)
-    return
-  }
-
-  if (
-    !style.checkBool(STYLE_TEXT) &&
-    !style.checkBool(STYLE_INPUT) &&
-    !style.checkBool(STYLE_TEXTMP)
-  ) {
-    await createImage(json, node, artboard, outputFolder, renditions)
-    return
-  }
-
-  const boundsCM = getBoundsCMInBase(node, artboard)
-
-  let type = 'Text'
-  if (style.checkBool(STYLE_TEXTMP)) {
-    type = 'TextMeshPro'
-  }
-  if (style.checkBool(STYLE_INPUT)) {
-    type = 'Input'
-  }
-
-  let textType = 'point'
-  let hAlign = nodeText.textAlign
-  let vAlign = 'middle'
-  if (nodeText.areaBox) {
-    // エリア内テキストだったら
-    textType = 'paragraph'
-    // 上揃え
-    vAlign = 'upper'
-  }
-
-  // @ALIGN オプションがあった場合､上書きする
-  const styleAlign = style.first(STYLE_ALIGN)
-  if (styleAlign != null) {
-    hAlign = styleAlign
-  }
-
-  // @v-align オプションがあった場合、上書きする
-  // XDでは、left-center-rightは設定できるため
-  const styleVAlign = style.first(STYLE_V_ALIGN)
-  if (styleVAlign != null) {
-    vAlign = styleVAlign
-  }
-
-  // text.styleRangesの適応をしていない
-  Object.assign(json, {
-    type: type,
-    name: getUnityName(node),
-    text: nodeText.text,
-    textType: textType,
-    font: nodeText.fontFamily,
-    style: nodeText.fontStyle,
-    size: nodeText.fontSize * globalScale,
-    color: nodeText.fill.toHex(true),
-    align: hAlign + vAlign,
-    x: boundsCM.cx,
-    y: boundsCM.cy,
-    w: boundsCM.width,
-    h: boundsCM.height,
-    vh: boundsCM.height,
-    opacity: 100,
-  })
-
-  // 基本パラメータ
-  addActive(json, style)
-  addRectTransform(json, node) // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
-  addLayer(json, style)
-  addState(json, style)
-}
-
-/**
  * パスレイヤー(楕円や長方形等)の処理
  * @param {*} json
  * @param {SceneNodeClass} node
@@ -3098,13 +2988,126 @@ async function createRoot(layoutJson, node, funcForEachChild) {
   addLayer(layoutJson, style)
 }
 
+
+/**
+ * TextNodeの処理
+ * 画像になるか、Textコンポーネントをもつ
+ * @param {*} json
+ * @param {SceneNode} node
+ * @param {Artboard} artboard
+ * @param {*} outputFolder
+ * @param {[]} renditions
+ */
+async function nodeText(json, node, artboard, outputFolder, renditions) {
+  let { style } = getNodeNameAndStyle(node)
+
+  /** @type {Text} */
+  let nodeText = node
+
+  // コンテンツ書き換え対応
+  const styleTextContent = style.first(STYLE_TEXT_CONTENT)
+  if (styleTextContent) {
+    /** @type {SymbolInstance} */
+    const si = nodeText.parent
+    // RepeatGrid内は操作できない
+    // コンポーネント内は操作できない　例外としてインスタンスが生成されていないマスターは操作できる
+    if (!si.isMaster) {
+      // マスターかどうかをチェックして、例外情報（EditContext外例外）が表示されるのをできるだけ抑止している
+      nodeText.text = styleTextContent
+    }
+  }
+
+  const styleValuesAttachText = style.values(
+    STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES,
+  )
+  if (styleValuesAttachText) {
+    let repeatGrid = getRepeatGrid(nodeText)
+    if (repeatGrid) {
+      repeatGrid.attachTextDataSeries(nodeText, styleValuesAttachText)
+    }
+  }
+
+  // ラスタライズオプションチェック
+  if (style.checkBool(STYLE_IMAGE) || style.checkBool(STYLE_IMAGE_SLICE)) {
+    await createImage(json, node, artboard, outputFolder, renditions)
+    return
+  }
+
+  if (
+    !style.checkBool(STYLE_TEXT) &&
+    !style.checkBool(STYLE_INPUT) &&
+    !style.checkBool(STYLE_TEXTMP)
+  ) {
+    await createImage(json, node, artboard, outputFolder, renditions)
+    return
+  }
+
+  const boundsCM = getBoundsCMInBase(node, artboard)
+
+  let type = 'Text'
+  if (style.checkBool(STYLE_TEXTMP)) {
+    type = 'TextMeshPro'
+  }
+  if (style.checkBool(STYLE_INPUT)) {
+    type = 'Input'
+  }
+
+  let textType = 'point'
+  let hAlign = nodeText.textAlign
+  let vAlign = 'middle'
+  if (nodeText.areaBox) {
+    // エリア内テキストだったら
+    textType = 'paragraph'
+    // 上揃え
+    vAlign = 'upper'
+  }
+
+  // @ALIGN オプションがあった場合､上書きする
+  const styleAlign = style.first(STYLE_ALIGN)
+  if (styleAlign != null) {
+    hAlign = styleAlign
+  }
+
+  // @v-align オプションがあった場合、上書きする
+  // XDでは、left-center-rightは設定できるため
+  const styleVAlign = style.first(STYLE_V_ALIGN)
+  if (styleVAlign != null) {
+    vAlign = styleVAlign
+  }
+
+  // text.styleRangesの適応をしていない
+  Object.assign(json, {
+    type: type,
+    name: getUnityName(node),
+    text: nodeText.text,
+    textType: textType,
+    font: nodeText.fontFamily,
+    style: nodeText.fontStyle,
+    size: nodeText.fontSize * globalScale,
+    color: nodeText.fill.toHex(true),
+    align: hAlign + vAlign,
+    x: boundsCM.cx,
+    y: boundsCM.cy,
+    w: boundsCM.width,
+    h: boundsCM.height,
+    vh: boundsCM.height,
+    opacity: 100,
+  })
+
+  // 基本パラメータ
+  addActive(json, style)
+  addRectTransform(json, node) // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
+  addLayer(json, style)
+  addState(json, style)
+}
+
 /**
  * @param {string} nodeName
  * @return {SceneNodeClass|null}
  */
 function searchNode(nodeName) {
   let found = null
-  nodeWalker(root, node => {
+  traverseNode(root, node => {
     if (node.name === nodeName) {
       found = node
       return false
@@ -3118,11 +3121,11 @@ function searchNode(nodeName) {
  * @param {SceneNodeClass} node
  * @param {*} func
  */
-function nodeWalker(node, func) {
+function traverseNode(node, func) {
   let result = func(node)
   if (result === false) return // 明確なFalseの場合、子供へはいかない
   node.children.forEach(child => {
-    nodeWalker(child, func)
+    traverseNode(child, func)
   })
 }
 
@@ -3135,7 +3138,7 @@ function nodeWalker(node, func) {
 async function nodeRoot(renditions, outputFolder, root) {
   let layoutJson = makeLayoutJson(root)
 
-  let nodeWalker = async (
+  let traverse = async (
     nodeStack,
     layoutJson,
     depth,
@@ -3176,7 +3179,7 @@ async function nodeRoot(renditions, outputFolder, root) {
           }
           let childJson = {}
           nodeStack.push(child)
-          await nodeWalker(
+          await traverse(
             nodeStack,
             childJson,
             depth + 1,
@@ -3264,7 +3267,7 @@ async function nodeRoot(renditions, outputFolder, root) {
     }
   }
 
-  await nodeWalker([root], layoutJson.root, 0, true)
+  await traverse([root], layoutJson.root, 0, true)
 
   return layoutJson
 }
@@ -3338,7 +3341,7 @@ async function exportBaum2(roots, outputFolder) {
   // 背景のぼかしをすべてオフにする　→　ボカシがはいっていると､その画像が書き込まれるため
   if (!optionChangeContentOnly) {
     for (let root of roots) {
-      nodeWalker(root, node => {
+      traverseNode(root, node => {
         const { node_name: nodeName, style } = getNodeNameAndStyle(node)
         if (style.checkBool(STYLE_COMMENT_OUT)) {
           return false // 子供には行かないようにする

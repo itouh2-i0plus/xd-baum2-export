@@ -188,8 +188,12 @@
 
 .text {
   text: true;
-  match-log: "text found"
 }
+
+.textmp {
+  textmp: true;
+}
+
 
 .button {
   button: true;
