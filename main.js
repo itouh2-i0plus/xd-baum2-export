@@ -98,7 +98,6 @@ const STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT =
   'content-size-fitter-horizontal-fit'
 const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
   'content-size-fitter-vertical-fit'
-const STYLE_SCROLLBAR_DIRECTION = 'scrollbar-direction'
 const STYLE_MARGIN_FIX = 'margin-fix'
 const STYLE_IMAGE = 'image'
 const STYLE_IMAGE_SCALE = 'image-scale'
@@ -126,8 +125,14 @@ const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
 const STYLE_REPEATGRID_ATTACH_IMAGE_DATA_SERIES =
   'repeatgrid-attach-image-data-series'
 const STYLE_SCROLLBAR = 'scrollbar'
+const STYLE_SCROLLBAR_DIRECTION = 'scrollbar-direction'
+const STYLE_SCROLLBAR_HANDLE_CLASS = 'scrollbar-handle-class'
 const STYLE_SCROLL_RECT = 'scroll-rect'
-const STYLE_SCROLL_RECT_CONTENT = 'scroll-rect-content'
+const STYLE_SCROLL_RECT_CONTENT_CLASS = 'scroll-rect-content-class'
+const STYLE_SCROLL_RECT_HORIZONTAL_SCROLLBAR_CLASS =
+  'scroll-rect-horizontal-scrollbar-class'
+const STYLE_SCROLL_RECT_VERTICAL_SCROLLBAR_CLASS =
+  'scroll-rect-vertical-scrollbar-class'
 const STYLE_SLIDER = 'slider'
 const STYLE_TEXT = 'text'
 const STYLE_TEXTMP = 'textmp' // textmeshpro
@@ -147,6 +152,7 @@ const STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE_CLASS =
   'toggle-transition-disabled-sprite-class'
 const STYLE_TOGGLE_GROUP = 'toggle-group'
 const STYLE_VIEWPORT = 'viewport'
+const STYLE_VIEWPORT_CREATE_CONTENT = 'viewport-create-content'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
 const STYLE_ADD_COMPONENT = 'add-component'
 
@@ -2094,8 +2100,13 @@ function addClassNames(json, node) {
   if (!parsedName || parsedName.classNames == null) return
   // console.log(`class_names: ${parsedName}`)
 
+  const classNames = []
+  for (let className of parsedName.classNames) {
+    classNames.push(removeDotStart(className)) // ドットをとる
+  }
+
   Object.assign(json, {
-    class_names: parsedName.classNames,
+    class_names: classNames,
   })
 }
 
@@ -2299,14 +2310,38 @@ function addContentSizeFitter(json, style) {
 function addScrollRect(json, style) {
   const styleScrollRect = style.first(STYLE_SCROLL_RECT)
   if (!styleScrollRect) return
-
   Object.assign(json, {
     scroll_rect: {
       horizontal: style.hasValue(STYLE_SCROLL_RECT, 'x', STR_HORIZONTAL),
       vertical: style.hasValue(STYLE_SCROLL_RECT, 'y', STR_VERTICAL),
-      auto_assign_scrollbar: true, // 同一グループ内からスクロールバーを探す
     },
   })
+
+  const scrollRectJson = json['scroll_rect']
+  const content_class = removeDotStart(
+    style.first(STYLE_SCROLL_RECT_CONTENT_CLASS),
+  )
+  if (content_class) {
+    Object.assign(scrollRectJson, {
+      content_class,
+    })
+  }
+  const vertical_scrollbar_class = removeDotStart(
+    style.first(STYLE_SCROLL_RECT_VERTICAL_SCROLLBAR_CLASS),
+  )
+  if (vertical_scrollbar_class) {
+    Object.assign(scrollRectJson, {
+      vertical_scrollbar_class,
+    })
+  }
+  const horizontal_scrollbar_class = removeDotStart(
+    style.first(STYLE_SCROLL_RECT_HORIZONTAL_SCROLLBAR_CLASS),
+  )
+  if (horizontal_scrollbar_class) {
+    Object.assign(scrollRectJson, {
+      horizontal_scrollbar_class,
+    })
+  }
 }
 
 function addRectMask2d(json, style) {
@@ -2491,27 +2526,34 @@ function addComponents(json, style) {
 async function createViewport(json, node, root, funcForEachChild) {
   let { style } = getNodeNameAndStyle(node)
 
-  // Viewportは必ずcontentを持つ
-  // contentのアサインと名前設定
-  let contentName = 'content'
-  const styleScrollRectContent = style.first(STYLE_SCROLL_RECT_CONTENT)
-  if (styleScrollRectContent) {
-    contentName = styleScrollRectContent
-  }
-
   Object.assign(json, {
     type: 'Viewport',
     name: getUnityName(node),
     fill_color: '#ffffff00', // タッチイベント取得Imageになる
-    // Contentグループ情報
-    content: {
-      name: contentName,
-    },
   })
 
+  // ScrollRect
+  addScrollRect(json, style)
+
+  // Content
+  // Viewportは必ずcontentを持つ
+  let createContentName = 'content'
+  const styleViewportCreateContent = style.first(STYLE_VIEWPORT_CREATE_CONTENT)
+  if (styleViewportCreateContent) {
+    createContentName = styleViewportCreateContent
+  }
+
+  // contentのアサインと名前設定
+  Object.assign(json, {
+    content: {
+      name: createContentName,
+    },
+  })
   let contentJson = json[STR_CONTENT]
-  //自動生成されるContentはNodeからできていないため getStyleFromNodeNameを呼び出す
-  const contentStyle = getStyleFromNode({ name: contentName, parent: node })
+  const contentStyle = getStyleFromNode({
+    name: createContentName,
+    parent: node,
+  })
 
   if (node.constructor.name === 'Group') {
     // 通常グループ､マスクグループでViewportをつかう
@@ -2724,6 +2766,17 @@ async function createGroup(json, node, root, funcForEachChild) {
 }
 
 /**
+ * @param {string} name
+ */
+function removeDotStart(name) {
+  if (name == null) return null
+  if (name.startsWith('.')) {
+    name = name.substring(1)
+  }
+  return name
+}
+
+/**
  * @param json
  * @param node
  * @param funcForEachChild
@@ -2743,7 +2796,14 @@ async function createScrollbar(json, node, funcForEachChild) {
   let direction = style.first(STYLE_SCROLLBAR_DIRECTION)
   if (direction != null) {
     Object.assign(scrollbarJson, {
-      scroll_direction: direction,
+      direction,
+    })
+  }
+  let handle_class = style.first(STYLE_SCROLLBAR_HANDLE_CLASS)
+  if (handle_class != null) {
+    handle_class = removeDotStart(handle_class)
+    Object.assign(scrollbarJson, {
+      handle_class,
     })
   }
 

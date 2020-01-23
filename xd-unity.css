@@ -83,37 +83,44 @@
 
 .viewport-xy {
   viewport: true;
+  viewport-create-content: ".content";
   rect-mask-twod: true;
   scroll-rect: x y;
-  scroll-rect-content: ".content";
+  scroll-rect-content-class: ".content";
 }
 
 .viewport-layout-x {
   viewport: true;
+  viewport-create-content: ".content.layout-x";
   rect-mask-twod: true;
   scroll-rect: x;
-  scroll-rect-content: ".content.layout-x";
+  scroll-rect-content-class: ".content";
 }
 
 .viewport-layout-y {
   viewport: true;
+  viewport-create-content: ".content.layout-y";
   rect-mask-twod: true;
   scroll-rect: y;
-  scroll-rect-content: ".content.layout-y";
+  scroll-rect-content-class: ".content";
 }
 
 .viewport-grid-x {
   viewport: true;
+  viewport-create-content: ".content.layout-grid-x";
   rect-mask-twod: true;
   scroll-rect: x;
-  scroll-rect-content: ".content.layout-grid-x";
+  scroll-rect-content-class: ".content";
+  scroll-rect-horizontal-scrollbar-class: ".scrollbar-x";
 }
 
 .viewport-grid-y {
   viewport: true;
+  viewport-create-content: ".content.layout-grid-y";
   rect-mask-twod: true;
   scroll-rect: y;
-  scroll-rect-content: ".content.layout-grid-y";
+  scroll-rect-content-class: ".content";
+  scroll-rect-vertical-scrollbar-class: ".scrollbar-y";
 }
 
 .viewport-layout-x > .content {
@@ -143,7 +150,7 @@
 .scrollbar-x {
   scrollbar: true;
   scrollbar-direction: ltr;
-  scrollbar-handle-handle-class: ".handle";
+  scrollbar-handle-class: ".handle";
 }
 
 .scrollbar-x > .handle {
@@ -153,6 +160,7 @@
 .scrollbar-y {
   scrollbar: true;
   scrollbar-direction: btt;
+  scrollbar-handle-class: ".handle";
 }
 
 .scrollbar-y > .handle {
