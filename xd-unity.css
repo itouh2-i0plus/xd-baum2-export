@@ -83,35 +83,35 @@
 
 .viewport-xy {
   viewport: true;
-  rect-mask-two-d: true;
+  rect-mask-twod: true;
   scroll-rect: x y;
   scroll-rect-content: ".content";
 }
 
 .viewport-layout-x {
   viewport: true;
-  rect-mask-two-d: true;
+  rect-mask-twod: true;
   scroll-rect: x;
   scroll-rect-content: ".content.layout-x";
 }
 
 .viewport-layout-y {
   viewport: true;
-  rect-mask-two-d: true;
+  rect-mask-twod: true;
   scroll-rect: y;
   scroll-rect-content: ".content.layout-y";
 }
 
 .viewport-grid-x {
   viewport: true;
-  rect-mask-two-d: true;
+  rect-mask-twod: true;
   scroll-rect: x;
   scroll-rect-content: ".content.layout-grid-x";
 }
 
 .viewport-grid-y {
   viewport: true;
-  rect-mask-two-d: true;
+  rect-mask-twod: true;
   scroll-rect: y;
   scroll-rect-content: ".content.layout-grid-y";
 }
@@ -142,27 +142,26 @@
 
 .scrollbar-x {
   scrollbar: true;
-  direction: ltr;
+  scrollbar-direction: ltr;
+  scrollbar-handle-handle-class: ".handle";
 }
 
 .scrollbar-x > .handle {
-  state: scrollbar-handle-rect;
   margin-fix: l r t b;
 }
 
 .scrollbar-y {
   scrollbar: true;
-  direction: btt;
+  scrollbar-direction: btt;
 }
 
 .scrollbar-y > .handle {
-  state: scrollbar-handle-rect;
   margin-fix: l r t b;
 }
 
 .dots-scrollbar {
   scrollbar: true;
-  direction: ltr;
+  scrollbar-direction: ltr;
   layout-group: x;
   layout-group-spacing-x: 9px;
   content-size-fitter-vertical-fit: preferred-size;

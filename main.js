@@ -80,16 +80,16 @@ const STYLE_ALIGN = 'align' // テキストの縦横のアライメントの設�
 const STYLE_BLANK = 'blank'
 const STYLE_BUTTON = 'button'
 const STYLE_BUTTON_TRANSITION = 'button-transition'
-const STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC =
-  'button-transition-target-graphic'
-const STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE =
-  'button-transition-highlighted-sprite'
-const STYLE_BUTTON_TRANSITION_PRESSED_SPRITE =
-  'button-transition-pressed-sprite'
-const STYLE_BUTTON_TRANSITION_SELECTED_SPRITE =
-  'button-transition-selected-sprite'
-const STYLE_BUTTON_TRANSITION_DISABLED_SPRITE =
-  'button-transition-disabled-sprite'
+const STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC_CLASS =
+  'button-transition-target-graphic-class'
+const STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE_CLASS =
+  'button-transition-highlighted-sprite-class'
+const STYLE_BUTTON_TRANSITION_PRESSED_SPRITE_CLASS =
+  'button-transition-pressed-sprite-class'
+const STYLE_BUTTON_TRANSITION_SELECTED_SPRITE_CLASS =
+  'button-transition-selected-sprite-class'
+const STYLE_BUTTON_TRANSITION_DISABLED_SPRITE_CLASS =
+  'button-transition-disabled-sprite-class'
 const STYLE_CANVAS_GROUP = 'canvas-group' // 削除予定
 const STYLE_COMMENT_OUT = 'comment-out'
 const STYLE_COMPONENT = 'component'
@@ -98,7 +98,7 @@ const STYLE_CONTENT_SIZE_FITTER_HORIZONTAL_FIT =
   'content-size-fitter-horizontal-fit'
 const STYLE_CONTENT_SIZE_FITTER_VERTICAL_FIT =
   'content-size-fitter-vertical-fit'
-const STYLE_DIRECTION = 'direction'
+const STYLE_SCROLLBAR_DIRECTION = 'scrollbar-direction'
 const STYLE_MARGIN_FIX = 'margin-fix'
 const STYLE_IMAGE = 'image'
 const STYLE_IMAGE_SCALE = 'image-scale'
@@ -118,7 +118,7 @@ const STYLE_LAYOUT_GROUP_USE_CHILD_SCALE = 'layout-group-use-child-scale'
 const STYLE_MATCH_LOG = 'match-log'
 const STYLE_PRESERVE_ASPECT = 'preserve-aspect'
 const STYLE_RAYCAST_TARGET = 'raycast-target' // 削除予定
-const STYLE_RECT_MASK_2D = 'rect-mask-two-d'
+const STYLE_RECT_MASK_2D = 'rect-mask-twod'
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X = 'rect-transform-anchor-offset-x'
 const STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y = 'rect-transform-anchor-offset-x'
 const STYLE_REPEATGRID_ATTACH_TEXT_DATA_SERIES =
@@ -134,17 +134,17 @@ const STYLE_TEXTMP = 'textmp' // textmeshpro
 const STYLE_TEXT_CONTENT = 'text-content'
 const STYLE_TOGGLE = 'toggle'
 const STYLE_TOGGLE_TRANSITION = 'toggle-transition'
-const STYLE_TOGGLE_GRAPHIC = 'toggle-graphic'
-const STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC =
-  'toggle-transition-target-graphic'
-const STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE =
-  'toggle-transition-highlighted-sprite'
-const STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE =
-  'toggle-transition-pressed-sprite'
-const STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE =
-  'toggle-transition-selected-sprite'
-const STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE =
-  'toggle-transition-disabled-sprite'
+const STYLE_TOGGLE_GRAPHIC_CLASS = 'toggle-graphic-class'
+const STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC_CLASS =
+  'toggle-transition-target-graphic-class'
+const STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE_CLASS =
+  'toggle-transition-highlighted-sprite-class'
+const STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE_CLASS =
+  'toggle-transition-pressed-sprite-class'
+const STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE_CLASS =
+  'toggle-transition-selected-sprite-class'
+const STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE_CLASS =
+  'toggle-transition-disabled-sprite-class'
 const STYLE_TOGGLE_GROUP = 'toggle-group'
 const STYLE_VIEWPORT = 'viewport'
 const STYLE_V_ALIGN = 'v-align' //テキストの縦方向のアライメント XDの設定に追記される
@@ -2074,11 +2074,28 @@ function addState(json, style) {
   /**
    * @type {string}
    */
-  const styleState = style.first('state')
+  /* 廃止
+  const styleState = style.first("state")
   if (!styleState) return
-  const state = styleState.split(',').map(value => value.trim())
+  const state = styleState.split(",").map(value => value.trim())
   Object.assign(json, {
-    state,
+    state
+  })
+   */
+}
+
+/**
+ * @param json
+ * @param {SceneNodeClass} node
+ */
+function addClassNames(json, node) {
+  const parsedName = parseNodeName(node.name)
+  // console.log(`${node.name}からクラスを書き出す`)
+  if (!parsedName || parsedName.classNames == null) return
+  // console.log(`class_names: ${parsedName}`)
+
+  Object.assign(json, {
+    class_names: parsedName.classNames,
   })
 }
 
@@ -2454,7 +2471,6 @@ function addComponents(json, style) {
       components,
     })
   }
-
 }
 
 /**
@@ -2584,6 +2600,7 @@ async function createViewport(json, node, root, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
 
   addContentSizeFitter(json, style)
   addScrollRect(json, style)
@@ -2697,6 +2714,7 @@ async function createGroup(json, node, root, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
   //
   addComponents(json, style)
   addCanvasGroup(json, node, style)
@@ -2718,10 +2736,13 @@ async function createScrollbar(json, node, funcForEachChild) {
   Object.assign(json, {
     type: type,
     name: getUnityName(node),
+    scrollbar: {},
   })
-  let direction = style.first(STYLE_DIRECTION)
+
+  let scrollbarJson = json['scrollbar']
+  let direction = style.first(STYLE_SCROLLBAR_DIRECTION)
   if (direction != null) {
-    Object.assign(json, {
+    Object.assign(scrollbarJson, {
       scroll_direction: direction,
     })
   }
@@ -2730,7 +2751,7 @@ async function createScrollbar(json, node, funcForEachChild) {
   const childlenBounds = getNodeListBeforeGlobalBounds(node.children)
   const spacingX = bounds.width - childlenBounds.bounds.width
   const spacingY = bounds.height - childlenBounds.bounds.height
-  Object.assign(json, {
+  Object.assign(scrollbarJson, {
     child_spacing_x: spacingX,
     child_spacing_y: spacingY,
   })
@@ -2742,6 +2763,7 @@ async function createScrollbar(json, node, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
   //
   addCanvasGroup(json, node, style)
   addLayoutElement(json, node, style)
@@ -2777,10 +2799,10 @@ async function createToggle(json, node, root, funcForEachChild) {
     })
   }
 
-  const graphic = style.first(STYLE_TOGGLE_GRAPHIC)
-  if (graphic) {
+  const graphic_class = style.first(STYLE_TOGGLE_GRAPHIC_CLASS)
+  if (graphic_class) {
     Object.assign(toggleJson, {
-      graphic,
+      graphic_class,
     })
   }
 
@@ -2789,21 +2811,29 @@ async function createToggle(json, node, root, funcForEachChild) {
 
   let styleToggleTransition = style.first(STYLE_TOGGLE_TRANSITION)
   if (styleToggleTransition) {
-    const target_graphic = style.first(STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC)
-    const highlighted_sprite = style.first(
-      STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE,
+    const target_graphic_class = style.first(
+      STYLE_TOGGLE_TRANSITION_TARGET_GRAPHIC_CLASS,
     )
-    const pressed_sprite = style.first(STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE)
-    const selected_sprite = style.first(STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE)
-    const disabled_sprite = style.first(STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE)
+    const highlighted_sprite_class = style.first(
+      STYLE_TOGGLE_TRANSITION_HIGHLIGHTED_SPRITE_CLASS,
+    )
+    const pressed_sprite_class = style.first(
+      STYLE_TOGGLE_TRANSITION_PRESSED_SPRITE_CLASS,
+    )
+    const selected_sprite_class = style.first(
+      STYLE_TOGGLE_TRANSITION_SELECTED_SPRITE_CLASS,
+    )
+    const disabled_sprite_class = style.first(
+      STYLE_TOGGLE_TRANSITION_DISABLED_SPRITE_CLASS,
+    )
     Object.assign(toggleJson, {
-      target_graphic,
+      target_graphic_class,
       transition: styleToggleTransition,
       sprite_state: {
-        highlighted_sprite,
-        pressed_sprite,
-        selected_sprite,
-        disabled_sprite,
+        highlighted_sprite_class,
+        pressed_sprite_class,
+        selected_sprite_class,
+        disabled_sprite_class,
       },
     })
   }
@@ -2813,6 +2843,7 @@ async function createToggle(json, node, root, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
   //
   addLayoutElement(json, node, style)
   addContentSizeFitter(json, style)
@@ -2839,22 +2870,30 @@ async function createButton(json, node, root, funcForEachChild) {
   if (funcForEachChild) await funcForEachChild() // 子供を作成するかどうか選択できる createImageから呼び出された場合は子供の処理をしない
   let styleButtonTransition = style.first(STYLE_BUTTON_TRANSITION)
   if (styleButtonTransition) {
-    const target_graphic = style.first(STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC)
-    const highlighted_sprite = style.first(
-      STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE,
+    const target_graphic_class = style.first(
+      STYLE_BUTTON_TRANSITION_TARGET_GRAPHIC_CLASS,
     )
-    const pressed_sprite = style.first(STYLE_BUTTON_TRANSITION_PRESSED_SPRITE)
-    const selected_sprite = style.first(STYLE_BUTTON_TRANSITION_SELECTED_SPRITE)
-    const disabled_sprite = style.first(STYLE_BUTTON_TRANSITION_DISABLED_SPRITE)
+    const highlighted_sprite_class = style.first(
+      STYLE_BUTTON_TRANSITION_HIGHLIGHTED_SPRITE_CLASS,
+    )
+    const pressed_sprite_class = style.first(
+      STYLE_BUTTON_TRANSITION_PRESSED_SPRITE_CLASS,
+    )
+    const selected_sprite_class = style.first(
+      STYLE_BUTTON_TRANSITION_SELECTED_SPRITE_CLASS,
+    )
+    const disabled_sprite_class = style.first(
+      STYLE_BUTTON_TRANSITION_DISABLED_SPRITE_CLASS,
+    )
     Object.assign(json, {
       button: {
-        target_graphic,
+        target_graphic_class,
         transition: styleButtonTransition,
         sprite_state: {
-          highlighted_sprite,
-          pressed_sprite,
-          selected_sprite,
-          disabled_sprite,
+          highlighted_sprite_class,
+          pressed_sprite_class,
+          selected_sprite_class,
+          disabled_sprite_class,
         },
       },
     })
@@ -2865,6 +2904,7 @@ async function createButton(json, node, root, funcForEachChild) {
   addDrawRectTransform(json, node)
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
   addComponents(json, style)
 }
 
@@ -2917,6 +2957,7 @@ async function createImage(json, node, root, outputFolder, renditions) {
     addDrawRectTransform(json, node)
     addLayer(json, style)
     addState(json, style)
+    addClassNames(json, node)
     // assignComponent
     if (style.first(STYLE_COMPONENT) != null) {
       Object.assign(json, {
@@ -2987,7 +3028,6 @@ async function createRoot(layoutJson, node, funcForEachChild) {
   await funcForEachChild()
   addLayer(layoutJson, style)
 }
-
 
 /**
  * TextNodeの処理
@@ -3099,6 +3139,7 @@ async function nodeText(json, node, artboard, outputFolder, renditions) {
   addRectTransform(json, node) // Drawではなく、通常のレスポンシブパラメータを渡す　シャドウ等のエフェクトは自前でやる必要があるため
   addLayer(json, style)
   addState(json, style)
+  addClassNames(json, node)
 }
 
 /**
@@ -3922,8 +3963,10 @@ class CssSelector {
    * @return {boolean}
    */
   isRoot() {
-    const pseudos = this.json['rule']['pseudos']
-    // console.log('isRoot() pseudos確認:', pseudos)
+    const rule = this.json['rule']
+    if (!rule) return false
+    const pseudos = rule['pseudos']
+    // console.log("isRoot() pseudos確認:", pseudos)
     return pseudos && pseudos[0].name === 'root'
   }
 
@@ -3962,6 +4005,7 @@ class CssSelector {
         if (!checkNode) {
           return null
         }
+        break
       }
       case 'ruleSet': {
         return this.matchRule(node, ruleRule, verboseLog)
@@ -4061,6 +4105,18 @@ class CssSelector {
               return false
             break
           }
+          case 'tag-name': {
+            if (
+              !CssSelector.nameCheck(
+                attr.operator,
+                parsedNodeName.tagName,
+                attr.value,
+              )
+            )
+              return false
+            break
+          }
+          case 'type-of':
           case 'typeof': {
             if (
               !CssSelector.nameCheck(
