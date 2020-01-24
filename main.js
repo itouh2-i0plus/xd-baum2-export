@@ -1622,7 +1622,7 @@ function checkBoundsVerbose(beforeBounds, restoreBounds) {
 
 /**
  * 描画サイズでのレスポンシブパラメータの取得
- * @param {SceneNode} node
+ * @param {SceneNodeClass} node
  * @returns {*}
  */
 function getRectTransformDraw(node) {
@@ -1632,7 +1632,7 @@ function getRectTransformDraw(node) {
 
 /**
  * GlobalBoundsでのレスポンシブパラメータの取得
- * @param {SceneNode} node
+ * @param {SceneNodeClass} node
  */
 function getRectTransform(node) {
   let bounds = globalResponsiveBounds[node.guid]
@@ -2018,29 +2018,18 @@ function addCanvasGroup(json, node, style) {
 }
 
 /**
- * オプションにpivot､stretchがあれば上書き
- * @param {*} json
- * @param {SceneNode} node
- */
-function addDrawRectTransform(json, node) {
-  let param = getRectTransformDraw(node)
-  if (param) {
-    Object.assign(json, param)
-  }
-}
-
-/**
  * 指定のAnchorパラメータを設定する
  * @param json
  * @param style
  */
 function addRectTransformAnchorOffsetX(json, style) {
+  if (!style) return
+  // RectTransformの値がない場合、作成する
   //TODO: 初期値はいらないだろうか
   if (!('anchor_min' in json)) json['anchor_min'] = {}
   if (!('anchor_max' in json)) json['anchor_max'] = {}
   if (!('offset_min' in json)) json['offset_min'] = {}
   if (!('offset_max' in json)) json['offset_max'] = {}
-  if (!style) return
   // Styleで指定が会った場合、上書きする
   const anchorsX = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_X)
   const anchorsY = style.values(STYLE_RECT_TRANSFORM_ANCHOR_OFFSET_Y)
@@ -2055,6 +2044,18 @@ function addRectTransformAnchorOffsetX(json, style) {
     json['anchor_max']['y'] = parseFloat(anchorsY[1])
     json['offset_min']['y'] = parseFloat(anchorsY[2])
     json['offset_max']['y'] = parseFloat(anchorsY[3])
+  }
+}
+
+/**
+ * オプションにpivot､stretchがあれば上書き
+ * @param {*} json
+ * @param {SceneNodeClass} node
+ */
+function addDrawRectTransform(json, node) {
+  let param = getRectTransformDraw(node)
+  if (param) {
+    Object.assign(json, param)
   }
 }
 
@@ -2509,32 +2510,16 @@ function addComponents(json, style) {
 }
 
 /**
- *
- * @param {*} json
- * @param {SceneNode} node
- * @param {*} root
- * @param {*} funcForEachChild
- * 出力構成
- * Viewport +Image(タッチ用透明)　+ScrollRect +RectMask2D
- *   - $Content ← 自動生成
- *      - Node
- * @scrollで、スクロール方向を指定することで、ScrollRectコンポーネントがつく
- * Content内のレイアウト定義可能
- * Content内、すべて変換が基本(XDの見た目そのままコンバートが基本)
- * Item化する場合は指定する
+ * Contentグループの作成
+ * 主にスクロール用　アイテム用コンテナ
+ * @param style
+ * @param json
+ * @param node
+ * @param funcForEachChild
+ * @param root
+ * @returns {Promise<void>}
  */
-async function createViewport(json, node, root, funcForEachChild) {
-  let { style } = getNodeNameAndStyle(node)
-
-  Object.assign(json, {
-    type: 'Viewport',
-    name: getUnityName(node),
-    fill_color: '#ffffff00', // タッチイベント取得Imageになる
-  })
-
-  // ScrollRect
-  addScrollRect(json, style)
-
+async function createContent(style, json, node, funcForEachChild, root) {
   // Content
   // Viewportは必ずcontentを持つ
   let createContentName = 'content'
@@ -2556,7 +2541,10 @@ async function createViewport(json, node, root, funcForEachChild) {
   })
 
   if (node.constructor.name === 'Group') {
-    // 通常グループ､マスクグループでViewportをつかう
+    // 通常グループ､マスクグループでContentの作成
+    // ContentのRectTransformは　場合によって異なる
+    // ・通常グループで作成したとき親とぴったりサイズ
+    // ・Maskグループで作成したときは親のサイズにしばられない →　座標はどうするか　センター合わせなのか
     // Groupでもスクロールウィンドウはできるようにするが、RepeatGridではない場合レイアウト情報が取得しづらい
     let maskNode = node.mask
     // マスクが利用されたViewportである場合､マスクを取得する
@@ -2591,12 +2579,14 @@ async function createViewport(json, node, root, funcForEachChild) {
       getBoundsInBase(calcContentBounds.bounds, maskBounds), // 相対座標で渡す
     )
 
+    // これはコンテントのレイアウトオプションで実行すべき
     addLayout(contentJson, node, maskNode, node.children, contentStyle)
   } else if (node.constructor.name === 'RepeatGrid') {
-    // リピートグリッドでViewportを作成する
-    // リピードグリッド内、Itemとするか、全部実態化するか、
-    // 以下縦スクロール専用でコーディング
-
+    // リピートグリッドでContentの作成
+    // ContentのRectTransformは　場合によって異なるが、リピートグリッドの場合は確定できない
+    // 縦スクロールを意図しているか　→ Content.RectTransformは横サイズぴったり　縦に伸びる
+    // 横スクロールを意図しているか　→ Content.RectTransformは縦サイズぴったり　横に伸びる
+    // こちらが確定できないため
     let calcContentBounds = new CalcBounds()
     /** @type {RepeatGrid} */
     let viewportNode = node
@@ -2637,28 +2627,14 @@ async function createViewport(json, node, root, funcForEachChild) {
     }
   }
 
-  // 基本
-  addActive(json, style)
-  addDrawRectTransform(json, node)
-  addLayer(json, style)
-  addState(json, style)
-  addClassNames(json, node)
-
-  addContentSizeFitter(json, style)
-  addScrollRect(json, style)
-  addRectMask2d(json, style)
-
-  // Content系
-  // SizeFit
-  addContentSizeFitter(contentJson, contentStyle)
-  addLayer(contentJson, contentStyle)
-
   // ContentのRectTransformを決める
+  // addRectTransformができない　→ Recttransformのキャッシュをもっていないため
   const contentX = contentJson['x']
   const contentY = contentJson['y']
   const contentWidth = contentJson['width']
   const contentHeight = contentJson['height']
   const contentStyleFix = getStyleFix(contentStyle.values(STYLE_MARGIN_FIX))
+
   let pivot = { x: 0, y: 1 } // top-left
   let anchorMin = { x: 0, y: 1 }
   let anchorMax = { x: 0, y: 1 }
@@ -2672,7 +2648,52 @@ async function createViewport(json, node, root, funcForEachChild) {
     offset_min: offsetMin,
     offset_max: offsetMax,
   })
+
   addRectTransformAnchorOffsetX(contentJson, contentStyle) // anchor設定を上書きする
+
+  addContentSizeFitter(contentJson, contentStyle)
+  addLayer(contentJson, contentStyle)
+}
+
+/**
+ *
+ * @param {*} json
+ * @param {SceneNode} node
+ * @param {*} root
+ * @param {*} funcForEachChild
+ * 出力構成
+ * Viewport +Image(タッチ用透明)　+ScrollRect +RectMask2D
+ *   - $Content ← 自動生成
+ *      - Node
+ * @scrollで、スクロール方向を指定することで、ScrollRectコンポーネントがつく
+ * Content内のレイアウト定義可能
+ * Content内、すべて変換が基本(XDの見た目そのままコンバートが基本)
+ * Item化する場合は指定する
+ */
+async function createViewport(json, node, root, funcForEachChild) {
+  let { style } = getNodeNameAndStyle(node)
+
+  Object.assign(json, {
+    type: 'Viewport',
+    name: getUnityName(node),
+    fill_color: '#ffffff00', // タッチイベント取得Imageになる
+  })
+
+  // ScrollRect
+  addScrollRect(json, style)
+
+  await createContent(style, json, node, funcForEachChild, root)
+
+  // 基本
+  addActive(json, style)
+  addDrawRectTransform(json, node)
+  addLayer(json, style)
+  addState(json, style)
+  addClassNames(json, node)
+
+  addContentSizeFitter(json, style)
+  addScrollRect(json, style)
+  addRectMask2d(json, style)
 }
 
 /**
