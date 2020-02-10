@@ -3501,8 +3501,13 @@ async function exportBaum2(roots, outputFolder) {
       .catch(error => {
         //console.log(renditions)
         console.log('画像ファイル出力エラー:' + error)
+        // 出力失敗に関して参考サイト
+        // https://forums.adobexdplatform.com/t/details-for-io-failed/1185/14
         console.log(
           '1)access denied (disk permission)\n2)readonly folder\n3)not enough disk space\n4)maximum path(I think it’s 256 currently on both platform)\n5)image size 0px',
+        )
+        alert(
+          '画像の出力に失敗しました\n以下のような可能性があります\n・書き込み先の問題\n・パス名が流すぎる\n・イメージサイズが0px',
         )
       })
   } else {
@@ -3998,10 +4003,13 @@ async function pluginAddImageSizeFix(selection, root) {
  */
 async function testRendition(selection, root) {
   const folder = await fs.getFolder()
+  if (!folder) return console.log('User canceled folder picker.')
   const file = await folder.createFile('rendition.png')
+  let node = selection.items[0];
+  console.log(node.name)
   let renditionSettings = [
     {
-      node: selection.items[0], // [1]
+      node: node, // [1]
       outputFile: file, // [2]
       type: application.RenditionType.PNG, // [3]
       scale: 2, // [4]
@@ -4314,6 +4322,6 @@ module.exports = {
     exportBaum2Command: pluginExportBaum2Command,
     addResponsiveParam: pluginResponsiveParamName,
     addImageSizeFix: pluginAddImageSizeFix,
-    testInteractions: testParse,
+    testPlugin: testRendition,
   },
 }
