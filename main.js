@@ -3395,12 +3395,12 @@ async function nodeRoot(renditions, outputFolder, root) {
 }
 
 /**
- * Baum2 export
+ * XdUnityUI export
  * @param {SceneNodeClass[]} roots
  * @param outputFolder
  * @returns {Promise<void>}
  */
-async function exportBaum2(roots, outputFolder) {
+async function exportXdUnityUI(roots, outputFolder) {
   resetGlobalVariables()
 
   // ラスタライズする要素を入れる
@@ -3576,7 +3576,7 @@ function h(tag, props, ...children) {
  */
 async function alert(message, title) {
   if (title == null) {
-    title = 'XD Baum2 Export'
+    title = 'XdUnityUI Export'
   }
   let dialog = h(
     'dialog',
@@ -3644,7 +3644,7 @@ async function getExportArtboards(selection) {
  * @param {RootNode} root
  * @returns {Promise<void>}
  */
-async function pluginExportBaum2Command(selection, root) {
+async function pluginExportXdUnityUICommand(selection, root) {
   let inputFolder
   let inputScale
   let errorLabel
@@ -3662,7 +3662,7 @@ async function pluginExportBaum2Command(selection, root) {
           width: 400,
         },
       },
-      h('h1', 'XD Baum2 Export'),
+      h('h1', 'XdUnityUI Export'),
       h('hr'),
       h(
         'label',
@@ -3870,7 +3870,7 @@ async function pluginExportBaum2Command(selection, root) {
     /**
      * @type {SceneNodeClass[]}
      */
-    await exportBaum2(exportRoots, outputFolder)
+    await exportXdUnityUI(exportRoots, outputFolder)
   } catch (e) {
     console.log(e)
     console.log(e.stack)
@@ -4319,7 +4319,7 @@ async function testParse(selection, root) {
 module.exports = {
   // コマンドIDとファンクションの紐付け
   commands: {
-    exportBaum2Command: pluginExportBaum2Command,
+    exportXdUnityUICommand: pluginExportXdUnityUICommand,
     addResponsiveParam: pluginResponsiveParamName,
     addImageSizeFix: pluginAddImageSizeFix,
     testPlugin: testRendition,

@@ -1,7 +1,7 @@
 {
-  "id": "BAUM2_EXPORT",
-  "name": "baum2 export plugin",
-  "description": "Baum2中間ファイルを出力します",
+  "id": "XD_UNITY_UI_EXPORT",
+  "name": "XdUnityUI export plugin",
+  "description": "XdUnityUI用ファイルを出力します",
   "version": "0.9.0",
   "host": {
     "app": "XD",
@@ -10,26 +10,11 @@
   "uiEntryPoints": [
     {
       "type": "menu",
-      "label": "baum2 export",
-      "commandId": "exportBaum2Command",
+      "label": "XdUnityUI export",
+      "commandId": "exportXdUnityUICommand",
       "shortcut": {
         "win": "Ctrl+Shift+Alt+p"
       }
-    },
-    {
-      "type": "menu",
-      "label": "responsive param add",
-      "commandId": "addResponsiveParam"
-    },
-    {
-      "type": "menu",
-      "label": "baum2 image size fixer",
-      "commandId": "addImageSizeFix"
-    },
-    {
-      "type": "menu",
-      "label": "test plugin",
-      "commandId": "testPlugin"
     }
   ]
 }
