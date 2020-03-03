@@ -1,3 +1,6 @@
+# 新バージョン開発中です
+https://github.com/itouh2-i0plus/XdUnityUI
+
 ## Unityでのモック作成にAdobeXDを利用したい
 
 AdobeXDでの作成
